@@ -1,18 +1,19 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, TriangleAlert } from 'lucide-react'
 import { Button, EmptyState, ErrorBoundary, Planned, Skeleton, errText } from '@/ui'
 import { getPlatformIcon } from '@/constants/appPlatforms'
-import { APP_NAV, DEFAULT_TAB, SUB_VIEW_DEFAULTS, isRetiredTab, resolveTab, type NavItem, type Tab } from './nav'
+import { DEFAULT_TAB, isRetiredTab, resolveTab, type Tab } from './nav'
 import { useAppDetail } from './queries'
 import { ContextRail } from './ContextRail'
 
 /**
  * 应用工作台外壳。
  *
- * 只负责：应用上下文、7 项 tab 导航、URL 状态、把主区交给面板。
- * 原 AppShell.vue 2,387 行里的新建执行向导、任务列表、用例加载、项目创建
- * 都不属于外壳（见 contracts/testing-app-workbench.md）。
+ * 只负责：应用上下文条、已砍 tab 的重定向、主区面板分发、上下文侧栏。
+ *
+ * 应用内导航不在这里 —— 它嵌在 WorkShell 的那条左栏里，
+ * 屏幕上只应该有一条左导航（见 contracts/testing-app-workbench.md）。
  */
 export function AppWorkbench() {
   const { appId = '' } = useParams()
@@ -33,19 +34,6 @@ export function AppWorkbench() {
       setParams(next, { replace: true })
     }
   }, [rawTab, tab, params, setParams])
-
-  const setTab = useCallback((next: Tab, sub?: { key: string; value: string }) => {
-    const p = new URLSearchParams(params)
-    p.set('tab', next)
-    if (sub) p.set(sub.key, sub.value)
-    setParams(p, { replace: false })
-  }, [params, setParams])
-
-  const setSubParam = useCallback((key: string, value: string) => {
-    const p = new URLSearchParams(params)
-    p.set(key, value)
-    setParams(p, { replace: true })
-  }, [params, setParams])
 
   // query 里的 appName 只作乐观初值，接口回来后以接口为准
   const app = useMemo(() => {
@@ -103,28 +91,7 @@ export function AppWorkbench() {
         )}
       </header>
 
-      <div className="flex flex-1 min-h-0" style={{ gap: 'var(--w-space-3)' }}>
-        {/* 应用内导航 */}
-        <nav
-          className="shrink-0 overflow-y-auto"
-          style={{
-            width: 168,
-            borderRight: '1px solid var(--w-border)',
-            paddingRight: 'var(--w-space-2)',
-          }}
-        >
-          {APP_NAV.map((item) => (
-            <NavGroup
-              key={item.id}
-              item={item}
-              activeTab={tab}
-              params={params}
-              onPick={setTab}
-              onPickSub={setSubParam}
-            />
-          ))}
-        </nav>
-
+      <div className="flex flex-1 min-h-0" style={{ gap: 'var(--w-space-4)' }}>
         {/* 主工作区 */}
         <main className="flex-1 min-w-0 overflow-auto">
           <ErrorBoundary label="面板">
@@ -138,86 +105,6 @@ export function AppWorkbench() {
   )
 }
 
-function NavGroup({
-  item,
-  activeTab,
-  params,
-  onPick,
-  onPickSub,
-}: {
-  item: NavItem
-  activeTab: Tab
-  params: URLSearchParams
-  onPick: (tab: Tab, sub?: { key: string; value: string }) => void
-  onPickSub: (key: string, value: string) => void
-}) {
-  const isActive = activeTab === item.id || (item.alsoActiveOn || []).includes(activeTab)
-  const Icon = item.icon
-
-  const subDefault = SUB_VIEW_DEFAULTS[activeTab]
-  const currentSub = subDefault ? params.get(subDefault.key) || subDefault.value : ''
-
-  return (
-    <div style={{ marginBottom: 'var(--w-space-2)' }}>
-      <button
-        type="button"
-        onClick={() => onPick(item.id)}
-        className="flex w-full items-center gap-2"
-        style={{
-          padding: '7px 9px',
-          borderRadius: 'var(--w-radius-sm)',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
-          fontSize: 'var(--w-font-base)',
-          fontWeight: isActive ? 650 : 600,
-          color: isActive ? 'var(--w-primary)' : 'var(--w-text-secondary)',
-          background: isActive ? 'var(--w-primary-soft)' : 'transparent',
-        }}
-      >
-        <Icon size={15} strokeWidth={1.9} />
-        <span className="truncate">{item.label}</span>
-      </button>
-
-      {isActive && item.children?.length ? (
-        <div style={{ paddingLeft: 10, marginTop: 2 }}>
-          {item.children.map((child) => {
-            const active = child.tab
-              ? activeTab === child.tab
-              : child.param
-                ? currentSub === child.param.value
-                : false
-            return (
-              <button
-                key={child.label}
-                type="button"
-                onClick={() => {
-                  if (child.tab) onPick(child.tab, child.param)
-                  else if (child.param) onPickSub(child.param.key, child.param.value)
-                }}
-                className="flex w-full items-center"
-                style={{
-                  padding: '5px 9px',
-                  borderRadius: 'var(--w-radius-sm)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  fontSize: 'var(--w-font-sm)',
-                  fontWeight: active ? 650 : 600,
-                  color: active ? 'var(--w-text)' : 'var(--w-text-tertiary)',
-                  background: active ? 'var(--w-fill)' : 'transparent',
-                }}
-              >
-                <span className="truncate">{child.label}</span>
-              </button>
-            )
-          })}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 /** 面板分发。各面板按阶段陆续替换掉占位。 */
 function Panel({ tab, appId }: { tab: Tab; appId: string }) {
   switch (tab) {
@@ -225,8 +112,6 @@ function Panel({ tab, appId }: { tab: Tab; appId: string }) {
       return <Planned title="用例库" phase="阶段 2b" source="Testing/CasesWorkbench.vue 1,130 行" />
     case 'tasks':
       return <Planned title="执行批次" phase="阶段 3" source="Testing/TaskDetailPane.vue 1,949 行" />
-    case 'dispatch':
-      return <Planned title="调用记录" phase="阶段 3" source="Settings/DispatchPage.vue 249 行" />
     case 'session-log':
       return <Planned title="Session Log" phase="阶段 3" source="Testing/SessionLogPanel.vue 663 行" />
     case 'navigation':

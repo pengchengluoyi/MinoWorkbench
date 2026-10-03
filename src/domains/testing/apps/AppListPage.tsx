@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FolderPlus, Plus, RefreshCw, Search, TriangleAlert } from 'lucide-react'
-import {
-  Badge, Button, EmptyState, Input, PageHeader, Skeleton, StatusPill, Tooltip,
-  errText, toStatusKind,
-} from '@/ui'
-import { formatPlatformTags, getPlatformIcon } from '@/constants/appPlatforms'
+import { Button, EmptyState, Input, Skeleton, Tooltip, errText } from '@/ui'
 import { useUrlState } from '@/hooks/useUrlState'
 import type { AppRow, ProjectRow } from '@/types/project'
 import { useAppTaskStats, useProjects, type AppTaskStat } from './queries'
 import { CreateDialog, type CreateKind } from './CreateDialog'
+import { StatRow } from './StatRow'
+import { AppCard } from './AppCard'
 
+/**
+ * 应用列表 —— 登录后的落地页。
+ *
+ * 这页会长期作为首屏，所以结构是：概览数字 → 搜索与新建 → 项目分组 → 应用卡片。
+ * 不复用上一版的紧凑表格式布局（见 contracts/testing-app-list.md）。
+ */
 export function AppListPage() {
   const navigate = useNavigate()
   const projects = useProjects()
@@ -23,8 +27,15 @@ export function AppListPage() {
   )
   const stats = useAppTaskStats(appIds)
 
-  const filtered = useMemo(() => {
-    const kw = q.trim().toLowerCase()
+  const runningTotal = useMemo(
+    () => Object.values(stats.data || {}).reduce((sum, s) => sum + (s.runningCount || 0), 0),
+    [stats.data],
+  )
+
+  const kw = q.trim().toLowerCase()
+  // 显式标注：展开 {...p, apps} 会丢掉 ProjectRow 的索引签名，
+  // 不标注的话 filtered 变成联合类型，后面的 reduce 推不出累加器
+  const filtered = useMemo<ProjectRow[]>(() => {
     if (!kw) return projects.data || []
     return (projects.data || [])
       .map((p) => ({
@@ -34,90 +45,119 @@ export function AppListPage() {
         ),
       }))
       .filter((p) => (p.apps || []).length > 0 || (p.name || '').toLowerCase().includes(kw))
-  }, [projects.data, q])
+  }, [projects.data, kw])
 
-  const totalApps = appIds.length
+  const matchCount = useMemo(
+    () => filtered.reduce((n, p) => n + (p.apps || []).length, 0),
+    [filtered],
+  )
 
   if (projects.isLoading) {
     return (
-      <div>
-        <PageHeader title="应用" />
-        <Skeleton active paragraph={{ rows: 8 }} title={{ width: 200 }} />
-      </div>
+      <Page>
+        <Skeleton active paragraph={{ rows: 2 }} title={{ width: 120 }} />
+        <Skeleton active paragraph={{ rows: 6 }} title={false} style={{ marginTop: 28 }} />
+      </Page>
     )
   }
 
   if (projects.isError) {
     return (
-      <div>
-        <PageHeader title="应用" />
-        <div style={cardStyle}>
+      <Page>
+        <Surface>
           <EmptyState
             icon={<TriangleAlert size={30} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
             title="读取项目列表失败"
             hint={errText(projects.error, '确认 Nexus 是否已启动，以及当前账号是否已登录。')}
             action={<Button size="small" onClick={() => void projects.refetch()}>重试</Button>}
           />
-        </div>
-      </div>
+        </Surface>
+      </Page>
     )
   }
 
-  return (
-    <div className="flex flex-col" style={{ minHeight: 0 }}>
-      <PageHeader
-        title="应用"
-        count={totalApps ? `${totalApps} 个应用` : undefined}
-        extra={
-          <>
-            <Input
-              allowClear
-              size="small"
-              prefix={<Search size={13} style={{ color: 'var(--w-text-quaternary)' }} />}
-              placeholder="搜索应用"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              style={{ width: 180 }}
-            />
-            <Tooltip title="刷新">
-              <Button
-                size="small"
-                icon={<RefreshCw size={13} />}
-                loading={projects.isFetching}
-                onClick={() => void projects.refetch()}
-              />
-            </Tooltip>
-            <Button size="small" icon={<FolderPlus size={13} />} onClick={() => setCreating({ kind: 'project' })}>
-              新建项目
-            </Button>
-          </>
-        }
-      />
+  const all = projects.data || []
 
-      {!(projects.data || []).length ? (
-        <div style={cardStyle}>
+  return (
+    <Page>
+      <header style={{ marginBottom: 'var(--w-space-5)' }}>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: 22,
+            fontWeight: 800,
+            letterSpacing: '-0.025em',
+            color: 'var(--w-text)',
+          }}
+        >
+          应用
+        </h1>
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--w-font-base)', color: 'var(--w-text-quaternary)' }}>
+          选一个应用进入测试工作台
+        </p>
+      </header>
+
+      <div style={{ marginBottom: 'var(--w-space-5)' }}>
+        <StatRow projects={all.length} apps={appIds.length} running={runningTotal} />
+      </div>
+
+      <div
+        className="flex flex-wrap items-center gap-2"
+        style={{ marginBottom: 'var(--w-space-4)' }}
+      >
+        <Input
+          allowClear
+          prefix={<Search size={14} style={{ color: 'var(--w-text-quaternary)' }} />}
+          placeholder="搜索应用名称或说明"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          style={{ maxWidth: 320, flex: '1 1 220px' }}
+        />
+        {kw && (
+          <span style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-quaternary)' }}>
+            {matchCount} 个匹配
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <Tooltip title="刷新">
+          <Button
+            icon={<RefreshCw size={14} />}
+            loading={projects.isFetching}
+            onClick={() => void projects.refetch()}
+            aria-label="刷新"
+          />
+        </Tooltip>
+        <Button type="primary" icon={<FolderPlus size={14} />} onClick={() => setCreating({ kind: 'project' })}>
+          新建项目
+        </Button>
+      </div>
+
+      {!all.length ? (
+        <Surface>
           <EmptyState
             title="还没有项目"
             hint="项目是应用的容器。先建一个项目，再在它下面创建应用。"
             action={
-              <Button type="primary" size="small" icon={<FolderPlus size={13} />} onClick={() => setCreating({ kind: 'project' })}>
+              <Button type="primary" icon={<FolderPlus size={14} />} onClick={() => setCreating({ kind: 'project' })}>
                 新建项目
               </Button>
             }
           />
-        </div>
+        </Surface>
       ) : !filtered.length ? (
-        <div style={cardStyle}>
+        <Surface>
           <EmptyState title="没有匹配的应用" hint={`换个关键字试试，当前搜索「${q}」。`} />
-        </div>
+        </Surface>
       ) : (
-        <div className="flex flex-col" style={{ gap: 'var(--w-gap-lg)' }}>
+        <div className="flex flex-col" style={{ gap: 28 }}>
           {filtered.map((project) => (
             <ProjectSection
               key={project.id}
               project={project}
               stats={stats.data || {}}
-              onOpenApp={(app) => navigate(`/testing/${app.id}?appName=${encodeURIComponent(app.name || '')}`)}
+              onOpenApp={(app) =>
+                navigate(`/testing/${app.id}?appName=${encodeURIComponent(app.name || '')}&projectName=${encodeURIComponent(project.name || '')}`)
+              }
               onCreateApp={() =>
                 setCreating({ kind: 'app', projectId: project.id, projectName: project.name || '未命名项目' })
               }
@@ -127,7 +167,7 @@ export function AppListPage() {
       )}
 
       <CreateDialog target={creating} onClose={() => setCreating(null)} />
-    </div>
+    </Page>
   )
 }
 
@@ -143,21 +183,46 @@ function ProjectSection({
   onCreateApp: () => void
 }) {
   const apps = project.apps || []
+
   return (
     <section>
-      <div className="flex items-center justify-between gap-3" style={{ marginBottom: 'var(--w-space-3)' }}>
-        <div className="flex items-baseline gap-2 min-w-0">
+      <div
+        className="flex items-center justify-between gap-3"
+        style={{ marginBottom: 'var(--w-space-3)' }}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* 竖条锚点，让分组边界一眼可辨，不靠额外的卡片边框 */}
+          <span
+            aria-hidden
+            style={{
+              width: 3,
+              height: 16,
+              borderRadius: 2,
+              background: 'var(--w-primary)',
+              flexShrink: 0,
+            }}
+          />
           <strong
             className="truncate"
-            style={{ fontSize: 'var(--w-font-title)', fontWeight: 700, color: 'var(--w-text)' }}
+            style={{ fontSize: 'var(--w-font-h2)', fontWeight: 700, color: 'var(--w-text)' }}
+            title={project.name}
           >
             {project.name || '未命名项目'}
           </strong>
-          <span style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
-            {apps.length} 个应用
+          <span
+            style={{
+              fontSize: 'var(--w-font-meta)',
+              fontWeight: 650,
+              color: 'var(--w-text-tertiary)',
+              background: 'var(--w-fill)',
+              padding: '2px 8px',
+              borderRadius: 'var(--w-radius-pill)',
+            }}
+          >
+            {apps.length}
           </span>
         </div>
-        <Button size="small" type="text" icon={<Plus size={13} />} onClick={onCreateApp}>
+        <Button size="small" type="text" icon={<Plus size={14} />} onClick={onCreateApp}>
           新建应用
         </Button>
       </div>
@@ -165,12 +230,13 @@ function ProjectSection({
       {!apps.length ? (
         <div
           style={{
-            ...cardStyle,
-            borderStyle: 'dashed',
-            padding: '20px',
+            padding: '24px 20px',
             textAlign: 'center',
             fontSize: 'var(--w-font-sm)',
             color: 'var(--w-text-quaternary)',
+            background: 'var(--w-surface-subtle)',
+            border: '1px dashed var(--w-border-strong)',
+            borderRadius: 'var(--w-radius-lg)',
           }}
         >
           这个项目还没有应用
@@ -178,7 +244,7 @@ function ProjectSection({
       ) : (
         <div
           className="grid"
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--w-space-3)' }}
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(268px, 1fr))', gap: 'var(--w-space-3)' }}
         >
           {apps.map((app) => (
             <AppCard key={app.id} app={app} stat={stats[app.id]} onClick={() => onOpenApp(app)} />
@@ -189,86 +255,21 @@ function ProjectSection({
   )
 }
 
-function AppCard({ app, stat, onClick }: { app: AppRow; stat?: AppTaskStat; onClick: () => void }) {
-  const tags = formatPlatformTags(app.platforms)
-  const running = stat?.runningCount || 0
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-left"
-      style={{
-        ...cardStyle,
-        padding: 'var(--w-card-padding)',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--w-space-2)',
-        transition: 'border-color .12s, box-shadow .12s',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--w-primary)'
-        e.currentTarget.style.boxShadow = 'var(--w-shadow-sm)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--w-border)'
-        e.currentTarget.style.boxShadow = 'none'
-      }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span style={{ fontSize: 16, lineHeight: 1 }}>{getPlatformIcon(app.platforms)}</span>
-          <strong
-            className="truncate"
-            style={{ fontSize: 'var(--w-font-base)', fontWeight: 700, color: 'var(--w-text)' }}
-            title={app.name}
-          >
-            {app.name || '未命名应用'}
-          </strong>
-        </div>
-        {running > 0 && (
-          <Tooltip title={`${running} 个批次执行中`}>
-            <Badge count={running} color="var(--w-running)" />
-          </Tooltip>
-        )}
-      </div>
-
-      {app.description && (
-        <span
-          className="truncate"
-          style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-quaternary)' }}
-          title={app.description}
-        >
-          {app.description}
-        </span>
-      )}
-
-      <div className="flex flex-wrap items-center gap-1.5" style={{ marginTop: 'auto' }}>
-        {tags.map((t) => (
-          <span
-            key={t}
-            style={{
-              fontSize: 'var(--w-font-meta)',
-              fontWeight: 650,
-              color: 'var(--w-text-tertiary)',
-              background: 'var(--w-fill)',
-              padding: '2px 7px',
-              borderRadius: 'var(--w-radius-pill)',
-            }}
-          >
-            {t}
-          </span>
-        ))}
-        {stat?.status && <StatusPill status={toStatusKind(stat.status)}>{stat.status}</StatusPill>}
-      </div>
-    </button>
-  )
+/** 落地页给一个最大宽度，超宽屏下卡片不要拉成长条。 */
+function Page({ children }: { children: React.ReactNode }) {
+  return <div style={{ maxWidth: 1180, margin: '0 auto' }}>{children}</div>
 }
 
-const cardStyle: React.CSSProperties = {
-  background: 'var(--w-surface)',
-  border: '1px solid var(--w-border)',
-  borderRadius: 'var(--w-radius-lg)',
-  minWidth: 0,
+function Surface({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: 'var(--w-surface)',
+        border: '1px solid var(--w-border)',
+        borderRadius: 'var(--w-radius-xl)',
+      }}
+    >
+      {children}
+    </div>
+  )
 }

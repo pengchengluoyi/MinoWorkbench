@@ -2,26 +2,26 @@ import { FlaskConical, ListChecks, Share2, Settings2, Boxes } from 'lucide-react
 import type { LucideIcon } from 'lucide-react'
 
 /**
- * 应用内导航。tab 从原实现的 11 项减到 7 项
- * （单据 / 知识 / 文档 / 信息基座已砍，见重建方案 §0）。
+ * 应用内导航。
+ * tab 从原实现的 11 项减到 6 项：单据 / 知识 / 文档 / 信息基座已砍，
+ * 调用记录（dispatch）本期也不做。
  */
-export const VALID_TABS = [
-  'cases', 'tasks', 'dispatch', 'session-log', 'navigation', 'assets', 'config',
-] as const
+export const VALID_TABS = ['cases', 'tasks', 'session-log', 'navigation', 'assets', 'config'] as const
 export type Tab = (typeof VALID_TABS)[number]
 
 /** 原默认是 process，该 tab 已砍 —— 不改默认值会白屏。 */
 export const DEFAULT_TAB: Tab = 'cases'
 
-/** 已砍功能的旧 tab 值，统一重定向到默认 tab，不保留空页面。 */
-export const RETIRED_TABS = ['process', 'knowledge', 'docs', 'intel'] as const
+/** 已砍功能的旧 tab 值，统一重定向到默认 tab。 */
+export const RETIRED_TABS = ['process', 'knowledge', 'docs', 'intel', 'dispatch'] as const
+
+export type SubParamKey = 'view' | 'nview' | 'section' | 'configSection'
 
 export interface SubItem {
-  /** 子项要么切换 tab 本身，要么只改子视图参数 —— 沿用原实现划分，避免旧链接失效 */
-  tab?: Tab
-  /** 子视图参数名与取值 */
-  param?: { key: 'view' | 'nview' | 'section' | 'dview' | 'configSection'; value: string }
   label: string
+  /** 子项要么切 tab 本身，要么只改子视图参数 —— 沿用原划分，避免旧链接失效 */
+  tab?: Tab
+  param?: { key: SubParamKey; value: string }
 }
 
 export interface NavItem {
@@ -34,19 +34,14 @@ export interface NavItem {
 }
 
 export const APP_NAV: NavItem[] = [
-  {
-    id: 'cases',
-    label: '用例',
-    icon: FlaskConical,
-  },
+  { id: 'cases', label: '用例', icon: FlaskConical },
   {
     id: 'tasks',
     label: '任务',
     icon: ListChecks,
-    alsoActiveOn: ['dispatch', 'session-log'],
+    alsoActiveOn: ['session-log'],
     children: [
       { label: '执行批次', tab: 'tasks' },
-      { label: '调用记录', tab: 'dispatch', param: { key: 'dview', value: 'pipeline' } },
       { label: 'Session Log', tab: 'session-log' },
     ],
   },
@@ -74,12 +69,11 @@ export const APP_NAV: NavItem[] = [
   },
 ]
 
-/** 每个 tab 的子视图参数名与默认值，用于读 URL 时兜底。 */
-export const SUB_VIEW_DEFAULTS: Partial<Record<Tab, { key: SubItem['param']['key']; value: string }>> = {
+/** 每个 tab 的子视图参数名与默认值，读 URL 时兜底。 */
+export const SUB_VIEW_DEFAULTS: Partial<Record<Tab, { key: SubParamKey; value: string }>> = {
   cases: { key: 'view', value: 'library' },
   navigation: { key: 'nview', value: 'arch' },
   assets: { key: 'section', value: 'accounts' },
-  dispatch: { key: 'dview', value: 'pipeline' },
   config: { key: 'configSection', value: 'env' },
 }
 

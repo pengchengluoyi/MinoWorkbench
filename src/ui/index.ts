@@ -10,6 +10,7 @@ export { ErrorBoundary } from './ErrorBoundary'
 export { StatusPill, toStatusKind, type StatusKind } from './StatusPill'
 export { FeedbackProvider, useFeedback, errText } from './feedback'
 export { AppearanceMenu } from './AppearanceMenu'
+export { UserMenu } from './UserMenu'
 export { lightTheme, darkTheme } from './theme'
 
 // 直接转出的 antd 原件：只做收口，不做包装。

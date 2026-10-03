@@ -52,8 +52,9 @@ export const router = createBrowserRouter([
         path: '/settings/runtime/device/:sn',
         element: <Planned title="设备详情" phase="阶段 3" source="Settings/DeviceDetailPage.vue 370 行" />,
       },
-      { path: '/settings/dispatch', element: <Planned title="调用记录" phase="阶段 3" source="Settings/DispatchPage.vue 249 行" /> },
-      { path: '/settings/dispatch/:callId', element: <Planned title="调用详情" phase="阶段 3" source="Settings/DispatchJobPage.vue 368 行" /> },
+      // 调用记录（原 /settings/dispatch）本期不做
+      { path: '/settings/dispatch', element: <Navigate to="/testing" replace /> },
+      { path: '/settings/dispatch/*', element: <Navigate to="/testing" replace /> },
       { path: '/settings/plugins', element: <Planned title="插件" phase="阶段 3" source="Settings/PluginsPage.vue 133 行" /> },
       { path: '/settings/plugins/:pluginId', element: <Planned title="插件详情" phase="阶段 3" source="Settings/PluginDetailPage.vue 1,725 行" /> },
       { path: '/settings/keys', element: <Planned title="模型密钥" phase="阶段 3" source="Settings/KeysPage.vue 996 行" /> },

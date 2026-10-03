@@ -44,39 +44,53 @@ const appName = computed(() => String(route.query.appName || '应用'))
 
 | 状态 | URL 键 | 取值 | 默认 |
 |---|---|---|---|
-| 当前 tab | `tab` | `cases` `tasks` `dispatch` `session-log` `navigation` `assets` `config` | **`cases`** |
+| 当前 tab | `tab` | `cases` `tasks` `session-log` `navigation` `assets` `config` | **`cases`** |
 | 用例子视图 | `view` | `library` | `library` |
 | 导航子视图 | `nview` | `arch` | `arch` |
 | 资源子视图 | `section` | `accounts` `logs` `device-apps` | `accounts` |
-| 调用子视图 | `dview` | `pipeline` | `pipeline` |
 | 配置子视图 | `configSection` | `env` | `env` |
 | 应用上下文（乐观初值） | `appName` `projectName` `projectId` | — | 由接口兜底 |
 | 侧栏收起 | `localStorage` | — | 展开 |
 
-**`VALID_TABS` 从 11 项减到 7 项。** 原默认值是 `process`，该 tab 已砍 —— **默认改为 `cases`**，否则进页白屏。
+**`VALID_TABS` 从 11 项减到 6 项**（调用记录 `dispatch` 本期也不做）。 原默认值是 `process`，该 tab 已砍 —— **默认改为 `cases`**，否则进页白屏。
 
 ## 信息架构（手册 §7.3 的落地）
 
 原实现是「11 个 tab 平铺 + 每个 tab 下二级 board」两层。重建改为：
 
+**全局只有一条左侧导航。** 应用内导航嵌在 `WorkShell` 的那条左栏里，
+不由本组件再画一条——上一版两条左栏并排，是明确的设计错误。
+
 ```
-┌─ 应用上下文条：返回 / 应用名 / 覆盖端 / 项目 ──────────────┐
-├────────────┬──────────────────────────────┬──────────────┤
-│ 应用内导航 │  主工作区                     │ 上下文侧栏   │
-│ 5 项       │  （面板自己管）               │ （可收起）   │
-│ + 子项     │                              │              │
-└────────────┴──────────────────────────────┴──────────────┘
+┌──────────────┬───────────────────────────────────────────┐
+│ WorkShell    │ 应用上下文条：返回 / 应用名 / 覆盖端        │
+│ 唯一左栏     ├────────────────────────────┬──────────────┤
+│  应用        │                            │              │
+│   ├ 用例     │  主工作区                  │ 上下文侧栏   │
+│   ├ 任务     │  （面板自己管）            │ （可收起）   │
+│   ├ 导航     │                            │              │
+│   ├ 测试资源 │                            │              │
+│   └ 配置     │                            │              │
+│  ─────       │                            │              │
+│  Scout 节点  │                            │              │
+│  插件        │                            │              │
+│  模型密钥    │                            │              │
+│  ─────       │                            │              │
+│  [头像] ↑    │                            │              │
+└──────────────┴────────────────────────────┴──────────────┘
 ```
+
+整条左栏可折叠（折叠后只剩图标 + 悬浮提示），状态持久化。
 
 | 导航项 | tab | 子项 |
 |---|---|---|
 | 用例 | `cases` | — |
-| 任务 | `tasks` | 执行批次 / 调用记录 `dispatch` / Session Log `session-log` |
+| 任务 | `tasks` | 执行批次 / Session Log `session-log` |
 | 导航 | `navigation` | 架构 |
 | 测试资源 | `assets` | 账号管理 / 资源日志 / 机态 App |
 | 配置 | `config` | 环境配置 |
 
-子项是独立 tab 值（`dispatch`、`session-log`）还是子视图参数（`section`、`nview`），沿用原实现的划分，避免旧链接失效。
+子项是独立 tab 值（`session-log`）还是子视图参数（`section`、`nview`），沿用原实现的划分，避免旧链接失效。
 
 ## 交互
 
@@ -94,7 +108,7 @@ const appName = computed(() => String(route.query.appName || '应用'))
 - **`appId` 不存在 / 无权限**：整页错误态，给「返回应用列表」。原实现只会显示"应用"二字，看不出是哪里错了。
 - 加载态：上下文条骨架 + 导航可用（导航不依赖接口）。
 - **非法 `tab` 值**：回落 `cases`，不白屏。
-- **旧 URL**（`tab=process` / `tab=knowledge` / `tab=docs` / `tab=intel` / `board=*` / `kview=*`）：这些功能已砍 → **重定向到 `tab=cases`**，不保留空页面。
+- **旧 URL**（`tab=process` / `knowledge` / `docs` / `intel` / `dispatch` / `board=*` / `kview=*`）：这些功能已砍 → **重定向到 `tab=cases`**，不保留空页面。
 - 窄屏：上下文侧栏自动收起；导航退为顶部横向。
 - 面板自身出错：面板级 `ErrorBoundary` 兜住，外壳和导航仍可用。
 
@@ -108,7 +122,8 @@ const appName = computed(() => String(route.query.appName || '应用'))
 
 ## 验收
 
-- [x] 7 个 tab 全部可达，默认落地 `cases`
+- [x] 6 个 tab 全部可达，默认落地 `cases`
+- [x] 全局只有一条左侧导航，且可折叠、状态持久化
 - [x] 子项参数正确读写 URL
 - [x] 不带 query 的 `/testing/:appId` 能正确显示应用名和覆盖端
 - [x] 非法 tab 回落 `cases`
@@ -116,4 +131,4 @@ const appName = computed(() => String(route.query.appName || '应用'))
 - [x] 侧栏收起状态持久化
 - [x] `appId` 不存在时整页错误态 + 返回入口
 - [x] 切 tab 不丢其他面板状态（面板各自 Query 缓存）
-- [x] 外壳单文件 ≤ 400 行（原 2,387 行）
+- [x] 外壳单文件 ≤ 400 行（原 2,387 行 → 125 行，导航移入 WorkShell）

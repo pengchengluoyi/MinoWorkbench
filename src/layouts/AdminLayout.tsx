@@ -1,15 +1,13 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Dropdown } from 'antd'
+import { Button } from 'antd'
 import {
   LayoutDashboard, Activity, FolderTree, Cpu, NotebookTabs, KeyRound, Share2,
   Lock, FileClock, Sparkles, ListChecks, Users, Layers, Package, GitBranch,
-  BookCheck, Link2, LogOut, FlaskConical,
+  BookCheck, Link2, FlaskConical,
 } from 'lucide-react'
-import { AppearanceMenu, ErrorBoundary } from '@/ui'
+import { AppearanceMenu, ErrorBoundary, UserMenu } from '@/ui'
 import { getServerInfo } from '@/api/me'
-import { displayName, useSession } from '@/lib/session'
-import { roleLabel } from '@/lib/iam'
 
 /** 导航分组沿用 MinoConsole 的 5 组 16 项，顺序和文案不动。 */
 const GROUPS = [
@@ -54,7 +52,6 @@ const GROUPS = [
 
 export function AdminLayout() {
   const navigate = useNavigate()
-  const { user, role, logout } = useSession()
 
   // 30 秒一次的 Nexus 连通性，用 Query 的 refetchInterval，不自己写 setInterval
   const { data: info, isError } = useQuery({
@@ -150,10 +147,11 @@ export function AdminLayout() {
             type="text"
             icon={<FlaskConical size={14} />}
             onClick={() => navigate('/testing')}
-            style={{ justifyContent: 'flex-start', fontWeight: 600 }}
+            style={{ justifyContent: 'flex-start', fontWeight: 600, marginBottom: 4 }}
           >
             去测试工作台
           </Button>
+          <UserMenu />
         </div>
       </aside>
 
@@ -176,28 +174,6 @@ export function AdminLayout() {
 
           <div className="flex items-center gap-1">
             <AppearanceMenu />
-            <Dropdown
-              trigger={['click']}
-              placement="bottomRight"
-              menu={{
-                items: [
-                  { key: 'who', type: 'group', label: `${displayName(user)} · ${roleLabel(role)}` },
-                  { type: 'divider', key: 'd' },
-                  {
-                    key: 'logout',
-                    danger: true,
-                    label: <span className="flex items-center gap-2"><LogOut size={13} /> 退出登录</span>,
-                  },
-                ],
-                onClick: async ({ key }) => {
-                  if (key === 'logout') { await logout(); navigate('/login', { replace: true }) }
-                },
-              }}
-            >
-              <Button size="small" type="text" style={{ fontWeight: 650 }}>
-                {displayName(user)}
-              </Button>
-            </Dropdown>
           </div>
         </header>
 
