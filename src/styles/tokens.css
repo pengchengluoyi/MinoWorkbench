@@ -1,0 +1,158 @@
+/**
+ * MinoWorkbench 设计 token
+ *
+ * 取值来源：MinoStudio 的 studio-readability.css / work-shell.css 里
+ * 已经反复手工调过的那套数值。这里把它们固化成 token，不另发明一套。
+ *
+ * 规则（开发手册 §11）：业务代码只允许引用 token，不许写字面量色值。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---------- 中性色阶（slate） ---------- */
+  --w-bg:               #f6f8fa;
+  --w-surface:          #ffffff;
+  --w-surface-subtle:   #fafbfc;
+  --w-surface-hover:    #f8fafc;
+  --w-fill:             #f1f5f9;
+  --w-border:           #eef2f7;
+  --w-border-strong:    #e2e8f0;
+
+  --w-text:             #111827;
+  --w-text-secondary:   #475569;
+  --w-text-tertiary:    #64748b;
+  --w-text-quaternary:  #94a3b8;
+  --w-text-inverse:     #ffffff;
+
+  /* ---------- 主色 ---------- */
+  --w-primary:          #4f46e5;
+  --w-primary-hover:    #4338ca;
+  --w-primary-soft:     #eef2ff;
+
+  /* ---------- 状态色（执行结果语义，三态各配软底） ---------- */
+  --w-pass:             #059669;
+  --w-pass-bg:          #ecfdf5;
+  --w-fail:             #dc2626;
+  --w-fail-bg:          #fef2f2;
+  --w-warn:             #d97706;
+  --w-warn-bg:          #fffbeb;
+  --w-cancel:           #c2410c;
+  --w-cancel-bg:        #fff7ed;
+  --w-muted:            #64748b;
+  --w-muted-bg:         #f1f5f9;
+  --w-running:          #10b981;
+  --w-running-bg:       #f0fdf4;
+
+  /* ---------- 字阶（四级，对应三层信息结构 + 大数字） ---------- */
+  --w-font-meta:        11px;   /* 标签、脚注、单号 */
+  --w-font-sm:          12px;   /* 次要正文、表格副信息 */
+  --w-font-base:        13px;   /* 正文、表格主信息 */
+  --w-font-title:       14px;   /* 行标题、卡片标题 */
+  --w-font-h2:          16px;
+  --w-font-stat:        28px;   /* 统计大数字 */
+
+  --w-line-tight:       1.2;
+  --w-line-snug:        1.35;
+  --w-line-base:        1.45;
+  --w-line-relaxed:     1.6;
+
+  /* 原项目重度使用 650 这个非标准字重，保留 */
+  --w-weight-normal:    400;
+  --w-weight-medium:    600;
+  --w-weight-semibold:  650;
+  --w-weight-bold:      700;
+  --w-weight-heavy:     800;
+
+  --w-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --w-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---------- 间距（密度相关的那几档在 [data-density] 里覆盖） ---------- */
+  --w-space-1:          4px;
+  --w-space-2:          8px;
+  --w-space-3:          12px;
+  --w-space-4:          16px;
+  --w-space-5:          20px;
+  --w-space-6:          24px;
+  --w-gap:              16px;   /* 原 --mo-read-gap */
+  --w-gap-lg:           22px;   /* 原 --mo-read-gap-lg */
+
+  /* ---------- 圆角 ---------- */
+  --w-radius-sm:        8px;
+  --w-radius:           10px;
+  --w-radius-lg:        12px;
+  --w-radius-xl:        14px;
+  --w-radius-pill:      999px;
+
+  /* ---------- 阴影 ---------- */
+  --w-shadow-sm:        0 1px 2px rgba(17, 24, 39, 0.04);
+  --w-shadow:           0 2px 8px rgba(17, 24, 39, 0.06);
+  --w-shadow-lg:        0 8px 24px rgba(17, 24, 39, 0.10);
+
+  /* ---------- 密度相关（默认舒适） ---------- */
+  --w-row-height:       44px;
+  --w-control-height:   32px;
+  --w-cell-padding-y:   12px;
+  --w-cell-padding-x:   14px;
+  --w-card-padding:     16px;
+
+  /* ---------- 布局 ---------- */
+  --w-sidebar-width:    224px;
+  --w-sidebar-collapsed: 56px;
+  --w-header-height:    48px;
+  --w-z-dropdown:       1050;
+  --w-z-modal:          1100;
+  --w-z-toast:          1200;
+}
+
+/* ---------- 紧凑密度：数据密集的表格页用 ---------- */
+:root[data-density="compact"] {
+  --w-row-height:       32px;
+  --w-control-height:   28px;
+  --w-cell-padding-y:   6px;
+  --w-cell-padding-x:   10px;
+  --w-card-padding:     12px;
+  --w-gap:              12px;
+  --w-gap-lg:           16px;
+}
+
+/* ---------- 深色 ---------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --w-bg:               #0b0f16;
+  --w-surface:          #141a23;
+  --w-surface-subtle:   #111720;
+  --w-surface-hover:    #1b2230;
+  --w-fill:             #1e263385;
+  --w-border:           #222b38;
+  --w-border-strong:    #2e3a4b;
+
+  --w-text:             #e8edf4;
+  --w-text-secondary:   #b2becd;
+  --w-text-tertiary:    #8995a6;
+  --w-text-quaternary:  #6b7889;
+  --w-text-inverse:     #0b0f16;
+
+  --w-primary:          #8b84f8;
+  --w-primary-hover:     #a39df9;
+  --w-primary-soft:     #221f3d;
+
+  --w-pass:             #34d399;
+  --w-pass-bg:          #0d2a21;
+  --w-fail:             #f87171;
+  --w-fail-bg:          #2d1416;
+  --w-warn:             #fbbf24;
+  --w-warn-bg:          #2b2008;
+  --w-cancel:           #fb923c;
+  --w-cancel-bg:        #2b1808;
+  --w-muted:            #8995a6;
+  --w-muted-bg:         #1b2230;
+  --w-running:          #34d399;
+  --w-running-bg:       #0d2a21;
+
+  --w-shadow-sm:        0 1px 2px rgba(0, 0, 0, 0.3);
+  --w-shadow:           0 2px 8px rgba(0, 0, 0, 0.4);
+  --w-shadow-lg:        0 8px 24px rgba(0, 0, 0, 0.5);
+}

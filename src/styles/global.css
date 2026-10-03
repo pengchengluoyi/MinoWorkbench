@@ -1,0 +1,79 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--w-bg);
+  color: var(--w-text);
+  font-family: var(--w-font-sans);
+  font-size: var(--w-font-base);
+  line-height: var(--w-line-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 滚动条收窄，数据密集界面里原生滚动条太占地方 */
+* ::-webkit-scrollbar { width: 10px; height: 10px; }
+* ::-webkit-scrollbar-track { background: transparent; }
+* ::-webkit-scrollbar-thumb {
+  background: var(--w-border-strong);
+  border-radius: var(--w-radius-pill);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+* ::-webkit-scrollbar-thumb:hover { background-color: var(--w-text-quaternary); background-clip: content-box; }
+
+/* 状态胶囊：原 .mo-status-pill，这里收成 token 驱动 */
+.w-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: var(--w-radius-pill);
+  font-size: var(--w-font-sm);
+  font-weight: var(--w-weight-semibold);
+  line-height: var(--w-line-tight);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.w-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
+.w-pill[data-status="pass"]    { color: var(--w-pass);   background: var(--w-pass-bg); }
+.w-pill[data-status="fail"]    { color: var(--w-fail);   background: var(--w-fail-bg); }
+.w-pill[data-status="warn"]    { color: var(--w-warn);   background: var(--w-warn-bg); }
+.w-pill[data-status="cancel"]  { color: var(--w-cancel); background: var(--w-cancel-bg); }
+.w-pill[data-status="running"] { color: var(--w-running); background: var(--w-running-bg); }
+.w-pill[data-status="muted"]   { color: var(--w-muted);  background: var(--w-muted-bg); }
+
+/* 三层信息结构：标签 / 值。原 .batch-info-card .meta-cell */
+.w-field > em {
+  display: block;
+  font-style: normal;
+  font-size: var(--w-font-meta);
+  font-weight: var(--w-weight-bold);
+  color: var(--w-text-quaternary);
+  margin-bottom: var(--w-space-1);
+  letter-spacing: 0.02em;
+}
+.w-field > span {
+  display: block;
+  font-size: var(--w-font-base);
+  font-weight: var(--w-weight-medium);
+  color: var(--w-text);
+  line-height: var(--w-line-base);
+  overflow-wrap: anywhere;
+}
+
+.w-mono { font-family: var(--w-font-mono); }
