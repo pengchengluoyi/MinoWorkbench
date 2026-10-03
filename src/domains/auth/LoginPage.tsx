@@ -4,6 +4,8 @@ import { Button, Input, Form } from '@/ui'
 import { useFeedback, errText } from '@/ui'
 import { loginAccount } from '@/api/auth'
 import { useSession } from '@/lib/session'
+import { persistAuthTokens } from '@/lib/tokens'
+import { connectRealtime } from '@/lib/realtime'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -15,10 +17,19 @@ export function LoginPage() {
   const onSubmit = async (values: { account: string; password: string }) => {
     setLoading(true)
     try {
-      await loginAccount(values.account, values.password)
-      // 登录本身走 cookie；token / ws_token 由 /auth/status 下发，refresh 里会存
+      const res = await loginAccount(values.account, values.password)
+
+      // 登录响应自带 token / ws_token，必须先落盘：
+      // 后续的 /auth/status 要靠这个 Authorization 头，否则会被当匿名请求。
+      persistAuthTokens(res?.data)
+
       const ok = await refresh()
-      if (!ok) throw new Error('登录状态确认失败')
+      if (!ok) {
+        throw new Error('账号密码对了，但读取登录状态失败。请重试，或确认 Nexus 的 /auth/status 是否正常。')
+      }
+
+      // 执行链路的实时推送走这个通道，登录后即连
+      connectRealtime(res?.data?.ws_token)
       const from = (location.state as any)?.from
       navigate(from || '/testing', { replace: true })
     } catch (e) {

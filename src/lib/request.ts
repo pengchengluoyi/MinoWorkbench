@@ -53,6 +53,10 @@ const kickToLogin = () => {
 service.interceptors.request.use((config) => {
   config.baseURL = getBaseUrl()
   config.headers.set('X-Mino-Client', CLIENT_NAME)
+  // 显式声明期望 JSON：dev 的 vite proxy 靠 Accept 区分
+  // 「浏览器导航」和「接口请求」（见 vite.config.ts 的 bypass），
+  // 不要依赖 axios 的默认 Accept。
+  config.headers.set('Accept', 'application/json')
   const token = getToken()
   if (token) config.headers.set('Authorization', `Bearer ${token}`)
   return config

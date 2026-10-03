@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { getAuthStatus, logoutAccount } from '@/api/auth'
-import { clearTokens, setToken, setWsToken } from '@/lib/tokens'
+import { clearTokens, persistAuthTokens } from '@/lib/tokens'
 import { normalizeRole } from '@/lib/iam'
 import type { AuthStatus } from '@/types/auth'
 
@@ -26,9 +26,8 @@ export const useSession = create<SessionState>((set) => ({
     try {
       const res = await getAuthStatus()
       const data = res?.data || {}
-      // /auth/status 顺带下发 WebSocket 票据，存起来给实时通道用
-      if (data.token) setToken(data.token)
-      if (data.ws_token) setWsToken(data.ws_token)
+      // /auth/status 也会顺带下发票据，刷新一下
+      persistAuthTokens(data)
       const ok = data.logged_in !== false
       set({ user: ok ? data : null, role: normalizeRole(data.role), loggedIn: ok, loading: false })
       return ok

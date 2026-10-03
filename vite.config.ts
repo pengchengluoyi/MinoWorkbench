@@ -29,17 +29,29 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5273,
       strictPort: true,
-      // Nexus 的接口散在 24 个顶层前缀下（没有统一的 /api 前缀）。
-      // 漏配一个，dev 下该接口会落到 SPA 的 index.html 并返回 200 + HTML，
-      // 症状是"接口返回了但数据是 undefined"——极难查。
-      // 新增 Nexus 前缀务必加到这里；同时 lib/request.ts 有 HTML 响应兜底会报错提醒。
+      // Nexus 的接口散在 27 个顶层前缀下（没有统一的 /api 前缀）。
+      //
+      // 两个坑：
+      // 1) 漏配前缀 → 该接口落到 SPA 的 index.html，返回 200 + HTML，
+      //    症状是"接口返回了但数据全是 undefined"。lib/request.ts 有 HTML 兜底会报错提醒。
+      // 2) 前缀与客户端路由撞车 → 比如 /settings 既是 Nexus 前缀，
+      //    又是 Studio 的 /settings/** 路由；不处理的话在 /settings/runtime 上刷新
+      //    会被代理到 Nexus 拿 404。
+      //
+      // bypass 解决第 2 个：浏览器导航带 Accept: text/html，直接给 SPA；
+      // XHR（Accept: application/json）才真代理。沿用 MinoConsole 验证过的做法。
       proxy: mode === 'development' && !process.env.VITE_NEXUS_URL
         ? {
+            '/ws': { target: nexus, changeOrigin: true, ws: true },
             [`^/(${NEXUS_PREFIXES.join('|')})(/|$|\\?)`]: {
               target: nexus,
               changeOrigin: true,
+              bypass: (req: { headers: Record<string, string | string[] | undefined> }) => {
+                const accept = String(req.headers.accept || '')
+                if (accept.includes('text/html')) return '/index.html'
+                return undefined
+              },
             },
-            '/ws': { target: nexus, changeOrigin: true, ws: true },
           }
         : undefined,
     },
