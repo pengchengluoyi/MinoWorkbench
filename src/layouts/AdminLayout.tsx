@@ -6,7 +6,7 @@ import {
   Lock, FileClock, Sparkles, ListChecks, Users, Layers, Package, GitBranch,
   BookCheck, Link2, FlaskConical,
 } from 'lucide-react'
-import { AppearanceMenu, ErrorBoundary, UserMenu } from '@/ui'
+import { ErrorBoundary, UserMenu } from '@/ui'
 import { getServerInfo } from '@/api/me'
 
 /** 导航分组沿用 MinoConsole 的 5 组 16 项，顺序和文案不动。 */
@@ -151,33 +151,19 @@ export function AdminLayout() {
           >
             去测试工作台
           </Button>
+          <span
+            className="w-pill"
+            data-status={isError ? 'fail' : 'pass'}
+            style={{ marginBottom: 6, width: '100%', justifyContent: 'center' }}
+          >
+            {nexusText}
+          </span>
           <UserMenu />
         </div>
       </aside>
 
       <div className="flex flex-1 flex-col min-w-0">
-        <header
-          className="flex items-center justify-between gap-3 shrink-0"
-          style={{
-            height: 'var(--w-header-height)',
-            padding: '0 16px',
-            borderBottom: '1px solid var(--w-border)',
-            background: 'var(--w-surface)',
-          }}
-        >
-          <span
-            className="w-pill"
-            data-status={isError ? 'fail' : 'pass'}
-          >
-            {nexusText}
-          </span>
-
-          <div className="flex items-center gap-1">
-            <AppearanceMenu />
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-auto" style={{ padding: 'var(--w-space-5)', minHeight: 0 }}>
+        <main className="flex-1 overflow-auto" style={{ padding: 'var(--w-space-4)', minHeight: 0 }}>
           <ErrorBoundary label="页面">
             <Outlet />
           </ErrorBoundary>

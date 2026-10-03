@@ -301,7 +301,7 @@ function Metric({ icon, label, value, color }: { icon: React.ReactNode; label: s
 const Dot = () => <span aria-hidden style={{ color: 'var(--w-border-strong)' }}>·</span>
 
 function Page({ children }: { children: React.ReactNode }) {
-  return <div style={{ maxWidth: 1080, margin: '0 auto' }}>{children}</div>
+  return <div>{children}</div>
 }
 
 function Surface({ children }: { children: React.ReactNode }) {

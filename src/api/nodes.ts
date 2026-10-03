@@ -76,3 +76,40 @@ export const nodeIsOnline = (n: ScoutNode): boolean => {
 /** 真能跑用例的设备。离线设备不算。 */
 export const executableDevices = (n: ScoutNode): NodeDevice[] =>
   (n.devices || []).filter((d) => String(d.status || '').toLowerCase() === 'online')
+
+export interface ScoutRelease {
+  version?: string
+  packaging?: boolean
+  manifest_ready?: boolean
+  detail?: string
+  manifest_url?: string
+}
+
+/**
+ * Scout 最新稳定版。走 Nexus 的 /releases/scout/meta —— Nexus 自己去代理
+ * GitHub manifest。前端**不直连 GitHub**（铁律：只跟 Nexus 说话）。
+ */
+export const getScoutRelease = (os: string, arch: string) =>
+  request<ScoutRelease>({ url: '/releases/scout/meta', method: 'get', params: { os, arch } })
+
+/** 把 0.1.57 / v0.1.57 这类写法比出大小。返回 -1/0/1。 */
+export const compareVersion = (a: string, b: string): number => {
+  const norm = (v: string) => String(v || '').trim().replace(/^v/i, '').split('.').map((n) => Number(n) || 0)
+  const x = norm(a)
+  const y = norm(b)
+  for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0)
+    if (d !== 0) return d > 0 ? 1 : -1
+  }
+  return 0
+}
+
+/** 节点平台 → manifest 的 os/arch 取值。 */
+export const releaseTargetOf = (n: ScoutNode): { os: string; arch: string } => {
+  const p = String(n.platform || '').toLowerCase()
+  const os = p.includes('darwin') || p.includes('mac') ? 'darwin'
+    : p.includes('win') ? 'win32'
+      : 'linux'
+  const arch = String(n.arch || '').toLowerCase().includes('arm') ? 'arm64' : 'x64'
+  return { os, arch }
+}

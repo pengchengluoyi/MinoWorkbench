@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Cpu, Power, RefreshCw, RotateCw, Smartphone, TriangleAlert, Upload } from 'lucide-react'
 import { Button, EmptyState, Skeleton, StatusPill, Tooltip, errText, useFeedback } from '@/ui'
-import { executableDevices, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
+import { compareVersion, executableDevices, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
-import { useNodeCommand, useNodes } from './queries'
+import { useNodeCommand, useNodes, useScoutRelease } from './queries'
 import { NodeLogs } from './NodeLogs'
 
 /**
@@ -140,8 +140,35 @@ export function NodesPage() {
 function NodeDetail({ node }: { node: ScoutNode }) {
   const fb = useFeedback()
   const cmd = useNodeCommand()
+  const release = useScoutRelease(node)
   const online = nodeIsOnline(node)
   const devices = node.devices || []
+
+  const current = String(node.scout_version || '')
+  const latest = String(release.data?.version || '')
+  const packaging = !!release.data?.packaging
+  const behind = !!current && !!latest && compareVersion(current, latest) < 0
+
+  // 升级按钮必须说清"从哪升到哪"，否则用户不知道按下去会发生什么
+  const upgradeLabel = !latest
+    ? '升级'
+    : packaging
+      ? `v${latest} 正在打包`
+      : behind
+        ? `升级到 v${latest}`
+        : '已是最新'
+
+  const upgradeBlocked = !online
+    ? '节点离线，命令没有接收方。'
+    : release.isError
+      ? '拿不到最新版本信息，Nexus 可能没有配置 Scout manifest。'
+      : packaging
+        ? `GitHub 正在打包 v${latest}，安装包还没上传。`
+        : !latest
+          ? '未知最新版本。'
+          : !behind
+            ? `当前 v${current} 已是最新稳定版。`
+            : ''
 
   const run = async (command: NodeCommand, label: string, danger = false) => {
     const ok = await fb.confirm({
@@ -187,9 +214,17 @@ function NodeDetail({ node }: { node: ScoutNode }) {
             <Button size="small" icon={<RotateCw size={13} />} disabled={!online} loading={cmd.isPending} onClick={() => run('restart', '重启')}>
               重启
             </Button>
-            <Button size="small" icon={<Upload size={13} />} disabled={!online} loading={cmd.isPending} onClick={() => run('update', '升级')}>
-              升级
-            </Button>
+            <Tooltip title={upgradeBlocked || `从 v${current || '未知'} 升级到 v${latest}`}>
+              <Button
+                size="small"
+                icon={<Upload size={13} />}
+                disabled={!!upgradeBlocked}
+                loading={cmd.isPending}
+                onClick={() => run('update', `升级到 v${latest}`)}
+              >
+                {upgradeLabel}
+              </Button>
+            </Tooltip>
             <Button size="small" danger icon={<Power size={13} />} disabled={!online} loading={cmd.isPending} onClick={() => run('stop', '停止', true)}>
               停止
             </Button>
@@ -201,7 +236,23 @@ function NodeDetail({ node }: { node: ScoutNode }) {
         className="grid"
         style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 'var(--w-space-3)', marginBottom: 'var(--w-space-4)' }}
       >
-        <Field label="Scout 版本" value={node.scout_version ? `v${node.scout_version}` : '—'} />
+        <Field
+          label="Scout 版本"
+          value={
+            <span className="flex items-center gap-1.5">
+              <span>{current ? `v${current}` : '未知'}</span>
+              {latest && behind && (
+                <>
+                  <span style={{ color: 'var(--w-text-quaternary)' }}>→</span>
+                  <span style={{ color: 'var(--w-warn)', fontWeight: 700 }}>v{latest}</span>
+                </>
+              )}
+              {latest && !behind && !packaging && (
+                <span style={{ color: 'var(--w-pass)', fontSize: 'var(--w-font-meta)', fontWeight: 700 }}>最新</span>
+              )}
+            </span>
+          }
+        />
         <Field label="平台" value={`${node.platform || '—'}${node.arch ? ` · ${node.arch}` : ''}`} />
         <Field label="归属" value={node.owner_name || '—'} />
         <Field label="心跳" value={node.last_seen_ago_sec != null ? `${Math.round(node.last_seen_ago_sec)} 秒前` : (node.last_heartbeat || '—')} />

@@ -7,6 +7,7 @@ import {
 } from '@/ui'
 import type { CaseRow } from '@/api/projectCases'
 import { ModuleFilter } from './ModuleFilter'
+import { NumberedLines } from './NumberedLines'
 import { RunBar, type DispatchedRun } from './RunBar'
 import { useLastResults, useProjectCases, useRunDevices, type LastResult } from './queries'
 
@@ -120,11 +121,22 @@ export function CasesPanel({ appId }: { appId: string }) {
       },
     },
     {
+      key: 'steps',
+      title: '操作步骤',
+      width: 300,
+      render: (_: unknown, row) => <NumberedLines value={row.steps ?? row.steps_raw} />,
+    },
+    {
+      key: 'expected',
+      title: '预期结果',
+      width: 280,
+      render: (_: unknown, row) => <NumberedLines value={row.expected ?? row.expected_raw} />,
+    },
+    {
       key: 'precondition',
       title: '前置条件',
-      dataIndex: 'precondition',
-      ellipsis: true,
-      render: (v: string) => v || '—',
+      width: 200,
+      render: (_: unknown, row) => <NumberedLines value={row.precondition} max={2} />,
     },
   ], [results])
 

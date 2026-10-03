@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { NavLink, Outlet, useMatch, useSearchParams } from 'react-router-dom'
 import { Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeftOpen, Plug } from 'lucide-react'
-import { AppearanceMenu, Button, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
+import { Button, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
 import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab, type Tab } from '@/domains/testing/workbench/nav'
 import { useAppDetail } from '@/domains/testing/workbench/queries'
 
@@ -111,19 +111,8 @@ export function WorkShell() {
       </aside>
 
       <div className="flex flex-1 flex-col min-w-0">
-        <header
-          className="flex items-center justify-end gap-1 shrink-0"
-          style={{
-            height: 'var(--w-header-height)',
-            padding: '0 12px',
-            borderBottom: '1px solid var(--w-border)',
-            background: 'var(--w-surface)',
-          }}
-        >
-          <AppearanceMenu />
-        </header>
-
-        <main className="flex-1 overflow-auto" style={{ padding: 'var(--w-space-5)', minHeight: 0 }}>
+        {/* 外观入口已并入左下角 UserMenu，顶部那条 48px 的 header 就没必要留了 */}
+        <main className="flex-1 overflow-auto" style={{ padding: 'var(--w-space-4)', minHeight: 0 }}>
           <ErrorBoundary label="页面">
             <Outlet />
           </ErrorBoundary>

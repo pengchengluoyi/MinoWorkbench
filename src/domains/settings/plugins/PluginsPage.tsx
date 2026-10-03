@@ -49,7 +49,7 @@ export function PluginsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div>
       <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 'var(--w-space-4)' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--w-font-h2)', fontWeight: 800, color: 'var(--w-text)' }}>插件</h2>
         <span style={{ fontSize: 'var(--w-font-sm)', fontWeight: 650, color: 'var(--w-text-tertiary)' }}>

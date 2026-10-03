@@ -9,6 +9,8 @@ import { useAppDetail } from './queries'
 
 const CasesPanel = lazy(() => import('@/domains/testing/cases/CasesPanel').then((m) => ({ default: m.CasesPanel })))
 const TasksPanel = lazy(() => import('@/domains/testing/tasks/TasksPanel').then((m) => ({ default: m.TasksPanel })))
+const AssetsPanel = lazy(() => import('@/domains/testing/assets/AssetsPanel').then((m) => ({ default: m.AssetsPanel })))
+const EnvConfigPanel = lazy(() => import('@/domains/testing/config/EnvConfigPanel').then((m) => ({ default: m.EnvConfigPanel })))
 
 const lazyPanel = (node: React.ReactNode) => (
   <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />}>{node}</Suspense>
@@ -122,9 +124,9 @@ function Panel({ tab, appId }: { tab: Tab; appId: string }) {
     case 'navigation':
       return <Planned title="导航架构" phase="阶段 6" note="换 @xyflow/react，交互重做。" source="Testing/NavWorkbench.vue + 7 个图组件 4,165 行" />
     case 'assets':
-      return <Planned title="测试资源" phase="阶段 5" source="Testing/AssetsPage.vue 1,664 行" />
+      return lazyPanel(<AssetsPanel />)
     case 'config':
-      return <Planned title="环境配置" phase="阶段 5" note={`应用 ${appId}`} source="Settings/AppConfigPage.vue（仅 env）+ ProjectEnvEditor 981 行" />
+      return lazyPanel(<EnvConfigPanel />)
     default:
       return null
   }
