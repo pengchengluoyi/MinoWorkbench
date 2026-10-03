@@ -1,11 +1,19 @@
 import { useEffect, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, TriangleAlert } from 'lucide-react'
+import { lazy, Suspense } from 'react'
 import { Button, EmptyState, ErrorBoundary, Planned, Skeleton, errText } from '@/ui'
 import { getPlatformIcon } from '@/constants/appPlatforms'
 import { DEFAULT_TAB, isRetiredTab, resolveTab, type Tab } from './nav'
 import { useAppDetail } from './queries'
 import { ContextRail } from './ContextRail'
+
+const CasesPanel = lazy(() => import('@/domains/testing/cases/CasesPanel').then((m) => ({ default: m.CasesPanel })))
+const TasksPanel = lazy(() => import('@/domains/testing/tasks/TasksPanel').then((m) => ({ default: m.TasksPanel })))
+
+const lazyPanel = (node: React.ReactNode) => (
+  <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />}>{node}</Suspense>
+)
 
 /**
  * 应用工作台外壳。
@@ -109,9 +117,9 @@ export function AppWorkbench() {
 function Panel({ tab, appId }: { tab: Tab; appId: string }) {
   switch (tab) {
     case 'cases':
-      return <Planned title="用例库" phase="阶段 2b" source="Testing/CasesWorkbench.vue 1,130 行" />
+      return lazyPanel(<CasesPanel appId={appId} />)
     case 'tasks':
-      return <Planned title="执行批次" phase="阶段 3" source="Testing/TaskDetailPane.vue 1,949 行" />
+      return lazyPanel(<TasksPanel appId={appId} />)
     case 'session-log':
       return <Planned title="Session Log" phase="阶段 3" source="Testing/SessionLogPanel.vue 663 行" />
     case 'navigation':
