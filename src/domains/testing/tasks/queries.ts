@@ -1,15 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { getTestingTask, listTestingTasks } from '@/api/caseRunner'
+import { unwrapList, unwrapOne } from '@/lib/unwrap'
 import type { TaskRow } from './types'
 
 export const taskKeys = {
   list: (appId: string) => ['tasks', appId] as const,
   detail: (id: string) => ['task', id] as const,
-}
-
-const unwrapList = (res: any): TaskRow[] => {
-  const raw = res?.data?.items ?? res?.data?.tasks ?? res?.data ?? []
-  return Array.isArray(raw) ? raw : []
 }
 
 /** 批次列表只用来做顶部选择器，所以只要最近若干条。 */
@@ -18,7 +14,10 @@ export const useTaskList = (appId: string) =>
     queryKey: taskKeys.list(appId),
     enabled: !!appId,
     refetchInterval: 15_000,
-    queryFn: async () => unwrapList(await listTestingTasks({ appId, limit: 30 })),
+    queryFn: async () => unwrapList<TaskRow>(await listTestingTasks({ appId, limit: 30 }), {
+      keys: ['tasks'],
+      label: 'GET /case-runner/tasks',
+    }),
   })
 
 /**
@@ -30,8 +29,5 @@ export const useTaskDetail = (id: string, live: boolean) =>
     queryKey: taskKeys.detail(id),
     enabled: !!id,
     refetchInterval: live ? 5_000 : false,
-    queryFn: async (): Promise<TaskRow> => {
-      const res = await getTestingTask(id)
-      return ((res as any)?.data ?? res) as TaskRow
-    },
+    queryFn: async (): Promise<TaskRow> => unwrapOne<TaskRow>(await getTestingTask(id)) || ({} as TaskRow),
   })

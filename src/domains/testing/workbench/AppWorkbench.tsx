@@ -6,7 +6,6 @@ import { Button, EmptyState, ErrorBoundary, Planned, Skeleton, errText } from '@
 import { getPlatformIcon } from '@/constants/appPlatforms'
 import { DEFAULT_TAB, isRetiredTab, resolveTab, type Tab } from './nav'
 import { useAppDetail } from './queries'
-import { ContextRail } from './ContextRail'
 
 const CasesPanel = lazy(() => import('@/domains/testing/cases/CasesPanel').then((m) => ({ default: m.CasesPanel })))
 const TasksPanel = lazy(() => import('@/domains/testing/tasks/TasksPanel').then((m) => ({ default: m.TasksPanel })))
@@ -18,7 +17,7 @@ const lazyPanel = (node: React.ReactNode) => (
 /**
  * 应用工作台外壳。
  *
- * 只负责：应用上下文条、已砍 tab 的重定向、主区面板分发、上下文侧栏。
+ * 只负责：应用上下文条、已砍 tab 的重定向、主区面板分发。
  *
  * 应用内导航不在这里 —— 它嵌在 WorkShell 的那条左栏里，
  * 屏幕上只应该有一条左导航（见 contracts/testing-app-workbench.md）。
@@ -106,8 +105,6 @@ export function AppWorkbench() {
             <Panel tab={tab} appId={appId} />
           </ErrorBoundary>
         </main>
-
-        <ContextRail app={app} />
       </div>
     </div>
   )

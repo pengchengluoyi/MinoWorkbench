@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { getProjects } from '@/api/project'
 import { listCaseRunnerRuns, listTestingTaskSummary } from '@/api/caseRunner'
+import { unwrapList } from '@/lib/unwrap'
 import type { ProjectRow } from '@/types/project'
 
 export const projectKeys = {
@@ -15,11 +16,8 @@ export const projectKeys = {
 export const useProjects = () =>
   useQuery({
     queryKey: projectKeys.all,
-    queryFn: async (): Promise<ProjectRow[]> => {
-      const res = await getProjects()
-      const rows = Array.isArray(res) ? res : res?.data
-      return Array.isArray(rows) ? rows : []
-    },
+    queryFn: async (): Promise<ProjectRow[]> =>
+      unwrapList<ProjectRow>(await getProjects(), { keys: ['projects'], label: 'GET /project/list' }),
   })
 
 export interface AppTaskStat {
