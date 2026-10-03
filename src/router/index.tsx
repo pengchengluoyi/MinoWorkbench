@@ -11,6 +11,7 @@ const LoginPage = lazy(() => import('@/domains/auth/LoginPage').then((m) => ({ d
 const HealthPage = lazy(() => import('@/domains/admin/health/HealthPage').then((m) => ({ default: m.HealthPage })))
 const AuditPage = lazy(() => import('@/domains/admin/audit/AuditPage').then((m) => ({ default: m.AuditPage })))
 const AppListPage = lazy(() => import('@/domains/testing/apps/AppListPage').then((m) => ({ default: m.AppListPage })))
+const AppWorkbench = lazy(() => import('@/domains/testing/workbench/AppWorkbench').then((m) => ({ default: m.AppWorkbench })))
 
 const lazyPage = (node: ReactNode) => (
   <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} style={{ padding: 4 }} />}>
@@ -34,17 +35,7 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <Navigate to="/testing" replace /> },
       { path: '/testing', element: lazyPage(<AppListPage />) },
-      {
-        path: '/testing/:appId',
-        element: (
-          <Planned
-            title="测试工作台"
-            phase="阶段 4"
-            note="7 个 tab：用例 / 任务 / 导航 / 测试资源 / 配置。默认落地 tab 改为 cases。"
-            source="Testing/AppShell.vue 2,387 行"
-          />
-        ),
-      },
+      { path: '/testing/:appId', element: lazyPage(<AppWorkbench />) },
       { path: '/settings', element: <Navigate to="/settings/runtime" replace /> },
       {
         path: '/settings/runtime',

@@ -4,6 +4,7 @@
  */
 export { DataTable, type DataColumn, type DataTableProps } from './DataTable'
 export { PageHeader } from './PageHeader'
+export { Planned } from './Planned'
 export { EmptyState } from './EmptyState'
 export { ErrorBoundary } from './ErrorBoundary'
 export { StatusPill, toStatusKind, type StatusKind } from './StatusPill'
