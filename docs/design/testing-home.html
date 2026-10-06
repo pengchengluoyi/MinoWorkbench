@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f6f8fa" />
+  <title>设计稿 · 登录后首页</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --w-bg: #f6f8fa;
+      --w-surface: #ffffff;
+      --w-surface-hover: #f8fafc;
+      --w-fill: #f1f5f9;
+      --w-border: #e7edf3;
+      --w-border-strong: #d5dee8;
+      --w-text: #111827;
+      --w-text-secondary: #334155;
+      --w-text-tertiary: #526277;
+      --w-text-inverse: #ffffff;
+      --w-primary: #4f46e5;
+      --w-primary-soft: #eef2ff;
+      --w-running: #047857;
+      --w-running-bg: #ecfdf5;
+      --w-fail: #b91c1c;
+      --w-fail-bg: #fef2f2;
+      --w-radius-sm: 8px;
+      --w-radius: 10px;
+      --w-radius-lg: 12px;
+      --w-shadow: 0 8px 24px rgba(17, 24, 39, 0.10);
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: var(--font);
+      background: #e8edf2;
+      color: var(--w-text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    :focus { outline: none; }
+    :focus-visible {
+      outline: 2px solid var(--w-primary);
+      outline-offset: 2px;
+    }
+    .skip {
+      position: absolute;
+      left: 12px;
+      top: -40px;
+      background: var(--w-text);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      z-index: 20;
+    }
+    .skip:focus { top: 8px; }
+
+    .stage {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chrome {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 52px;
+      padding: 8px 16px;
+      background: #1c2430;
+      color: #e8edf4;
+      flex-wrap: wrap;
+    }
+    .chrome strong { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+    .chrome p { margin: 0; color: #b7c2d0; font-size: 12px; }
+    .states { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+    .states button {
+      border: 1px solid #3a4658;
+      background: transparent;
+      color: #d5deea;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .states button[aria-pressed="true"] {
+      background: #e8edf4;
+      color: #1c2430;
+      border-color: #e8edf4;
+    }
+
+    .product {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      margin: 16px;
+      border: 1px solid #d5dee8;
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--w-bg);
+      box-shadow: var(--w-shadow);
+    }
+
+    .rail {
+      width: 224px;
+      flex-shrink: 0;
+      background: var(--w-surface);
+      border-right: 1px solid var(--w-border);
+      display: flex;
+      flex-direction: column;
+    }
+    .brand {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px 0 14px;
+      border-bottom: 1px solid var(--w-border);
+      gap: 8px;
+    }
+    .mark {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      background: var(--w-text);
+      color: var(--w-surface);
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+    .brand strong { font-size: 13px; }
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      background: transparent;
+      border-radius: 8px;
+      color: var(--w-text-secondary);
+      display: grid;
+      place-items: center;
+    }
+    .icon-btn:hover { background: var(--w-fill); }
+    .nav { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+    .nav a, .nav button.nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 32px;
+      padding: 6px 9px;
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--w-text-secondary);
+      font-weight: 600;
+      background: transparent;
+      border: 0;
+      text-align: left;
+      width: 100%;
+    }
+    .nav a[aria-current="page"] {
+      color: var(--w-primary);
+      background: var(--w-primary-soft);
+    }
+    .nav a:hover, .nav button.nav-item:hover { background: var(--w-fill); }
+    .rule { height: 1px; background: var(--w-border); margin: 8px 2px; }
+    .rail-foot {
+      margin-top: auto;
+      border-top: 1px solid var(--w-border);
+      padding: 8px;
+    }
+    .user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      border-radius: 8px;
+      padding: 6px 8px;
+      text-align: left;
+    }
+    .user:hover { background: var(--w-fill); }
+    .avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: #1e293b;
+      color: white;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .user small { display: block; color: var(--w-text-tertiary); font-size: 11px; }
+
+    .main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 24px 16px;
+    }
+    .head {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      font-weight: 800;
+      text-wrap: balance;
+    }
+    .metrics {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--w-text-tertiary);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .metrics b {
+      color: var(--w-text);
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+    }
+    .metrics .run { color: var(--w-running); }
+    .metrics .run b { color: var(--w-running); }
+    .spacer { flex: 1; }
+    .search {
+      position: relative;
+      width: min(280px, 100%);
+    }
+    .search svg {
+      position: absolute;
+      left: 10px;
+      top: 8px;
+      color: var(--w-text-tertiary);
+    }
+    .search input {
+      width: 100%;
+      height: 32px;
+      border: 1px solid var(--w-border-strong);
+      background: var(--w-surface);
+      border-radius: 8px;
+      padding: 0 36px 0 30px;
+    }
+    .search kbd {
+      position: absolute;
+      right: 8px;
+      top: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--w-text-tertiary);
+      border: 1px solid var(--w-border-strong);
+      border-radius: 4px;
+      padding: 0 4px;
+      line-height: 18px;
+      background: var(--w-fill);
+    }
+    .btn {
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--w-border-strong);
+      background: var(--w-surface);
+      padding: 0 10px;
+      font-weight: 650;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--w-text-secondary);
+    }
+    .btn:hover { background: var(--w-surface-hover); }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary {
+      background: var(--w-primary);
+      border-color: var(--w-primary);
+      color: white;
+    }
+    .btn.primary:hover { background: #4338ca; }
+    .split { position: relative; display: inline-flex; }
+    .split .btn.main-act { border-radius: 8px 0 0 8px; border-right: 0; }
+    .split .btn.chev { border-radius: 0 8px 8px 0; padding: 0 8px; }
+    .menu {
+      position: absolute;
+      top: 36px;
+      right: 0;
+      min-width: 180px;
+      background: var(--w-surface);
+      border: 1px solid var(--w-border-strong);
+      border-radius: 10px;
+      box-shadow: var(--w-shadow);
+      padding: 4px;
+      z-index: 5;
+    }
+    .menu button {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-weight: 600;
+    }
+    .menu button:hover { background: var(--w-fill); }
+    .menu small { display: block; color: var(--w-text-tertiary); font-weight: 500; font-size: 11px; }
+
+    .surface {
+      background: var(--w-surface);
+      border: 1px solid var(--w-border);
+      border-radius: 12px;
+      overflow: auto;
+      flex: 0 0 auto;
+      max-height: calc(100dvh - 210px);
+    }
+    .band {
+      padding: 8px 14px 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--w-running);
+      background: var(--w-running-bg);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto 104px 64px;
+      gap: 12px;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 12px 0 14px;
+      border-bottom: 1px solid var(--w-border);
+      text-decoration: none;
+      color: inherit;
+      background: transparent;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row:hover { background: var(--w-surface-hover); }
+    .row.is-focus {
+      background: #f3f5f8;
+      box-shadow: inset 0 0 0 1px #c5cee0;
+    }
+    .name {
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .name strong {
+      font-size: 13px;
+      font-weight: 650;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .name span.proj {
+      color: var(--w-text-tertiary);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pill {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--w-text-tertiary);
+      border: 1px solid var(--w-border-strong);
+      border-radius: 999px;
+      padding: 0 6px;
+      line-height: 18px;
+      flex-shrink: 0;
+    }
+    .tags { display: flex; gap: 6px; justify-content: flex-end; }
+    .tag {
+      font-size: 11px;
+      font-weight: 650;
+      color: var(--w-text-secondary);
+      background: var(--w-fill);
+      border-radius: 999px;
+      padding: 1px 7px;
+      white-space: nowrap;
+    }
+    .status {
+      width: 92px;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--w-running);
+      font-variant-numeric: tabular-nums;
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+    .go {
+      width: 72px;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--w-primary);
+    }
+    .go.quiet { color: #8aa0b5; font-weight: 500; }
+
+    .foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--w-text-tertiary);
+      font-size: 12px;
+      min-height: 28px;
+    }
+    .keys { display: flex; gap: 10px; align-items: center; }
+    .keys kbd {
+      font-family: var(--mono);
+      font-size: 11px;
+      border: 1px solid var(--w-border-strong);
+      background: var(--w-surface);
+      border-radius: 4px;
+      padding: 0 5px;
+      line-height: 18px;
+    }
+    .focus-name { font-weight: 700; color: var(--w-text); }
+
+    .empty {
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 8px;
+      padding: 48px 20px;
+    }
+    .empty h2 { margin: 0; font-size: 15px; font-weight: 750; }
+    .empty p { margin: 0; max-width: 42ch; color: var(--w-text-tertiary); font-size: 13px; }
+    .skel {
+      height: 44px;
+      border-bottom: 1px solid var(--w-border);
+      display: grid;
+      grid-template-columns: 140px 80px 1fr;
+      gap: 16px;
+      align-items: center;
+      padding: 0 14px;
+    }
+    .bar {
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #eef2f6 0%, #f8fafc 50%, #eef2f6 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s ease-in-out infinite;
+    }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    .slow {
+      padding: 10px 14px;
+      color: var(--w-text-tertiary);
+      font-size: 12px;
+    }
+
+    [hidden] { display: none !important; }
+    .search input:not(:placeholder-shown) + kbd { visibility: hidden; }
+    .run-group { background: var(--w-running-bg); }
+    .run-group .row { border-bottom-color: #d7efe4; }
+    .run-group .row:hover,
+    .run-group .row.is-focus { background: #dff6ec; box-shadow: inset 0 0 0 1px #b7e4cd; }
+
+    .scrim {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.28);
+      display: grid;
+      place-items: center;
+      z-index: 8;
+    }
+    .dialog {
+      width: min(440px, calc(100% - 32px));
+      background: var(--w-surface);
+      border-radius: 14px;
+      box-shadow: var(--w-shadow);
+      padding: 18px 18px 16px;
+    }
+    .dialog h2 { margin: 0 0 14px; font-size: 16px; letter-spacing: -0.02em; }
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .field label { font-size: 13px; font-weight: 650; }
+    .field input, .field textarea {
+      border: 1px solid var(--w-border-strong);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: white;
+      font-size: 16px;
+    }
+    .field textarea { font-size: 14px; resize: vertical; }
+    .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .choices button {
+      border: 1px solid var(--w-border-strong);
+      background: white;
+      border-radius: 8px;
+      padding: 8px 10px;
+      text-align: left;
+      font-weight: 650;
+    }
+    .choices button[aria-pressed="true"] {
+      border-color: var(--w-primary);
+      background: var(--w-primary-soft);
+      color: var(--w-primary);
+    }
+    .choices small { display: block; font-weight: 500; color: var(--w-text-tertiary); font-size: 11px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+    .err {
+      background: var(--w-fail-bg);
+      color: var(--w-fail);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .live {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+    }
+    .degrade {
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: #fffbeb;
+      color: #92400e;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bar { animation: none; }
+      .btn:active { transform: none; }
+    }
+    @media (max-width: 860px) {
+      .rail { display: none; }
+      .row { grid-template-columns: minmax(0, 1fr) auto; }
+      .tags, .status { display: none; }
+      .product { margin: 0; border-radius: 0; border: 0; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#app-list">跳到应用列表</a>
+  <div class="live" id="live" aria-live="polite"></div>
+  <div class="stage">
+    <header class="chrome">
+      <div>
+        <strong>设计稿 · 登录后首页 /testing</strong>
+        <p>日常任务是进入应用。建项目、建应用收进同一个入口。执行中单独成组，其余保持一条列表。</p>
+      </div>
+      <div class="states" role="toolbar" aria-label="设计稿状态">
+        <button type="button" data-state="ready" aria-pressed="true">日常</button>
+        <button type="button" data-state="idle">无执行</button>
+        <button type="button" data-state="loading">加载</button>
+        <button type="button" data-state="empty-project">无项目</button>
+        <button type="button" data-state="empty-app">无应用</button>
+        <button type="button" data-state="error">读取失败</button>
+        <button type="button" data-state="degraded">计数降级</button>
+        <button type="button" data-state="long">超长名称</button>
+      </div>
+    </header>
+
+    <div class="product">
+      <aside class="rail" aria-label="工作台">
+        <div class="brand">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <div class="mark" aria-hidden="true">MW</div>
+            <strong>测试工作台</strong>
+          </div>
+          <button class="icon-btn" type="button" aria-label="折叠导航">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M15 6l-6 6 6 6"/><path d="M4 4v16"/></svg>
+          </button>
+        </div>
+        <nav class="nav">
+          <a href="#app-list" aria-current="page">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            应用
+          </a>
+          <div class="rule"></div>
+          <a href="#nodes">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>
+            Scout 节点
+          </a>
+          <a href="#keys">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11.5 12.5 20 4l-2 4 3 1-4 3"/></svg>
+            模型密钥
+          </a>
+        </nav>
+        <div class="rail-foot">
+          <button class="user" type="button">
+            <span class="avatar" aria-hidden="true">林</span>
+            <span>林知夏<small>测试</small></span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="main" id="app-list">
+        <div class="head">
+          <h1>应用</h1>
+          <div class="metrics" id="metrics"></div>
+          <span class="spacer"></span>
+          <div class="search" id="search-wrap">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="q" type="search" name="q" autocomplete="off" spellcheck="false" aria-label="搜索应用" placeholder="搜索应用…" />
+            <kbd aria-hidden="true">/</kbd>
+          </div>
+          <button class="btn" type="button" id="refresh" aria-label="刷新">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.2-5.8"/><path d="M21 3v6h-6"/></svg>
+          </button>
+          <div class="split" id="create-split">
+            <button class="btn main-act" type="button" id="create-app">新建应用</button>
+            <button class="btn chev" type="button" id="create-more" aria-label="更多新建方式" aria-expanded="false" aria-controls="create-menu">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="menu" id="create-menu" hidden>
+              <button type="button" id="create-project">新建项目<small>应用的容器。平时用不到。</small></button>
+            </div>
+          </div>
+        </div>
+        <p class="degrade" id="degrade" hidden>执行计数暂时不可用。列表仍可进入。</p>
+        <div class="surface" id="surface" role="list"></div>
+        <div class="foot">
+          <div class="keys" id="legend">
+            <span><kbd>/</kbd> 搜索</span>
+            <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+            <span><kbd>Enter</kbd> 进入</span>
+          </div>
+          <div id="status"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+      <h2 id="dlg-title">新建应用</h2>
+      <div class="err" id="dlg-err" hidden></div>
+      <form id="dlg-form">
+        <div class="field" id="project-field" hidden>
+          <span id="project-label">项目</span>
+          <div class="choices" id="project-choices" role="radiogroup" aria-labelledby="project-label"></div>
+        </div>
+        <div class="field">
+          <label for="name">名称</label>
+          <input id="name" name="name" required placeholder="例如：买家 App" />
+        </div>
+        <div class="field">
+          <label for="desc">说明</label>
+          <textarea id="desc" name="description" rows="2" placeholder="可选"></textarea>
+        </div>
+        <div class="field" id="platform-field">
+          <span id="platform-label">覆盖端</span>
+          <div class="choices" id="platforms" role="radiogroup" aria-labelledby="platform-label"></div>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn" type="button" id="dlg-cancel">取消</button>
+          <button class="btn primary" type="submit" id="dlg-submit">创建</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const PROJECTS = [
+      { id: "pay", name: "支付中台" },
+      { id: "growth", name: "用户增长" },
+      { id: "trade", name: "交易" },
+    ];
+    const BASE = [
+      { id: "cashier", name: "收银台", project: "支付中台", tags: ["Web", "移动端"], running: 2, recent: true },
+      { id: "member", name: "会员中心", project: "用户增长", tags: ["移动端"], running: 0, recent: true },
+      { id: "order", name: "订单履约", project: "交易", tags: ["Web"], running: 1, recent: false },
+      { id: "merchant", name: "商家入驻与资质审核工作台（华东）", project: "交易", tags: ["Web", "Windows"], running: 0, recent: false },
+      { id: "invoice", name: "发票", project: "支付中台", tags: ["Web"], running: 0, recent: false },
+      { id: "inbox", name: "消息中心", project: "用户增长", tags: ["移动端"], running: 0, recent: false },
+      { id: "stock", name: "库存", project: "交易", tags: ["Windows"], running: 0, recent: false },
+      { id: "cs", name: "客服工作台", project: "用户增长", tags: ["Web"], running: 0, recent: false },
+      { id: "promo", name: "营销活动", project: "用户增长", tags: ["Web", "移动端"], running: 0, recent: false },
+      { id: "secure", name: "账号安全", project: "支付中台", tags: ["Mac"], running: 0, recent: false },
+    ];
+
+    const $ = (id) => document.getElementById(id);
+    let mode = "ready";
+    let cursor = 0;
+    let q = "";
+    let menuOpen = false;
+    let dialog = null;
+    let platform = "移动端";
+    let projectId = PROJECTS[0].id;
+    let showSlow = false;
+    let slowTimer = 0;
+
+    const platforms = [
+      { id: "移动端", hint: "Android 与 iOS" },
+      { id: "Web", hint: "浏览器" },
+      { id: "Windows", hint: "桌面" },
+      { id: "Mac", hint: "桌面" },
+    ];
+
+    function appsForMode() {
+      if (mode === "idle") return BASE.map((a) => ({ ...a, running: 0 }));
+      if (mode === "long") {
+        return BASE.map((a) => a.id === "merchant"
+          ? { ...a, name: "商家入驻与资质审核工作台（华东一区，含品牌授权与类目保证金）" }
+          : a);
+      }
+      return BASE.map((a) => ({ ...a }));
+    }
+
+    function visibleApps() {
+      const kw = q.trim().toLowerCase();
+      const rows = appsForMode().filter((a) => !kw || `${a.name} ${a.project}`.toLowerCase().includes(kw));
+      rows.sort((a, b) => {
+        const ar = a.running > 0 ? 1 : 0;
+        const br = b.running > 0 ? 1 : 0;
+        if (ar !== br) return br - ar;
+        if (a.recent !== b.recent) return a.recent ? -1 : 1;
+        return a.name.localeCompare(b.name, "zh-Hans-CN");
+      });
+      return rows;
+    }
+
+    function announce(text) { $("live").textContent = text; }
+
+    function renderMetrics(rows) {
+      const running = rows.reduce((n, a) => n + a.running, 0);
+      const hide = mode === "loading" || mode === "error" || mode === "empty-project" || mode === "empty-app";
+      if (hide) { $("metrics").innerHTML = ""; return; }
+      const count = mode === "degraded" ? BASE.length : rows.length;
+      const run = mode === "degraded" ? "" : (running ? `<span class="run">执行中 <b>${running}</b></span>` : "");
+      $("metrics").innerHTML = `<span>项目 <b>3</b></span><span>应用 <b>${count}</b></span>${run}`;
+    }
+
+    function rowHtml(app, index, showGo) {
+      const recent = app.recent ? `<span class="pill">最近</span>` : "";
+      const status = mode !== "degraded" && app.running > 0
+        ? `<span class="status"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M22 12h-4l-3 8-4-16-3 8H2"/></svg>${app.running} 执行中</span>`
+        : `<span class="status"></span>`;
+      const go = showGo
+        ? `<span class="go">进入</span>`
+        : `<span class="go quiet" aria-hidden="true">›</span>`;
+      return `<a class="row${index === cursor ? " is-focus" : ""}" role="listitem" href="#/testing/${app.id}" data-index="${index}">
+        <span class="name"><strong>${app.name}</strong><span class="proj">${app.project}</span>${recent}</span>
+        <span class="tags">${app.tags.map((t) => `<span class="tag">${t}</span>`).join("")}</span>
+        ${status}
+        ${go}
+      </a>`;
+    }
+
+    function renderList() {
+      const surface = $("surface");
+      $("degrade").hidden = mode !== "degraded";
+      $("search-wrap").hidden = mode === "empty-project" || mode === "error";
+      $("create-split").hidden = false;
+      $("create-app").textContent = mode === "empty-project" ? "新建项目" : "新建应用";
+
+      if (mode === "loading") {
+        renderMetrics([]);
+        const bars = Array.from({ length: 8 }, () => `<div class="skel" aria-hidden="true"><span class="bar"></span><span class="bar"></span><span class="bar"></span></div>`).join("");
+        surface.innerHTML = `${bars}${showSlow ? `<div class="slow">加载时间比预期长，仍在读取项目…</div>` : ""}`;
+        surface.setAttribute("aria-busy", "true");
+        $("status").textContent = "";
+        announce("正在读取项目");
+        return;
+      }
+      surface.removeAttribute("aria-busy");
+
+      if (mode === "error") {
+        renderMetrics([]);
+        surface.innerHTML = `<div class="empty">
+          <h2>读取项目列表失败</h2>
+          <p>Nexus 没有响应，或当前账号的登录已失效。列表没有被清空。</p>
+          <button class="btn primary" type="button" id="retry">重试</button>
+        </div>`;
+        $("retry").onclick = () => setMode("ready");
+        $("status").textContent = "";
+        announce("读取项目列表失败");
+        return;
+      }
+
+      if (mode === "empty-project") {
+        renderMetrics([]);
+        surface.innerHTML = `<div class="empty">
+          <h2>还没有项目</h2>
+          <p>项目是应用的容器。先建一个项目，再在它下面创建应用。</p>
+          <button class="btn primary" type="button" id="empty-new">新建项目</button>
+        </div>`;
+        $("empty-new").onclick = () => openDialog("project");
+        $("status").textContent = "";
+        return;
+      }
+
+      if (mode === "empty-app") {
+        renderMetrics([]);
+        surface.innerHTML = `<div class="empty">
+          <h2>还没有应用</h2>
+          <p>项目已经建好。下一步在项目下创建应用。</p>
+          <button class="btn primary" type="button" id="empty-app">新建应用</button>
+        </div>`;
+        $("empty-app").onclick = () => openDialog("app");
+        $("status").textContent = "";
+        return;
+      }
+
+      const rows = visibleApps();
+      renderMetrics(mode === "degraded" ? appsForMode() : rows);
+      if (!rows.length) {
+        surface.innerHTML = `<div class="empty">
+          <h2>没有匹配的应用</h2>
+          <p>换个关键字试试。当前搜索「${escapeHtml(q)}」。</p>
+        </div>`;
+        $("status").textContent = `0 / ${appsForMode().length} 个应用`;
+        announce("没有匹配的应用");
+        return;
+      }
+      if (cursor > rows.length - 1) cursor = 0;
+      const running = rows.filter((a) => a.running > 0);
+      const rest = rows.filter((a) => a.running === 0);
+      let html = "";
+      if (running.length && !q.trim() && mode !== "degraded") {
+        html += `<div class="run-group"><div class="band">正在执行</div>`;
+        html += running.map((a) => rowHtml(a, rows.indexOf(a), rows.indexOf(a) === cursor)).join("");
+        html += `</div>`;
+      }
+      const tail = (running.length && !q.trim() && mode !== "degraded") ? rest : rows;
+      html += tail.map((a) => rowHtml(a, rows.indexOf(a), rows.indexOf(a) === cursor)).join("");
+      surface.innerHTML = html;
+      surface.querySelectorAll(".row").forEach((el) => {
+        el.addEventListener("mouseenter", () => { cursor = Number(el.dataset.index); paintFocus(); });
+        el.addEventListener("click", (e) => {
+          e.preventDefault();
+          enter(rows[Number(el.dataset.index)]);
+        });
+      });
+      const current = rows[cursor];
+      const count = q.trim() ? `${rows.length} / ${appsForMode().length} 个应用` : `${rows.length} 个应用`;
+      $("status").innerHTML = `${count} · <span class="focus-name">${current.name}</span>`;
+    }
+
+    function paintFocus() {
+      const rows = visibleApps();
+      document.querySelectorAll(".row").forEach((el) => {
+        const on = Number(el.dataset.index) === cursor;
+        el.classList.toggle("is-focus", on);
+        const go = el.querySelector(".go");
+        if (!go) return;
+        go.classList.toggle("quiet", !on);
+        go.textContent = on ? "进入" : "›";
+      });
+      const current = rows[cursor];
+      if (current) {
+        const count = q.trim() ? `${rows.length} / ${appsForMode().length} 个应用` : `${rows.length} 个应用`;
+        $("status").innerHTML = `${count} · <span class="focus-name">${current.name}</span>`;
+      }
+    }
+
+    function enter(app) {
+      if (!app) return;
+      announce(`进入 ${app.name}`);
+      $("status").innerHTML = `已进入 <span class="focus-name">${app.name}</span>`;
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function setMode(next) {
+      mode = next;
+      cursor = 0;
+      q = "";
+      $("q").value = "";
+      showSlow = false;
+      clearTimeout(slowTimer);
+      document.querySelectorAll(".states button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.state === next)));
+      if (next === "loading") {
+        slowTimer = setTimeout(() => { showSlow = true; renderList(); }, 1500);
+      }
+      renderList();
+    }
+
+    function openDialog(kind) {
+      dialog = kind;
+      menuOpen = false;
+      $("create-menu").hidden = true;
+      $("create-more").setAttribute("aria-expanded", "false");
+      $("scrim").hidden = false;
+      $("dlg-err").hidden = true;
+      $("dlg-title").textContent = kind === "project" ? "新建项目" : "新建应用";
+      $("project-field").hidden = kind === "project" || PROJECTS.length < 2;
+      $("platform-field").hidden = kind === "project";
+      $("name").value = "";
+      $("desc").value = "";
+      $("name").placeholder = kind === "project" ? "例如：电商主站" : "例如：买家 App";
+      renderChoices();
+      $("name").focus();
+    }
+
+    function renderChoices() {
+      $("project-choices").innerHTML = PROJECTS.map((p) =>
+        `<button type="button" role="radio" aria-checked="${p.id === projectId}" data-project="${p.id}">${p.name}</button>`
+      ).join("");
+      $("platforms").innerHTML = platforms.map((p) =>
+        `<button type="button" role="radio" aria-pressed="${p.id === platform}" data-platform="${p.id}">${p.id}<small>${p.hint}</small></button>`
+      ).join("");
+      $("project-choices").querySelectorAll("button").forEach((b) => b.onclick = () => { projectId = b.dataset.project; renderChoices(); });
+      $("platforms").querySelectorAll("button").forEach((b) => b.onclick = () => { platform = b.dataset.platform; renderChoices(); });
+    }
+
+    $("create-app").onclick = () => openDialog(mode === "empty-project" ? "project" : "app");
+    $("create-more").onclick = () => {
+      menuOpen = !menuOpen;
+      $("create-menu").hidden = !menuOpen;
+      $("create-more").setAttribute("aria-expanded", String(menuOpen));
+    };
+    $("create-project").onclick = () => openDialog("project");
+    $("dlg-cancel").onclick = closeDialog;
+    $("scrim").addEventListener("click", (e) => { if (e.target === $("scrim")) closeDialog(); });
+    $("dlg-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = $("name").value.trim();
+      if (!name) {
+        $("dlg-err").hidden = false;
+        $("dlg-err").textContent = dialog === "project" ? "请输入项目名称" : "请输入应用名称";
+        $("name").focus();
+        return;
+      }
+      closeDialog();
+      announce(dialog === "project" ? `项目 ${name} 已创建` : `应用 ${name} 已创建`);
+      $("status").textContent = dialog === "project" ? `项目 ${name} 已创建` : `应用 ${name} 已创建`;
+    });
+    $("refresh").onclick = () => {
+      announce("正在刷新");
+      setMode(mode === "error" ? "ready" : mode);
+    };
+    $("q").addEventListener("input", () => {
+      q = $("q").value;
+      cursor = 0;
+      renderList();
+    });
+
+    function closeDialog() {
+      $("scrim").hidden = true;
+      dialog = null;
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (!$("scrim").hidden) { closeDialog(); return; }
+        if (menuOpen) { menuOpen = false; $("create-menu").hidden = true; return; }
+      }
+      const typing = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.id !== "q";
+      if (typing || !$("scrim").hidden) return;
+      if (e.key === "/" && document.activeElement !== $("q")) {
+        e.preventDefault();
+        $("q").focus();
+        return;
+      }
+      const rows = visibleApps();
+      if (!rows.length || mode === "loading" || mode === "error" || mode === "empty-project" || mode === "empty-app") return;
+      if (e.key === "ArrowDown") { e.preventDefault(); cursor = Math.min(cursor + 1, rows.length - 1); paintFocus(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); cursor = Math.max(cursor - 1, 0); paintFocus(); }
+      else if (e.key === "Enter" && document.activeElement === document.body) { e.preventDefault(); enter(rows[cursor]); }
+    });
+
+    document.querySelectorAll(".states button").forEach((b) => b.onclick = () => setMode(b.dataset.state));
+    renderList();
+  </script>
+</body>
+</html>

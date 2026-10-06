@@ -1,5 +1,5 @@
-import { useMemo, type ReactNode } from 'react'
-import { Button, Dropdown, Checkbox, Table, Skeleton, Tooltip } from 'antd'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Button, Dropdown, Checkbox, Pagination, Table, Skeleton, Tooltip } from 'antd'
 import type { TableProps } from 'antd'
 import { Columns3, RotateCcw, TriangleAlert } from 'lucide-react'
 import { EmptyState } from './EmptyState'
@@ -43,6 +43,8 @@ export interface DataTableProps<T> {
 
   emptyTitle?: ReactNode
   emptyHint?: ReactNode
+  /** 占满父级剩余高度，表体在里面滚，分页贴在底部 */
+  fill?: boolean
   /** 虚拟滚动需要固定高度；不传则不开虚拟滚动 */
   scrollY?: number | string
   /** 超过这个行数才开虚拟滚动，默认 100 */
@@ -71,6 +73,7 @@ export function DataTable<T extends object>({
   selection,
   emptyTitle,
   emptyHint,
+  fill,
   scrollY,
   virtualThreshold = 100,
   onRowClick,
@@ -111,7 +114,28 @@ export function DataTable<T extends object>({
   }), [columns, isHidden, toggle, reset])
 
   const rows = dataSource ?? []
-  const useVirtual = !!scrollY && rows.length > virtualThreshold
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(pagination?.pageSize || 20)
+  const client = !pagination
+  const pageRows = client ? rows.slice((page - 1) * pageSize, page * pageSize) : rows
+  const total = client ? rows.length : pagination.total
+  const current = client ? page : pagination.page
+  const size = client ? pageSize : pagination.pageSize
+
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [bodyH, setBodyH] = useState(320)
+  useEffect(() => {
+    if (!fill || !hostRef.current) return
+    const el = hostRef.current
+    const measure = () => setBodyH(Math.max(120, el.clientHeight - 40))
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [fill, pageRows.length])
+
+  const y = fill ? bodyH : scrollY
+  const useVirtual = !!y && pageRows.length > virtualThreshold
 
   if (error) {
     return (
@@ -126,7 +150,7 @@ export function DataTable<T extends object>({
   }
 
   return (
-    <div className="flex flex-col" style={{ minHeight: 0, gap: 'var(--w-space-2)' }}>
+    <div className={fill ? 'flex h-full min-h-0 flex-1 flex-col' : 'flex flex-col'} style={{ minHeight: 0, gap: 'var(--w-space-2)' }}>
       {(toolbar || columns.some((c) => !c.alwaysVisible)) && (
         <div className="flex flex-wrap items-center gap-2" style={{ minHeight: 32 }}>
           <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">{toolbar}</div>
@@ -140,7 +164,7 @@ export function DataTable<T extends object>({
         </div>
       )}
 
-      <div style={card}>
+      <div ref={hostRef} className={fill ? 'min-h-0 flex-1' : undefined} style={card}>
         {loading && !rows.length ? (
           <div style={{ padding: 'var(--w-card-padding)' }}>
             <Skeleton active paragraph={{ rows: 6 }} title={false} />
@@ -149,25 +173,12 @@ export function DataTable<T extends object>({
           <Table<T>
             size="small"
             columns={visibleColumns}
-            dataSource={rows}
+            dataSource={pageRows}
             rowKey={rowKey as any}
             loading={loading && !!rows.length}
             virtual={useVirtual}
-            scroll={scrollY ? { y: scrollY, x: 'max-content' } : { x: 'max-content' }}
-            pagination={
-              pagination
-                ? {
-                    current: pagination.page,
-                    pageSize: pagination.pageSize,
-                    total: pagination.total,
-                    onChange: pagination.onChange,
-                    showSizeChanger: true,
-                    pageSizeOptions: [20, 50, 100, 200],
-                    size: 'small',
-                    showTotal: (t) => `共 ${t} 条`,
-                  }
-                : false
-            }
+            scroll={y ? { y, x: 'max-content' } : { x: 'max-content' }}
+            pagination={false}
             rowSelection={
               selection
                 ? {
@@ -178,7 +189,11 @@ export function DataTable<T extends object>({
                 : undefined
             }
             onRow={onRowClick ? (row) => ({
-              onClick: () => onRowClick(row),
+              onClick: (event) => {
+                const target = event.target as HTMLElement | null
+                if (target?.closest('button, a, input, label, .ant-checkbox, .ant-dropdown')) return
+                onRowClick(row)
+              },
               style: { cursor: 'pointer' },
             }) : undefined}
             locale={{
@@ -187,6 +202,28 @@ export function DataTable<T extends object>({
           />
         )}
       </div>
+
+      {total > 0 && (
+        <div className="flex shrink-0 justify-end">
+          <Pagination
+            size="small"
+            current={current}
+            pageSize={size}
+            total={total}
+            showSizeChanger
+            pageSizeOptions={[20, 50, 100, 200]}
+            showTotal={(t) => `共 ${t} 条`}
+            onChange={(next, nextSize) => {
+              if (client) {
+                setPage(next)
+                setPageSize(nextSize)
+              } else {
+                pagination.onChange(next, nextSize)
+              }
+            }}
+          />
+        </div>
+      )}
 
       {selection && selection.selectedKeys.length > 0 && (
         <FloatingActions count={selection.selectedKeys.length} onClear={() => selection.onChange([])}>

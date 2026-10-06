@@ -11,9 +11,12 @@ const CasesPanel = lazy(() => import('@/domains/testing/cases/CasesPanel').then(
 const TasksPanel = lazy(() => import('@/domains/testing/tasks/TasksPanel').then((m) => ({ default: m.TasksPanel })))
 const AssetsPanel = lazy(() => import('@/domains/testing/assets/AssetsPanel').then((m) => ({ default: m.AssetsPanel })))
 const EnvConfigPanel = lazy(() => import('@/domains/testing/config/EnvConfigPanel').then((m) => ({ default: m.EnvConfigPanel })))
+const SessionLogPanel = lazy(() => import('@/domains/testing/sessions/SessionLogPanel').then((m) => ({ default: m.SessionLogPanel })))
 
 const lazyPanel = (node: React.ReactNode) => (
-  <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />}>{node}</Suspense>
+  <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />}>
+    <div className="flex h-full min-h-0 flex-1 flex-col">{node}</div>
+  </Suspense>
 )
 
 /**
@@ -102,7 +105,7 @@ export function AppWorkbench() {
 
       <div className="flex flex-1 min-h-0" style={{ gap: 'var(--w-space-4)' }}>
         {/* 主工作区 */}
-        <main className="flex-1 min-w-0 overflow-auto">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ErrorBoundary label="面板">
             <Panel tab={tab} appId={appId} />
           </ErrorBoundary>
@@ -120,7 +123,7 @@ function Panel({ tab, appId }: { tab: Tab; appId: string }) {
     case 'tasks':
       return lazyPanel(<TasksPanel appId={appId} />)
     case 'session-log':
-      return <Planned title="Session Log" phase="阶段 3" source="Testing/SessionLogPanel.vue 663 行" />
+      return lazyPanel(<SessionLogPanel appId={appId} />)
     case 'navigation':
       return <Planned title="导航架构" phase="阶段 6" note="换 @xyflow/react，交互重做。" source="Testing/NavWorkbench.vue + 7 个图组件 4,165 行" />
     case 'assets':

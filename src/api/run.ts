@@ -18,6 +18,7 @@ export interface RunPayload {
   sns?: string[]
   platform?: string
   env_profile?: string
+  env_surface?: string
   action_scheme?: 'visual' | 'dom'
   async_exec?: boolean
   use_cache?: boolean

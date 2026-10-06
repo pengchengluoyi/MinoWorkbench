@@ -7,6 +7,7 @@ import {
   BookCheck, Link2, FlaskConical,
 } from 'lucide-react'
 import { ErrorBoundary, UserMenu } from '@/ui'
+import { CommandPalette } from './CommandPalette'
 import { getServerInfo } from '@/api/me'
 
 /** 导航分组沿用 MinoConsole 的 5 组 16 项，顺序和文案不动。 */
@@ -169,6 +170,7 @@ export function AdminLayout() {
           </ErrorBoundary>
         </main>
       </div>
+      <CommandPalette />
     </div>
   )
 }

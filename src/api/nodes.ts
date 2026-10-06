@@ -42,11 +42,38 @@ export interface ScoutNode {
     rss_mb?: number
     [key: string]: unknown
   }
+  /** null：这台 Scout 还不认识插件状态。 */
+  plugins?: NodePluginStatus[] | null
+  plugin_job?: NodePluginJob
+  update_job?: NodePluginJob
   [key: string]: unknown
 }
 
-/** Scout 的停止 / 重启 / 升级 —— Nexus 现成的 HTTP 接口，不需要 Electron。 */
-export type NodeCommand = 'stop' | 'restart' | 'update' | 'drain' | 'undrain'
+export interface NodePluginStatus {
+  class: 'cli' | 'mcp' | 'bot' | 'mail' | string
+  id: string
+  installed?: boolean
+  configured?: boolean
+  /** 非密钥字段，心跳带回，页面要原样显示 */
+  values?: Record<string, string>
+  /** 已写入保险库的密钥字段名，不含密钥本身 */
+  saved_secrets?: string[]
+}
+
+export interface NodePluginJob {
+  active?: boolean
+  stage?: string
+  label?: string
+  percent?: number
+  class?: string
+  id?: string
+  error?: string
+  bytes_received?: number
+  bytes_total?: number
+}
+
+/** 休眠 / 唤醒 / 重启 / 升级。离线进程不能从网页拉起。 */
+export type NodeCommand = 'sleep' | 'wake' | 'restart' | 'update'
 
 export const listRuntimeNodes = () =>
   request<{ nodes?: ScoutNode[] }>({ url: '/runtime/nodes', method: 'get' })
@@ -60,6 +87,45 @@ export const sendNodeCommand = (nodeId: string, command: NodeCommand, reason = '
     timeout: command === 'update' ? 660_000 : 60_000,
   })
 
+export const configNodePlugin = (
+  nodeId: string,
+  body: { kind: string; plugin_id: string; values: Record<string, string>; clear?: string[] },
+) =>
+  request({
+    url: `/runtime/nodes/${encodeURIComponent(nodeId)}/plugins/config`,
+    method: 'post',
+    data: body,
+    timeout: 60_000,
+  })
+
+export const installNodePlugin = (nodeId: string, body: { kind: string; plugin_id: string }) =>
+  request({
+    url: `/runtime/nodes/${encodeURIComponent(nodeId)}/plugins/install`,
+    method: 'post',
+    data: body,
+    timeout: 660_000,
+  })
+
+export const removeNodePlugin = (nodeId: string, body: { kind: string; plugin_id: string }) =>
+  request({
+    url: `/runtime/nodes/${encodeURIComponent(nodeId)}/plugins/remove`,
+    method: 'post',
+    data: body,
+    timeout: 180_000,
+  })
+
+export const callNodePlugin = (
+  nodeId: string,
+  body: { capability_id: string; params: Record<string, unknown> },
+  timeout = 90_000,
+) =>
+  request<{ data?: Record<string, unknown>; summary?: string }>({
+    url: `/runtime/nodes/${encodeURIComponent(nodeId)}/plugins/call`,
+    method: 'post',
+    data: body,
+    timeout,
+  })
+
 export const getNodeLogs = (nodeId: string, lines = 200) =>
   request<{ lines?: string[]; text?: string }>({
     url: `/runtime/nodes/${encodeURIComponent(nodeId)}/logs`,
@@ -68,9 +134,13 @@ export const getNodeLogs = (nodeId: string, lines = 200) =>
     timeout: 60_000,
   })
 
+export const nodeIsAsleep = (n: ScoutNode): boolean =>
+  n.status === 'asleep' || n.host?.mode === 'asleep'
+
 export const nodeIsOnline = (n: ScoutNode): boolean => {
   if (n.status === 'offline') return false
-  return n.status === 'online' || n.status === 'asleep' || n.online === true || n.alive === true
+  if (nodeIsAsleep(n)) return true
+  return n.status === 'online' || n.online === true || n.alive === true
 }
 
 /** 真能跑用例的设备。离线设备不算。 */

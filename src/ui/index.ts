@@ -11,6 +11,7 @@ export { StatusPill, toStatusKind, type StatusKind } from './StatusPill'
 export { FeedbackProvider, useFeedback, errText } from './feedback'
 export { AppearanceMenu } from './AppearanceMenu'
 export { UserMenu } from './UserMenu'
+export { Fold } from './Fold'
 export { lightTheme, darkTheme } from './theme'
 
 // 直接转出的 antd 原件：只做收口，不做包装。
@@ -21,5 +22,5 @@ export { lightTheme, darkTheme } from './theme'
 export {
   Button, Input, InputNumber, Select, Switch, Checkbox, Radio, Form,
   Modal, Drawer, Tabs, Tag, Tooltip, Dropdown, Space, Divider, Spin,
-  Alert, Skeleton, Empty, Popconfirm, Segmented, Badge,
+  Alert, Skeleton, Empty, Popconfirm, Segmented, Badge, QRCode,
 } from 'antd'

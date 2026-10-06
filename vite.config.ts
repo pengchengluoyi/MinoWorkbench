@@ -15,7 +15,7 @@ const NEXUS_PREFIXES = [
   'ability', 'api', 'app_graph', 'app-automation', 'apps', 'auth',
   'case-runner', 'device', 'feishu', 'file', 'flow-blocks', 'get_api',
   'health', 'hitl', 'logs', 'me', 'nav-fsm', 'packs', 'project',
-  'releases', 'runtime', 'schedule', 'settings', 'sys', 'task',
+  'releases', 'runtime', 'schedule', 'settings', 'static', 'sys', 'task',
   'workflow', 'workflow_run',
 ]
 
@@ -46,6 +46,18 @@ export default defineConfig(({ mode }) => {
             [`^/(${NEXUS_PREFIXES.join('|')})(/|$|\\?)`]: {
               target: nexus,
               changeOrigin: true,
+              // 升级 / 插件安装会一直占着这条 HTTP，直到包下完。
+              // 8 秒掐断后页面只看到 Network Error，Nexus 仍在下载，按钮也点不了第二次。
+              timeout: 700_000,
+              proxyTimeout: 700_000,
+              configure: (proxy) => {
+                proxy.on('error', (_err, _req, res) => {
+                  const http = res as { headersSent?: boolean; writeHead?: (code: number, headers: Record<string, string>) => void; end?: (body?: string) => void }
+                  if (!http.writeHead || http.headersSent) return
+                  http.writeHead(502, { 'Content-Type': 'application/json' })
+                  http.end(JSON.stringify({ message: 'Nexus 不可达' }))
+                })
+              },
               bypass: (req: { headers: Record<string, string | string[] | undefined> }) => {
                 const accept = String(req.headers.accept || '')
                 if (accept.includes('text/html')) return '/index.html'

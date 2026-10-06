@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f6f8fa" />
+  <title>设计稿 · Scout 节点</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --w-bg: #f6f8fa;
+      --w-surface: #ffffff;
+      --w-surface-hover: #f8fafc;
+      --w-fill: #f1f5f9;
+      --w-border: #e7edf3;
+      --w-border-strong: #d5dee8;
+      --w-text: #111827;
+      --w-text-secondary: #334155;
+      --w-text-tertiary: #526277;
+      --w-text-inverse: #ffffff;
+      --w-primary: #4f46e5;
+      --w-primary-soft: #eef2ff;
+      --w-running: #047857;
+      --w-running-bg: #ecfdf5;
+      --w-fail: #b91c1c;
+      --w-fail-bg: #fef2f2;
+      --w-radius-sm: 8px;
+      --w-radius: 10px;
+      --w-radius-lg: 12px;
+      --w-shadow: 0 8px 24px rgba(17, 24, 39, 0.10);
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { font-family: var(--font); background: #e8edf2; color: var(--w-text); font-size: 13px; line-height: 1.45; }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    :focus { outline: none; }
+    :focus-visible { outline: 2px solid var(--w-primary); outline-offset: 2px; }
+    [hidden] { display: none !important; }
+
+    .stage { min-height: 100dvh; display: flex; flex-direction: column; }
+    .chrome {
+      display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px;
+      background: #1c2430; color: #e8edf4; flex-wrap: wrap;
+    }
+    .chrome strong { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+    .chrome p { margin: 0; color: #b7c2d0; font-size: 12px; }
+    .states { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+    .states button {
+      border: 1px solid #3a4658; background: transparent; color: #d5deea;
+      border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600;
+    }
+    .states button[aria-pressed="true"] { background: #e8edf4; color: #1c2430; border-color: #e8edf4; }
+
+    .product {
+      flex: 1; min-height: 0; display: flex; margin: 16px;
+      border: 1px solid #d5dee8; border-radius: 16px; overflow: hidden;
+      background: var(--w-bg); box-shadow: var(--w-shadow);
+    }
+    .rail {
+      width: 224px; flex-shrink: 0; background: var(--w-surface);
+      border-right: 1px solid var(--w-border); display: flex; flex-direction: column;
+    }
+    .brand {
+      height: 52px; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 8px 0 14px; border-bottom: 1px solid var(--w-border); gap: 8px;
+    }
+    .mark {
+      width: 26px; height: 26px; border-radius: 7px; background: var(--w-text); color: var(--w-surface);
+      display: grid; place-items: center; font-size: 10px; font-weight: 800; flex-shrink: 0;
+    }
+    .brand strong { font-size: 13px; }
+    .icon-btn {
+      width: 32px; height: 32px; border: 0; background: transparent; border-radius: 8px;
+      color: var(--w-text-secondary); display: grid; place-items: center;
+    }
+    .icon-btn:hover { background: var(--w-fill); }
+    .nav { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+    .nav a {
+      display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 9px;
+      border-radius: 8px; text-decoration: none; color: var(--w-text-secondary); font-weight: 600;
+    }
+    .nav a[aria-current="page"] { color: var(--w-primary); background: var(--w-primary-soft); }
+    .nav a:hover { background: var(--w-fill); }
+    .rule { height: 1px; background: var(--w-border); margin: 8px 2px; }
+    .rail-foot { margin-top: auto; border-top: 1px solid var(--w-border); padding: 8px; }
+    .user {
+      display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: transparent;
+      border-radius: 8px; padding: 6px 8px; text-align: left;
+    }
+    .avatar {
+      width: 28px; height: 28px; border-radius: 999px; background: #1e293b; color: white;
+      display: grid; place-items: center; font-size: 11px; font-weight: 700;
+    }
+    .user small { display: block; color: var(--w-text-tertiary); font-size: 11px; }
+
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 20px 24px 16px; }
+    .head { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -0.02em; font-weight: 800; }
+    .metrics { display: flex; align-items: center; gap: 14px; color: var(--w-text-tertiary); font-size: 12px; font-weight: 650; }
+    .metrics b { color: var(--w-text); font-variant-numeric: tabular-nums; font-weight: 800; }
+    .spacer { flex: 1; }
+    .btn {
+      height: 32px; border-radius: 8px; border: 1px solid var(--w-border-strong); background: var(--w-surface);
+      padding: 0 10px; font-weight: 650; display: inline-flex; align-items: center; gap: 6px; color: var(--w-text-secondary);
+    }
+    .btn:hover { background: var(--w-surface-hover); }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background: var(--w-primary); border-color: var(--w-primary); color: white; }
+    .btn.primary:hover { background: #4338ca; }
+    .btn.quiet { border-color: transparent; background: transparent; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    .work { flex: 1; min-height: 0; display: flex; gap: 16px; align-items: flex-start; }
+    .node-col { width: 248px; flex-shrink: 0; }
+    .node-col .row { grid-template-columns: minmax(0, 1fr) 48px; }
+    .node-col .go { display: none; }
+    .detail-col { flex: 1; min-width: 0; }
+    .surface {
+      background: var(--w-surface); border: 1px solid var(--w-border); border-radius: 12px; overflow: hidden;
+    }
+    .band {
+      padding: 8px 14px 4px; font-size: 12px; font-weight: 700;
+      color: var(--w-running); background: var(--w-running-bg);
+    }
+    .band.quiet { color: var(--w-text-tertiary); background: var(--w-surface); }
+    .run-group { background: var(--w-running-bg); }
+    .run-group .row { border-bottom-color: #d7efe4; }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 104px 156px;
+      gap: 12px;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 12px 0 14px;
+      border-bottom: 1px solid var(--w-border);
+      text-decoration: none;
+      color: inherit;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row:hover { background: var(--w-surface-hover); }
+    .row.is-on { background: var(--w-primary-soft); }
+    .name { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+    .name strong {
+      font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .name span.proj {
+      color: var(--w-text-tertiary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .status {
+      width: 104px; text-align: right; font-size: 12px; font-weight: 700;
+      color: var(--w-text-tertiary); font-variant-numeric: tabular-nums;
+    }
+    .status.on { color: var(--w-running); }
+    .go { width: 156px; display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+    .go .btn { height: 28px; }
+
+    .seg { display: flex; gap: 2px; }
+    .seg button {
+      height: 32px; border: 0; background: transparent; border-radius: 8px;
+      padding: 0 10px; font-weight: 650; color: var(--w-text-secondary);
+    }
+    .seg button[aria-selected="true"] { color: var(--w-primary); background: var(--w-primary-soft); }
+    .node-title { font-size: 14px; font-weight: 750; }
+    .log {
+      margin: 0; padding: 12px 14px; font-family: var(--mono); font-size: 12px;
+      line-height: 1.7; color: var(--w-text-secondary); white-space: pre-wrap;
+    }
+    .degrade {
+      margin: 0 0 10px; padding: 8px 12px; border-radius: 8px;
+      background: #fffbeb; color: #92400e; font-size: 12px; font-weight: 650;
+    }
+    .scrim {
+      position: fixed; inset: 0; background: rgba(17, 24, 39, 0.28);
+      display: grid; place-items: center; z-index: 8;
+    }
+    .dialog {
+      width: min(440px, calc(100% - 32px)); background: var(--w-surface);
+      border-radius: 14px; box-shadow: var(--w-shadow); padding: 18px 18px 16px;
+    }
+    .dialog h2 { margin: 0 0 6px; font-size: 16px; letter-spacing: -0.02em; }
+    .dialog .sub { margin: 0 0 14px; color: var(--w-text-tertiary); font-size: 12px; }
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .field label { font-size: 13px; font-weight: 650; }
+    .field input {
+      border: 1px solid var(--w-border-strong); border-radius: 8px; padding: 8px 10px;
+      background: white; font-size: 16px;
+    }
+    .saved { font-size: 12px; color: var(--w-text-tertiary); }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+    .qr {
+      width: 160px; height: 160px; margin: 4px auto 12px; border: 1px solid var(--w-border);
+      border-radius: 8px; background: var(--w-fill);
+    }
+    @media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
+    @media (max-width: 960px) {
+      .work { flex-direction: column; }
+      .node-col { width: 100%; }
+      .row { grid-template-columns: minmax(0, 1fr) 88px; }
+      .go { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <header class="chrome">
+      <div>
+        <strong>设计稿 · Scout 节点</strong>
+        <p>和首页同一套壳、同一套行。右栏不再另起一种表格。</p>
+      </div>
+      <div class="states" role="toolbar" aria-label="设计稿状态">
+        <button type="button" data-view="overview" aria-pressed="true">概览</button>
+        <button type="button" data-view="connect">接入</button>
+        <button type="button" data-view="config">正在配置</button>
+        <button type="button" data-view="offline">离线</button>
+        <button type="button" data-view="logs">日志</button>
+      </div>
+    </header>
+
+    <div class="product">
+      <aside class="rail" aria-label="工作台">
+        <div class="brand">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <div class="mark" aria-hidden="true">MW</div>
+            <strong>测试工作台</strong>
+          </div>
+          <button class="icon-btn" type="button" aria-label="折叠导航">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M15 6l-6 6 6 6"/><path d="M4 4v16"/></svg>
+          </button>
+        </div>
+        <nav class="nav">
+          <a href="testing-home.html">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            应用
+          </a>
+          <div class="rule"></div>
+          <a href="#nodes" aria-current="page">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>
+            Scout 节点
+          </a>
+          <a href="#keys">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11.5 12.5 20 4l-2 4 3 1-4 3"/></svg>
+            模型密钥
+          </a>
+        </nav>
+        <div class="rail-foot">
+          <button class="user" type="button">
+            <span class="avatar" aria-hidden="true">林</span>
+            <span>林知夏<small>测试</small></span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="head">
+          <h1>Scout 节点</h1>
+          <div class="metrics">
+            <span>在线 <b id="online-count">1</b> / 1</span>
+            <span>可执行设备 <b>1</b></span>
+          </div>
+          <span class="spacer"></span>
+          <div class="seg" role="tablist" id="tabs">
+            <button type="button" role="tab" data-tab="overview">概览</button>
+            <button type="button" role="tab" data-tab="connect" aria-selected="true">接入</button>
+            <button type="button" role="tab" data-tab="logs">日志</button>
+          </div>
+          <button class="btn" type="button" id="sleep">休眠</button>
+          <button class="btn" type="button" id="restart">重启</button>
+        </div>
+
+        <p class="degrade" id="offline-note" hidden>节点离线。列表还在，但不能安装、保存或下发。</p>
+        <div class="work">
+          <div class="node-col">
+            <div class="surface">
+              <div class="run-group">
+                <div class="band">在线</div>
+                <button class="row is-on" type="button">
+                  <span class="name"><strong>Mac</strong><span class="proj">1 台 · v0.1.59</span></span>
+                  <span class="status on" id="node-state">在线</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="detail-col">
+            <div class="surface" id="body"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+      <h2 id="dlg-title">配置</h2>
+      <p class="sub" id="dlg-sub"></p>
+      <div id="dlg-body"></div>
+      <div class="dialog-actions">
+        <button class="btn" type="button" id="dlg-cancel">取消</button>
+        <button class="btn primary" type="button" id="dlg-ok">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CONNECTS = [
+      { id: "feishu", group: "工作项", name: "飞书", hint: "拉需求，把结果写回去", state: "missing", verb: "安装", fields: [
+        { label: "App ID", placeholder: "cli_…" },
+        { label: "App Secret", secret: true },
+      ]},
+      { id: "meego", group: "工作项", name: "Meego", hint: "读写工作项", state: "ready", verb: "测试", fields: [
+        { label: "插件 ID", value: "MII_A1" },
+        { label: "插件密钥", secret: true, saved: true },
+        { label: "地址", value: "https://project.feishu.cn" },
+        { label: "User Key", secret: true, saved: true },
+      ]},
+      { id: "feishu_bot", group: "通知", name: "飞书机器人", hint: "往群里发一条消息", state: "empty", verb: "配置", fields: [
+        { label: "Webhook", secret: true },
+      ]},
+      { id: "wecom", group: "通知", name: "企业微信", hint: "往群里发一条消息", state: "empty", verb: "配置", fields: [
+        { label: "Webhook", secret: true },
+      ]},
+      { id: "wechat", group: "通知", name: "微信", hint: "登录态只留在这台机器", state: "login", verb: "扫码", qr: true },
+      { id: "gmail", group: "收信", name: "Gmail", hint: "收验证码", state: "ready", verb: "发测试信", fields: [
+        { label: "收件箱", value: "qa@example.com" },
+        { label: "应用专用密码", secret: true, saved: true },
+      ]},
+    ];
+    const STATE = { missing: "未安装", empty: "未配置", ready: "已连接", login: "未登录" };
+    const DEVICES = [
+      ["在线", "web", "webe22615fbbb917111", "web"],
+      ["离线", "25102RKBEC", "5fda2f6d", "android"],
+      ["离线", "V2528A", "10AG231R9X002UG", "android"],
+      ["离线", "ALI_AN00", "AERF6R3A24015671", "android"],
+      ["离线", "moto_g85_5G", "ZN32233HKS", "android"],
+    ];
+
+    let tab = "overview";
+    let offline = false;
+    let dialogFor = null;
+    const $ = (id) => document.getElementById(id);
+
+    function setTab(next) {
+      if (next === "offline") { offline = true; tab = tab === "logs" ? "logs" : tab; }
+      else {
+        if (next !== "config") offline = false;
+        tab = next === "config" ? "connect" : next;
+      }
+      document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+      document.querySelectorAll(".states button").forEach((b) => {
+        const on = b.dataset.view === next || (next !== "config" && next !== "offline" && b.dataset.view === tab);
+        b.setAttribute("aria-pressed", String(on));
+      });
+      $("node-state").textContent = offline ? "离线" : "在线";
+      $("node-state").className = offline ? "status" : "status on";
+      $("online-count").textContent = offline ? "0" : "1";
+      $("sleep").disabled = offline;
+      $("restart").disabled = offline;
+      $("offline-note").hidden = !offline;
+      render();
+      if (next === "config") openDialog(CONNECTS[1]);
+      else closeDialog();
+    }
+
+    function row(name, hint, status, statusOn, actions) {
+      return `<div class="row">
+        <span class="name"><strong>${name}</strong>${hint ? `<span class="proj">${hint}</span>` : ""}</span>
+        <span class="status${statusOn ? " on" : ""}">${status}</span>
+        <span class="go">${actions}</span>
+      </div>`;
+    }
+
+    function render() {
+      $("body").innerHTML = tab === "overview" ? overview() : tab === "logs" ? logs() : connect();
+      $("body").querySelectorAll("[data-open]").forEach((btn) => {
+        btn.onclick = () => openDialog(CONNECTS.find((item) => item.id === btn.dataset.open));
+      });
+    }
+
+    function factsBand() {
+      const text = offline
+        ? "Mac · 最后心跳 18 分钟前"
+        : "Mac · v0.1.59 已是最新 · 心跳 3 秒前 · 电量 40%";
+      return `<div class="band quiet">${text}</div>`;
+    }
+
+    function overview() {
+      const rows = DEVICES.map(([st, name, sn, kind]) =>
+        row(name, sn, st, st === "在线", `<span style="color:var(--w-text-tertiary);font-size:12px;font-weight:650">${kind}</span>`)
+      ).join("");
+      return `${factsBand()}
+        <div class="band quiet">执行器 · adb 11 项 · playwright 3 项</div>
+        <div class="band quiet">设备 5 · 1 台可执行</div>${rows}`;
+    }
+
+    function connect() {
+      const groups = [...new Set(CONNECTS.map((item) => item.group))];
+      const html = groups.map((group) => {
+        const rows = CONNECTS.filter((item) => item.group === group).map((item) => {
+          const ready = item.state === "ready";
+          const primary = ready ? "" : " primary";
+          const extra = ready ? `<button class="btn quiet" type="button" data-open="${item.id}" ${offline ? "disabled" : ""}>更改</button>` : "";
+          return row(
+            item.name,
+            item.hint,
+            STATE[item.state],
+            ready,
+            `<button class="btn${primary}" type="button" data-open="${item.id}" ${offline ? "disabled" : ""}>${item.verb}</button>${extra}`,
+          );
+        }).join("");
+        return `<div class="band quiet">${group}</div>${rows}`;
+      }).join("");
+      return factsBand() + html;
+    }
+
+    function logs() {
+      return `${factsBand()}<pre class="log">12:21:04  scout online  darwin 0.1.59
+12:21:06  adb devices  1 online
+12:24:11  playwright ready
+12:26:02  heartbeat</pre>`;
+    }
+
+    function openDialog(item) {
+      if (!item || offline) return;
+      dialogFor = item;
+      $("dlg-title").textContent = item.qr ? `登录${item.name}` : item.state === "missing" ? `安装${item.name}` : `配置${item.name}`;
+      $("dlg-sub").textContent = `${item.hint}。保存后只留在这台机器。`;
+      $("dlg-ok").textContent = item.qr ? "完成" : item.state === "missing" ? "安装并配置" : "保存";
+      $("dlg-body").innerHTML = item.qr
+        ? `<div class="qr" role="img" aria-label="微信登录二维码"></div>`
+        : (item.fields || []).map((field) => `
+          <div class="field">
+            <label>${field.label}</label>
+            <input type="${field.secret ? "password" : "text"}" value="${field.value || ""}" placeholder="${field.saved ? "已保存，留空则不修改" : (field.placeholder || "")}" autocomplete="off" />
+            ${field.saved ? `<span class="saved">已保存。要换就输入新值。</span>` : ""}
+          </div>`).join("");
+      $("scrim").hidden = false;
+    }
+    function closeDialog() { $("scrim").hidden = true; dialogFor = null; }
+
+    document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => setTab(b.dataset.tab));
+    document.querySelectorAll(".states button").forEach((b) => b.onclick = () => setTab(b.dataset.view));
+    $("dlg-cancel").onclick = closeDialog;
+    $("scrim").addEventListener("click", (e) => { if (e.target === $("scrim")) closeDialog(); });
+    $("dlg-ok").onclick = () => {
+      if (dialogFor) {
+        dialogFor.state = "ready";
+        dialogFor.verb = dialogFor.qr ? "发测试" : (dialogFor.id === "gmail" ? "发测试信" : (dialogFor.id === "feishu" || dialogFor.id === "meego" ? "测试" : "发送测试"));
+      }
+      closeDialog();
+      setTab("connect");
+    };
+    setTab("connect");
+  </script>
+</body>
+</html>

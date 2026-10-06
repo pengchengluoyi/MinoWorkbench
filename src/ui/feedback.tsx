@@ -44,8 +44,21 @@ export function useFeedback() {
   }
 }
 
-/** 从 axios 错误里抠出能给人看的文案。Nexus 的报错在 detail 里。 */
+const textOf = (value: unknown): string => {
+  if (value == null || value === '') return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (item && typeof item === 'object' && 'msg' in item) return String((item as { msg?: unknown }).msg || '')
+      return textOf(item)
+    }).filter(Boolean).join('；')
+  }
+  return ''
+}
+
+/** 从 axios 错误里抠出能给人看的文案。Nexus 的报错在 detail 里。校验失败时 detail 是对象数组，必须收成字符串，否则提示组件会把整页打白。 */
 export const errText = (e: unknown, fallback = '操作失败'): string => {
-  const any = e as any
-  return any?.response?.data?.detail || any?.response?.data?.message || any?.message || fallback
+  const any = e as { response?: { data?: { detail?: unknown; message?: unknown } }; message?: unknown }
+  return textOf(any?.response?.data?.detail) || textOf(any?.response?.data?.message) || textOf(any?.message) || fallback
 }

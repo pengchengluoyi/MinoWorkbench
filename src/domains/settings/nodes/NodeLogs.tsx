@@ -9,9 +9,9 @@ import { useNodeLogs } from './queries'
  * Nexus 的 GET /runtime/nodes/:id/logs 是现成接口 —— 纯 Web 下完全可用，
  * 不需要原来那个"打开本机日志文件夹"的 Electron 调用。
  */
-export function NodeLogs({ nodeId }: { nodeId: string }) {
+export function NodeLogs({ nodeId, embedded = false }: { nodeId: string; embedded?: boolean }) {
   const [lines, setLines] = useState(200)
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(embedded)
   const logs = useNodeLogs(nodeId, lines, open)
 
   if (!open) {

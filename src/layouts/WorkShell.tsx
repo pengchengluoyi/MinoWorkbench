@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
 import { NavLink, Outlet, useMatch, useSearchParams } from 'react-router-dom'
-import { Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeftOpen, Plug } from 'lucide-react'
+import { ChevronRight, Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Button, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
+import { CommandPalette } from './CommandPalette'
 import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab, type Tab } from '@/domains/testing/workbench/nav'
 import { useAppDetail } from '@/domains/testing/workbench/queries'
 
@@ -12,7 +13,6 @@ const readCollapsed = () => {
 
 const GLOBAL_NAV = [
   { to: '/settings/runtime', label: 'Scout 节点', icon: Cpu },
-  { to: '/settings/plugins', label: '插件', icon: Plug },
   { to: '/settings/keys', label: '模型密钥', icon: KeyRound },
 ]
 
@@ -38,12 +38,11 @@ export function WorkShell() {
   return (
     <div className="flex h-full" style={{ background: 'var(--w-bg)' }}>
       <aside
-        className="flex flex-col shrink-0"
+        className="w-rail flex flex-col shrink-0"
         style={{
           width: collapsed ? 'var(--w-sidebar-collapsed)' : 'var(--w-sidebar-width)',
           background: 'var(--w-surface)',
           borderRight: '1px solid var(--w-border)',
-          transition: 'width .14s ease',
         }}
       >
         <div
@@ -79,6 +78,7 @@ export function WorkShell() {
               icon={collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
               onClick={toggle}
               aria-label={collapsed ? '展开导航' : '折叠导航'}
+              aria-expanded={!collapsed}
             />
           </Tooltip>
         </div>
@@ -112,12 +112,15 @@ export function WorkShell() {
 
       <div className="flex flex-1 flex-col min-w-0">
         {/* 外观入口已并入左下角 UserMenu，顶部那条 48px 的 header 就没必要留了 */}
-        <main className="flex-1 overflow-auto" style={{ padding: 'var(--w-space-4)', minHeight: 0 }}>
-          <ErrorBoundary label="页面">
-            <Outlet />
-          </ErrorBoundary>
+        <main className="flex flex-1 min-h-0 overflow-hidden" style={{ padding: 'var(--w-space-4)' }}>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ErrorBoundary label="页面">
+              <Outlet />
+            </ErrorBoundary>
+          </div>
         </main>
       </div>
+      <CommandPalette />
     </div>
   )
 
@@ -166,7 +169,10 @@ export function WorkShell() {
             <button
               type="button"
               onClick={() => go(item.id)}
-              className="flex w-full items-center gap-2"
+              aria-label={item.label}
+              data-active={active ? 'true' : 'false'}
+              aria-expanded={item.children?.length ? active : undefined}
+              className="w-hit flex w-full items-center gap-2"
               style={{
                 padding: narrow ? '7px 0' : '6px 9px',
                 justifyContent: narrow ? 'center' : 'flex-start',
@@ -178,11 +184,19 @@ export function WorkShell() {
                 fontSize: 'var(--w-font-base)',
                 fontWeight: active ? 650 : 600,
                 color: active ? 'var(--w-primary)' : 'var(--w-text-secondary)',
-                background: active ? 'var(--w-primary-soft)' : 'transparent',
               }}
             >
               <Icon size={15} strokeWidth={1.9} />
               {!narrow && <span className="truncate">{item.label}</span>}
+              {!narrow && item.children?.length ? (
+                <ChevronRight
+                  size={13}
+                  aria-hidden
+                  className="w-fold-chevron"
+                  data-open={active ? 'true' : 'false'}
+                  style={{ marginLeft: 'auto', color: 'var(--w-text-quaternary)', flexShrink: 0 }}
+                />
+              ) : null}
             </button>
           )
 
@@ -197,11 +211,12 @@ export function WorkShell() {
                       <button
                         key={child.label}
                         type="button"
+                        data-active={on ? 'true' : 'false'}
                         onClick={() => {
                           if (child.tab) go(child.tab, child.param)
                           else if (child.param) goSub(child.param.key, child.param.value)
                         }}
-                        className="flex w-full items-center"
+                        className="w-hit flex w-full items-center"
                         style={{
                           padding: '4px 9px',
                           border: 'none',
@@ -211,7 +226,6 @@ export function WorkShell() {
                           fontSize: 'var(--w-font-sm)',
                           fontWeight: on ? 650 : 600,
                           color: on ? 'var(--w-text)' : 'var(--w-text-tertiary)',
-                          background: on ? 'var(--w-fill)' : 'transparent',
                         }}
                       >
                         <span className="truncate">{child.label}</span>
@@ -242,10 +256,11 @@ function RailLink({
   end?: boolean
 }) {
   const link = (
-    <NavLink to={to} end={end} style={{ textDecoration: 'none' }}>
+    <NavLink to={to} end={end} aria-label={label} style={{ textDecoration: 'none' }}>
       {({ isActive }) => (
         <div
-          className="flex items-center gap-2"
+          data-active={isActive ? 'true' : 'false'}
+          className="w-hit flex items-center gap-2"
           style={{
             padding: collapsed ? '7px 0' : '7px 9px',
             justifyContent: collapsed ? 'center' : 'flex-start',
@@ -254,7 +269,6 @@ function RailLink({
             fontSize: 'var(--w-font-base)',
             fontWeight: isActive ? 650 : 600,
             color: isActive ? 'var(--w-primary)' : 'var(--w-text-secondary)',
-            background: isActive ? 'var(--w-primary-soft)' : 'transparent',
           }}
         >
           <Icon size={15} strokeWidth={1.9} />

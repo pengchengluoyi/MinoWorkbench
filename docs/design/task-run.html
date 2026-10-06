@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>设计稿 · 新建执行与用例回放</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --w-bg: #f6f8fa;
+      --w-surface: #fff;
+      --w-surface-hover: #f8fafc;
+      --w-fill: #f1f5f9;
+      --w-border: #e7edf3;
+      --w-border-strong: #d5dee8;
+      --w-text: #111827;
+      --w-text-secondary: #334155;
+      --w-text-tertiary: #526277;
+      --w-primary: #4f46e5;
+      --w-primary-soft: #eef2ff;
+      --w-pass: #047857;
+      --w-pass-bg: #ecfdf5;
+      --w-fail: #b91c1c;
+      --w-fail-bg: #fef2f2;
+      --w-warn: #c2410c;
+      --w-warn-bg: #fff7ed;
+      --w-skip: #92400e;
+      --w-skip-bg: #fffbeb;
+      --w-radius-sm: 8px;
+      --w-radius-lg: 12px;
+      --w-shadow: 0 18px 48px rgba(17, 24, 39, .16);
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { font-family: var(--font); background: #e8edf2; color: var(--w-text); font-size: 13px; }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    :focus { outline: none; }
+    :focus-visible { outline: 2px solid var(--w-primary); outline-offset: 2px; }
+    [hidden] { display: none !important; }
+    .stage { min-height: 100dvh; display: flex; flex-direction: column; }
+    .chrome { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; background: #1c2430; color: #e8edf4; }
+    .chrome strong { font-size: 13px; display: block; }
+    .chrome p { margin: 2px 0 0; color: #b7c2d0; font-size: 12px; max-width: 720px; }
+    .states { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+    .states button { border: 1px solid #3a4658; background: transparent; color: #d5deea; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 650; }
+    .states button[aria-pressed="true"] { background: #e8edf4; color: #1c2430; }
+    .product { flex: 1; min-height: 0; display: flex; margin: 16px; border: 1px solid #d5dee8; border-radius: 16px; overflow: hidden; background: var(--w-bg); box-shadow: 0 8px 24px rgba(17, 24, 39, .10); }
+    .rail { width: 208px; background: var(--w-surface); border-right: 1px solid var(--w-border); display: flex; flex-direction: column; flex-shrink: 0; }
+    .brand { height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--w-border); }
+    .mark { width: 26px; height: 26px; border-radius: 7px; background: var(--w-text); color: #fff; display: grid; place-items: center; font-size: 10px; font-weight: 800; }
+    .nav { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+    .nav a { display: flex; align-items: center; min-height: 32px; padding: 6px 9px; border-radius: 8px; text-decoration: none; color: var(--w-text-secondary); font-weight: 650; }
+    .nav a[aria-current="page"] { color: var(--w-primary); background: var(--w-primary-soft); }
+    .sub { padding-left: 18px; display: flex; flex-direction: column; }
+    .sub a { font-size: 12px; min-height: 28px; }
+    .rail-foot { margin-top: auto; border-top: 1px solid var(--w-border); padding: 10px; }
+    .user { display: flex; gap: 8px; align-items: center; }
+    .avatar { width: 28px; height: 28px; border-radius: 99px; background: #1e293b; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+    .user small { display: block; color: var(--w-text-tertiary); font-size: 11px; }
+    .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; }
+    .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 16px; letter-spacing: -0.02em; font-weight: 800; }
+    .mono { font-family: var(--mono); color: var(--w-text-tertiary); font-size: 12px; }
+    .btn { height: 32px; border-radius: 8px; border: 1px solid var(--w-border-strong); background: var(--w-surface); padding: 0 12px; font-weight: 650; color: var(--w-text-secondary); }
+    .btn.primary { background: var(--w-primary); border-color: var(--w-primary); color: #fff; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .pill { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+    .pill.fail { color: var(--w-fail); background: var(--w-fail-bg); }
+    .pill.pass { color: var(--w-pass); background: var(--w-pass-bg); }
+    .pill.skip { color: var(--w-skip); background: var(--w-skip-bg); }
+    .pill.warn { color: var(--w-warn); background: var(--w-warn-bg); }
+    .read { margin: 0; color: var(--w-text-tertiary); font-size: 12px; }
+    .switch { display: flex; gap: 2px; margin-left: auto; background: var(--w-fill); border-radius: 8px; padding: 2px; }
+    .switch button { border: 0; background: transparent; border-radius: 6px; height: 28px; padding: 0 12px; font-weight: 650; color: var(--w-text-secondary); }
+    .switch button[aria-pressed="true"] { background: #fff; color: var(--w-primary); box-shadow: 0 1px 2px rgba(17, 24, 39, .08); }
+    .pane { flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+    #pane-trace { flex: 0 1 auto; max-height: 46%; }
+    .cols3 { flex: 0 1 auto; display: grid; grid-template-columns: minmax(180px, .78fr) minmax(240px, 1.16fr) minmax(260px, 1.2fr); gap: 10px; }
+    .card { background: var(--w-surface); border: 1px solid var(--w-border); border-radius: 12px; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .card h2 { margin: 0; padding: 10px 12px; font-size: 14px; font-weight: 750; border-bottom: 1px solid var(--w-border); }
+    .card .body { overflow: auto; max-height: 188px; padding: 4px 12px 12px; }
+    .plain { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--w-border); }
+    .plain:last-child { border-bottom: 0; }
+    .plain .n, .para .n { color: var(--w-text-tertiary); font-weight: 750; font-variant-numeric: tabular-nums; }
+    .para { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; padding: 9px 0; border-bottom: 1px solid var(--w-border); align-items: start; }
+    .para:last-child { border-bottom: 0; }
+    .para .txt { line-height: 1.75; color: var(--w-text-secondary); }
+    .seg {
+      display: inline;
+      border: 0;
+      background: #e7ebf8;
+      color: var(--w-text);
+      border-radius: 5px;
+      padding: 1px 5px 1px 2px;
+      line-height: 1.75;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+      cursor: pointer;
+    }
+    .seg .evt { font-weight: 750; color: #312e81; margin-right: 3px; }
+    .seg b { font-weight: 800; }
+    .badge {
+      display: inline-grid;
+      place-items: center;
+      width: 15px;
+      height: 15px;
+      margin: 0 3px 0 1px;
+      border-radius: 4px;
+      background: var(--w-primary);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      font-style: normal;
+      vertical-align: 1px;
+    }
+    .seg.skip { background: var(--w-skip-bg); }
+    .seg.skip .badge { background: var(--w-skip); }
+    .seg.fail { background: var(--w-fail-bg); }
+    .seg.fail .evt { color: var(--w-fail); }
+    .seg.fail .badge { background: var(--w-fail); }
+    .seg.on { outline: 2px solid var(--w-primary); outline-offset: 1px; }
+    .seg.static { cursor: default; }
+    .cant { margin-left: 4px; font-size: 11px; font-weight: 750; color: var(--w-warn); }
+    .now { flex: 1; min-height: 240px; display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(260px, .8fr); background: var(--w-surface); border: 1px solid var(--w-border); border-radius: 12px; overflow: hidden; }
+    .shot { position: relative; height: 100%; min-height: 240px; background: #10141c; color: #d5deea; }
+    .shot .fake { height: 100%; min-height: 100%; display: flex; flex-direction: column; padding: 16px 18px; }
+    .shot .top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; opacity: .85; }
+    .shot .dialog-fake { margin: 36px auto 0; width: min(420px, 80%); background: #1c2430; border: 1px solid #334155; border-radius: 12px; padding: 18px 16px; }
+    .shot .dialog-fake strong { display: block; font-size: 18px; letter-spacing: -0.02em; color: #f8fafc; }
+    .shot .dialog-fake span { display: block; margin-top: 8px; color: #94a3b8; font-size: 12px; }
+    .shot .login { position: absolute; top: 14px; right: 16px; background: #3dff9a; color: #064e3b; border: 0; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 800; }
+    .shot .mark { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 2px solid #fff; border-radius: 99px; box-shadow: 0 0 0 6px rgba(185, 28, 28, .45); }
+    .chip { position: absolute; background: #fff; color: var(--w-text); border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 750; box-shadow: 0 2px 8px rgba(0,0,0,.28); white-space: nowrap; }
+    .params { padding: 16px 18px; border-left: 1px solid var(--w-border); overflow: auto; }
+    .params h3 { margin: 0 0 12px; font-size: 15px; }
+    .params dl { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px 12px; margin: 0; }
+    .params dt { color: var(--w-text-tertiary); font-weight: 650; }
+    .params dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+    .params dd b { font-weight: 800; }
+    #pane-trace { min-height: 0; }
+    .trace { height: 100%; background: var(--w-surface); border: 1px solid var(--w-border); border-radius: 12px; overflow: auto; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+    th { position: sticky; top: 0; text-align: left; background: var(--w-fill); color: var(--w-text-tertiary); font-size: 11px; font-weight: 750; padding: 7px 10px; border-bottom: 1px solid var(--w-border); white-space: nowrap; }
+    td { padding: 7px 10px; border-bottom: 1px solid var(--w-border); vertical-align: middle; }
+    tr.pick { cursor: pointer; }
+    tr.pick.on td { background: var(--w-primary-soft); }
+    tr.pick:hover td { background: var(--w-surface-hover); }
+    tr.pick.on:hover td { background: #e0e7ff; }
+    .ref { font-weight: 750; color: #312e81; background: var(--w-primary-soft); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+    tr.pick.on .ref { background: #fff; }
+    .time { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+    .scrim { position: fixed; inset: 0; background: rgba(17, 24, 39, .28); display: grid; place-items: center; padding: 20px; z-index: 20; }
+    .dialog { width: min(920px, calc(100vw - 48px)); height: calc(100dvh - 48px); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: auto; background: #fff; border-radius: 16px; box-shadow: var(--w-shadow); padding: 18px 18px 14px; }
+    .dialog .fill { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .sec.cases { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .sec.cases .picked { flex: 1; }
+    .sec.device .choice { min-height: 108px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
+    .dialog.wide { width: min(1240px, calc(100vw - 32px)); }
+    .dialog header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .dialog h2 { margin: 0; font-size: 16px; flex: 1; }
+    .x { width: 28px; height: 28px; border: 0; background: transparent; border-radius: 8px; font-size: 18px; color: var(--w-text-tertiary); }
+    .sec { margin: 0 0 12px; }
+    .sec > p { margin: 0 0 6px; font-weight: 750; }
+    .sec > p span { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 99px; background: var(--w-fill); font-size: 11px; }
+    .choices { display: grid; gap: 8px; }
+    .choices.two { grid-template-columns: 1fr 1fr; }
+    .choices.three { grid-template-columns: 1fr 1fr 1fr; }
+    .choices.one { grid-template-columns: 1fr; }
+    .choice { text-align: left; border: 1px solid var(--w-border-strong); background: #fff; border-radius: 12px; padding: 10px 12px; min-height: 72px; }
+    .choice[aria-pressed="true"] { border-color: var(--w-primary); background: var(--w-primary-soft); box-shadow: inset 0 0 0 1px var(--w-primary); }
+    .choice b { display: block; font-size: 13px; }
+    .choice small { display: block; margin-top: 3px; color: var(--w-text-tertiary); font-weight: 550; line-height: 1.4; }
+    .engine { margin: 6px 0 0; color: var(--w-text-tertiary); font-size: 12px; }
+    .picked { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    .picked li { padding: 6px 8px; background: var(--w-fill); border-radius: 8px; }
+    .foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .import-table { max-height: min(58vh, 520px); overflow: auto; border: 1px solid var(--w-border); border-radius: 12px; }
+    .import-table table { min-width: 1180px; }
+    .import-table td { vertical-align: top; }
+    .import-table td:nth-child(2),
+    .import-table th:nth-child(2) { min-width: 76px; }
+    .import-table td:nth-child(4) { min-width: 200px; }
+    .import-table td:nth-child(6) { min-width: 168px; }
+    .import-table td:nth-child(7) { min-width: 280px; }
+    .import-table td:nth-child(8) { min-width: 360px; }
+    .import-table td:nth-child(9) { min-width: 96px; }
+    .warn-row td { background: #fffbeb; }
+    .name { font-weight: 700; min-width: 160px; }
+    .modes { display: flex; gap: 4px; margin-bottom: 6px; }
+    .modes button { border: 1px solid var(--w-border-strong); background: #fff; border-radius: 8px; padding: 3px 8px; font-size: 11px; font-weight: 700; color: var(--w-text-secondary); }
+    .modes button[aria-pressed="true"] { border-color: var(--w-primary); background: var(--w-primary-soft); color: var(--w-primary); }
+    .addr { display: block; margin-top: 6px; font-family: var(--mono); font-size: 11px; color: var(--w-text-secondary); word-break: break-all; }
+    @media (max-width: 980px) {
+      .rail { display: none; }
+      .cols3, .choices.two, .choices.three, .now { grid-template-columns: 1fr; }
+      .params { border-left: 0; border-top: 1px solid var(--w-border); }
+      .chrome { flex-wrap: wrap; }
+      .states { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <header class="chrome">
+      <div>
+        <strong>设计稿 · 新建执行与用例回放</strong>
+        <p id="blurb">三栏和轨迹只显示一个。点句中的徽章，左边放大这一步的画面，右边是这一步的参数。</p>
+      </div>
+      <div class="states">
+        <button type="button" data-view="create">新建执行</button>
+        <button type="button" data-view="run" aria-pressed="true">用例三栏</button>
+        <button type="button" data-view="import">导入预览</button>
+      </div>
+    </header>
+    <div class="product">
+      <aside class="rail">
+        <div class="brand"><div class="mark">MW</div><strong>测试工作台</strong></div>
+        <nav class="nav">
+          <a href="testing-home.html">应用</a>
+          <a href="#app" aria-current="page">Hi3d平台</a>
+          <div class="sub">
+            <a href="#cases">用例</a>
+            <a href="#tasks" aria-current="page">任务</a>
+            <a href="#log">Session Log</a>
+          </div>
+          <a href="scout-node.html">Scout 节点</a>
+          <a href="#keys">模型密钥</a>
+        </nav>
+        <div class="rail-foot"><div class="user"><span class="avatar">林</span><span>林知夏<small>测试</small></span></div></div>
+      </aside>
+      <main class="main" id="main"></main>
+      <div class="scrim" id="create-scrim" hidden></div>
+      <div class="scrim" id="import-scrim" hidden></div>
+    </div>
+  </div>
+  <script>
+    const blurbs = {
+      run: "三栏和轨迹只显示一个。点句中的徽章，左边放大这一步的画面，右边是这一步的参数。",
+      create: "网址跟运行环境走。设备只列出已经连上的浏览器。",
+      import: "每条用例的前置、步骤、预期各自切换原文和预览，互不影响。",
+    };
+
+    const urls = {
+      global: {
+        test: "http://hitem3d-test.mathmagical.cn/",
+        pre: "http://hitem3d-pre.mathmagical.cn/",
+        prod: "https://hitem3d.mathmagical.cn/",
+      },
+      cn: {
+        test: "http://hitem3d-test-bj.mathmagical.cn/",
+        pre: "http://hitem3d-pre-bj.mathmagical.cn/",
+        prod: "https://www.hitem3d.cn/",
+      },
+    };
+
+    const shots = {
+      "op-1-1": { title: "点击", chip: "1180, 42", x: "78%", y: "22px", rows: [["事件", "点击"], ["参数", "右上角登录按钮", true], ["坐标", "(1180, 42)"], ["控件", "button"], ["步骤", "操作 1-1"], ["状态", "通过"], ["时间", "1.2 s"]] },
+      "op-1-2": { title: "输入", chip: "手机号", x: "46%", y: "140px", rows: [["事件", "输入"], ["参数", "手机号或邮箱验证码", true], ["字段", "phone"], ["步骤", "操作 1-2"], ["状态", "通过"], ["时间", "4.8 s"]] },
+      "ex-1-1": { title: "弹窗展示", chip: "跳过", x: "50%", y: "120px", rows: [["事件", "弹窗展示"], ["参数", "弹窗正常居中展示", true], ["步骤", "预期 1-1"], ["状态", "跳过"], ["时间", "6.1 s"]] },
+      "ex-2-1": { title: "文案检查", chip: "title 不等于", x: "50%", y: "128px", rows: [["事件", "文案检查"], ["参数", "标题等于「你主要用 Hi3D 来做什么？」", true], ["属性", "match=equals"], ["步骤", "预期 2-1"], ["状态", "失败"], ["时间", "6.4 s"]] },
+      "ex-2-2": { title: "文案检查", chip: "body 包含", x: "50%", y: "156px", rows: [["事件", "文案检查"], ["参数", "正文包含「选择感兴趣的场景」", true], ["属性", "match=contains"], ["步骤", "预期 2-2"], ["状态", "通过"], ["时间", "6.6 s"]] },
+      "ex-2-3": { title: "推荐文案", chip: "跳过", x: "50%", y: "168px", rows: [["事件", "推荐文案"], ["参数", "为你推荐更合适的内容（可多选）", true], ["步骤", "预期 2-3"], ["状态", "跳过"], ["时间", "6.7 s"]] },
+      "ex-3-1": { title: "场景选项", chip: "跳过", x: "34%", y: "150px", rows: [["事件", "场景选项"], ["参数", "9 个场景选项全部正常展示", true], ["步骤", "预期 3-1"], ["状态", "跳过"], ["时间", "7.0 s"]] },
+      "ex-4-1": { title: "样式检查", chip: "disabled", x: "70%", y: "188px", rows: [["事件", "样式检查"], ["参数", "确认按钮为禁用", true], ["属性", "style=disabled · label=确认"], ["控件", "button"], ["步骤", "预期 4-1"], ["状态", "通过"], ["时间", "7.4 s"]] },
+      "ex-4-2": { title: "弱化样式", chip: "跳过", x: "82%", y: "188px", rows: [["事件", "弱化样式"], ["参数", "跳过按钮为弱化样式", true], ["步骤", "预期 4-2"], ["状态", "跳过"], ["时间", "7.5 s"]] },
+    };
+
+    const runHtml = `
+      <header class="head">
+        <button class="btn" type="button" id="back">返回这个批次</button>
+        <span class="pill fail">失败</span>
+        <h1>验证场景选择弹窗所有 UI 元素展示正确</h1>
+        <span class="mono">case-c19f59f9</span>
+      </header>
+      <div class="head" style="padding:0">
+        <p class="read" style="flex:1">模块 web。三栏看原文句子，轨迹看执行记录。</p>
+        <div class="switch" id="pane-switch">
+          <button type="button" data-pane="script" aria-pressed="true">三栏</button>
+          <button type="button" data-pane="trace" aria-pressed="false">轨迹</button>
+        </div>
+      </div>
+      <div class="pane" id="pane-script">
+      <div class="cols3">
+        <section class="card">
+          <h2>前置条件</h2>
+          <div class="body">
+            <div class="para"><span class="n">1</span><div class="txt"><span class="seg static"><span class="evt">登录态</span><b>未登录</b></span></div></div>
+            <div class="para"><span class="n">2</span><div class="txt"><span class="seg static"><span class="evt">账号与数据</span><b>未注册</b></span></div></div>
+            <div class="para"><span class="n">3</span><div class="txt"><span class="seg static"><span class="evt">环境与权限</span><b>无</b></span></div></div>
+          </div>
+        </section>
+        <section class="card">
+          <h2>操作步骤</h2>
+          <div class="body">
+            <div class="para">
+              <span class="n">1</span>
+              <div class="txt">
+                <button class="seg" type="button" data-id="op-1-1"><i class="badge">1</i><span class="evt">点击</span><b>右上角登录按钮</b></button>
+                <span>，</span>
+                <button class="seg" type="button" data-id="op-1-2"><i class="badge">2</i><span class="evt">输入</span><b>手机号或邮箱验证码</b></button>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="card">
+          <h2>预期结果</h2>
+          <div class="body">
+            <div class="para">
+              <span class="n">1</span>
+              <div class="txt">
+                <button class="seg skip" type="button" data-id="ex-1-1"><i class="badge">1</i><b>弹窗正常居中展示</b></button><span class="cant">无法执行</span>
+              </div>
+            </div>
+            <div class="para">
+              <span class="n">2</span>
+              <div class="txt">
+                <button class="seg fail" type="button" data-id="ex-2-1"><i class="badge">1</i><span class="evt">文案检查</span><b>标题等于「你主要用 Hi3D 来做什么？」</b></button>
+                <span>，</span>
+                <button class="seg" type="button" data-id="ex-2-2"><i class="badge">2</i><span class="evt">文案检查</span><b>正文包含「选择感兴趣的场景」</b></button>
+                <span>，</span>
+                <button class="seg skip" type="button" data-id="ex-2-3"><i class="badge">3</i><b>为你推荐更合适的内容（可多选）</b></button><span class="cant">无法执行</span>
+              </div>
+            </div>
+            <div class="para">
+              <span class="n">3</span>
+              <div class="txt">
+                <button class="seg skip" type="button" data-id="ex-3-1"><i class="badge">1</i><b>9 个场景选项全部正常展示</b></button><span class="cant">无法执行</span>
+              </div>
+            </div>
+            <div class="para">
+              <span class="n">4</span>
+              <div class="txt">
+                <button class="seg" type="button" data-id="ex-4-1"><i class="badge">1</i><span class="evt">样式检查</span><b>确认按钮为禁用</b></button>
+                <span>，</span>
+                <button class="seg skip" type="button" data-id="ex-4-2"><i class="badge">2</i><b>跳过按钮为弱化样式</b></button><span class="cant">无法执行</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      </div>
+      <section class="now" aria-live="polite">
+        <div class="shot" id="shot">
+          <div class="fake">
+            <div class="top"><span>Hi3D</span><span>场景选择</span></div>
+            <div class="dialog-fake"><strong>你主要用 Hi3D 来做什么？</strong><span>选择感兴趣的场景</span></div>
+          </div>
+          <button class="login" type="button">登录</button>
+          <div class="mark" id="mark"></div>
+          <div class="chip" id="chip">title 不等于</div>
+        </div>
+        <div class="params">
+          <h3 id="now-title">文案检查</h3>
+          <dl id="now-rows"></dl>
+        </div>
+      </section>
+      <div class="pane" id="pane-trace" hidden>
+      <div class="trace">
+        <table>
+          <thead>
+            <tr>
+              <th>编号</th>
+              <th>事件</th>
+              <th>属性</th>
+              <th>步骤</th>
+              <th>状态</th>
+              <th class="time">时间戳 (s)</th>
+            </tr>
+          </thead>
+          <tbody id="trace-body">
+            <tr class="pick" data-id="op-1-1"><td>1</td><td>点击</td><td>坐标 (1180, 42) · button</td><td><span class="ref">操作 1-1</span></td><td><span class="pill pass">通过</span></td><td class="time">1.2</td></tr>
+            <tr class="pick" data-id="op-1-2"><td>2</td><td>输入</td><td>文本 手机号 · 字段 phone</td><td><span class="ref">操作 1-2</span></td><td><span class="pill pass">通过</span></td><td class="time">4.8</td></tr>
+            <tr class="pick" data-id="ex-1-1"><td>3</td><td>弹窗展示</td><td>无稳定断言</td><td><span class="ref">预期 1-1</span></td><td><span class="pill skip">跳过</span></td><td class="time">6.1</td></tr>
+            <tr class="pick on" data-id="ex-2-1"><td>4</td><td>文案检查</td><td>match=equals · title=你主要用 Hi3D 来做什么？</td><td><span class="ref">预期 2-1</span></td><td><span class="pill fail">失败</span></td><td class="time">6.4</td></tr>
+            <tr class="pick" data-id="ex-2-2"><td>5</td><td>文案检查</td><td>match=contains · body=选择感兴趣的场景</td><td><span class="ref">预期 2-2</span></td><td><span class="pill pass">通过</span></td><td class="time">6.6</td></tr>
+            <tr class="pick" data-id="ex-2-3"><td>6</td><td>推荐文案</td><td>无节点可核对</td><td><span class="ref">预期 2-3</span></td><td><span class="pill skip">跳过</span></td><td class="time">6.7</td></tr>
+            <tr class="pick" data-id="ex-3-1"><td>7</td><td>场景选项</td><td>9 项 · 无逐项断言</td><td><span class="ref">预期 3-1</span></td><td><span class="pill skip">跳过</span></td><td class="time">7.0</td></tr>
+            <tr class="pick" data-id="ex-4-1"><td>8</td><td>样式检查</td><td>style=disabled · label=确认 · button</td><td><span class="ref">预期 4-1</span></td><td><span class="pill pass">通过</span></td><td class="time">7.4</td></tr>
+            <tr class="pick" data-id="ex-4-2"><td>9</td><td>弱化样式</td><td>无样式令牌</td><td><span class="ref">预期 4-2</span></td><td><span class="pill skip">跳过</span></td><td class="time">7.5</td></tr>
+          </tbody>
+        </table>
+      </div>
+      </div>`;
+
+    const createHtml = `
+      <div class="dialog" role="dialog" aria-labelledby="create-title">
+        <header>
+          <h2 id="create-title">新建执行</h2>
+          <button class="x" type="button" data-close="create" aria-label="关闭">×</button>
+        </header>
+        <div class="fill">
+        <section class="sec">
+          <p><span>1</span>被测应用</p>
+          <div class="choices two" data-group="app">
+            <button class="choice" type="button" data-app="global" aria-pressed="true"><b>hi3d_global</b><small>webhi3d_global</small></button>
+            <button class="choice" type="button" data-app="cn" aria-pressed="false"><b>hi3d_cn</b><small>webhi3d_cn</small></button>
+          </div>
+        </section>
+        <section class="sec">
+          <p><span>2</span>运行环境</p>
+          <div class="choices three" data-group="env">
+            <button class="choice" type="button" aria-pressed="true"><b>测试 test</b><small>标识 test</small><span class="addr" data-env="test"></span></button>
+            <button class="choice" type="button" aria-pressed="false"><b>预发 pre</b><small>标识 pre</small><span class="addr" data-env="pre"></span></button>
+            <button class="choice" type="button" aria-pressed="false"><b>正式 prod</b><small>标识 prod</small><span class="addr" data-env="prod"></span></button>
+          </div>
+        </section>
+        <section class="sec device">
+          <p><span>3</span>设备（浏览器）</p>
+          <div class="choices one" data-group="device">
+            <button class="choice" type="button" aria-pressed="true"><b>本机浏览器 · 浏览器</b><small>浏览器 · webe2215fbbb917111 · 0/4 路</small></button>
+          </div>
+        </section>
+        <section class="sec">
+          <p><span>4</span>执行方案</p>
+          <div class="choices two" data-group="plan">
+            <button class="choice" type="button" aria-pressed="true"><b>看图 visual</b><small>纯视觉：按模型坐标、输入、滑动</small></button>
+            <button class="choice" type="button" aria-pressed="false"><b>DOM</b><small>纯层级：只按节点点，点不上不改走看图</small></button>
+          </div>
+          <p class="engine">将使用：火山引擎 · doubao-seed-2-0-lite-260215</p>
+        </section>
+        <section class="sec cases">
+          <p><span>5</span>勾选用例</p>
+          <ul class="picked">
+            <li>验证场景选择弹窗所有 UI 元素展示正确</li>
+            <li>验证新用户首次注册登录正常弹出场景选择弹窗</li>
+          </ul>
+        </section>
+        <div class="foot">
+          <strong>已选 2 条用例</strong>
+          <span style="flex:1"></span>
+          <button class="btn" type="button" data-close="create">取消</button>
+          <button class="btn primary" type="button" id="start">启动</button>
+        </div>
+        </div>
+      </div>`;
+
+    function field(raw, preview) {
+      return `<div class="field">
+        <div class="modes">
+          <button type="button" data-mode="raw" aria-pressed="false">查看原文</button>
+          <button type="button" data-mode="preview" aria-pressed="true">预览</button>
+        </div>
+        <div class="raw" hidden>${raw}</div>
+        <div class="preview">${preview}</div>
+      </div>`;
+    }
+    function lines(items) {
+      return items.map((text, i) => `<div class="plain" style="border:0;padding:0 0 4px"><span class="n">${i + 1}</span><span>${text}</span></div>`).join("");
+    }
+    const prePreview1 = `<div class="para" style="border:0;padding:2px 0"><span class="n">1</span><div class="txt"><span class="seg static"><span class="evt">登录态</span><b>未登录</b></span></div></div>
+      <div class="para" style="border:0;padding:2px 0"><span class="n">2</span><div class="txt"><span class="seg static"><span class="evt">账号与数据</span><b>未注册</b></span></div></div>
+      <div class="para" style="border:0;padding:2px 0"><span class="n">3</span><div class="txt"><span class="seg static"><span class="evt">环境与权限</span><b>无</b></span></div></div>`;
+    const stepPreview1 = `<div class="para" style="border:0;padding:2px 0"><span class="n">1</span><div class="txt"><span class="seg"><i class="badge">1</i><span class="evt">点击</span><b>右上角登录按钮</b></span>， <span class="seg"><i class="badge">2</i><span class="evt">输入</span><b>手机号或邮箱验证码</b></span></div></div>`;
+    const expectPreview1 = `<div class="para" style="border:0;padding:2px 0"><span class="n">1</span><div class="txt"><span class="seg skip"><i class="badge">1</i><b>弹窗正常居中展示</b></span><span class="cant">无法执行</span></div></div>
+      <div class="para" style="border:0;padding:2px 0"><span class="n">2</span><div class="txt"><span class="seg"><i class="badge">1</i><span class="evt">文案检查</span><b>标题等于「你主要用 Hi3D 来做什么？」</b></span>， <span class="seg"><i class="badge">2</i><span class="evt">文案检查</span><b>正文包含「选择感兴趣的场景」</b></span>， <span class="seg skip"><i class="badge">3</i><b>为你推荐更合适的内容（可多选）</b></span><span class="cant">无法执行</span></div></div>
+      <div class="para" style="border:0;padding:2px 0"><span class="n">3</span><div class="txt"><span class="seg skip"><i class="badge">1</i><b>9 个场景选项全部正常展示</b></span><span class="cant">无法执行</span></div></div>
+      <div class="para" style="border:0;padding:2px 0"><span class="n">4</span><div class="txt"><span class="seg"><i class="badge">1</i><span class="evt">样式检查</span><b>确认按钮为禁用</b></span>， <span class="seg skip"><i class="badge">2</i><b>跳过按钮为弱化样式</b></span><span class="cant">无法执行</span></div></div>`;
+
+    const importHtml = `
+      <div class="dialog wide" role="dialog" aria-labelledby="import-title">
+        <header>
+          <h2 id="import-title">导入用例</h2>
+          <button class="x" type="button" data-close="import" aria-label="关闭">×</button>
+        </header>
+        <div class="foot" style="margin-bottom:10px">
+          <span class="read">每格自己切换。查看原文是导入前的句子，预览是拆好的事件。</span>
+          <span style="flex:1"></span>
+          <button class="btn" type="button">只看需处理</button>
+        </div>
+        <div class="import-table">
+          <table>
+            <thead>
+              <tr>
+                <th>导入</th><th>结果</th><th>编号</th><th>名称</th><th>端</th><th>前置条件</th><th>步骤</th><th>预期</th><th>备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="warn-row">
+                <td><input type="checkbox" checked aria-label="导入第 1 条" /></td>
+                <td><span class="pill warn">需处理</span></td>
+                <td class="mono">系统生成</td>
+                <td class="name">验证场景选择弹窗所有 UI 元素展示正确</td>
+                <td>web</td>
+                <td>${field(lines(["登录态：未登录", "账号与数据：未注册", "环境与权限：无"]), prePreview1)}</td>
+                <td>${field(lines(["点击右上角登录按钮，输入手机号或邮箱验证码"]), stepPreview1)}</td>
+                <td>${field(lines(["弹窗正常居中展示", "文案检查标题等于「你主要用 Hi3D 来做什么？」，正文包含「选择感兴趣的场景」，以及为你推荐更合适的内容（可多选）", "9 个场景选项全部正常展示", "样式检查确认按钮为禁用，跳过按钮为弱化样式"]), expectPreview1)}</td>
+                <td>无法 UI 自动化</td>
+              </tr>
+              <tr class="warn-row">
+                <td><input type="checkbox" checked aria-label="导入第 2 条" /></td>
+                <td><span class="pill warn">需处理</span></td>
+                <td class="mono">系统生成</td>
+                <td class="name">验证新用户首次注册登录正常弹出场景选择弹窗</td>
+                <td>web</td>
+                <td>${field(lines(["登录态：已登录", "账号与数据：引导"]), `<div class="para" style="border:0;padding:2px 0"><span class="n">1</span><div class="txt"><span class="seg static"><span class="evt">登录态</span><b>已登录</b></span></div></div><div class="para" style="border:0;padding:2px 0"><span class="n">2</span><div class="txt"><span class="seg static"><span class="evt">账号与数据</span><b>引导</b></span></div></div>`)}</td>
+                <td>${field(`<span class="read">（空）</span>`, `<span class="read">步骤为空</span>`)}</td>
+                <td>${field(lines(["弹窗检查 present=True，which=场景选择弹窗"]), `<div class="para" style="border:0;padding:2px 0"><span class="n">1</span><div class="txt"><span class="seg"><i class="badge">1</i><span class="evt">弹窗检查</span><b>present=True · which=场景选择弹窗</b></span></div></div>`)}</td>
+                <td>步骤为空</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="foot">
+          <span style="flex:1"></span>
+          <button class="btn" type="button" data-close="import">上一步</button>
+          <button class="btn primary" type="button" data-close="import">确认导入</button>
+        </div>
+      </div>`;
+
+    const main = document.getElementById("main");
+    const createScrim = document.getElementById("create-scrim");
+    const importScrim = document.getElementById("import-scrim");
+    createScrim.innerHTML = createHtml;
+    importScrim.innerHTML = importHtml;
+    main.innerHTML = runHtml;
+
+    let current = "ex-2-1";
+
+    function selectPoint(id) {
+      current = id;
+      document.querySelectorAll(".seg[data-id], tr.pick").forEach((el) => {
+        el.classList.toggle("on", el.dataset.id === id);
+      });
+      const shot = shots[id];
+      if (!shot) return;
+      document.getElementById("now-title").textContent = shot.title;
+      document.getElementById("now-rows").innerHTML = shot.rows.map((row) => `<dt>${row[0]}</dt><dd>${row[2] ? `<b>${row[1]}</b>` : row[1]}</dd>`).join("");
+      const chip = document.getElementById("chip");
+      chip.textContent = shot.chip;
+      chip.style.left = shot.x;
+      chip.style.top = `calc(${shot.y} + 18px)`;
+      const mark = document.getElementById("mark");
+      mark.style.left = shot.x;
+      mark.style.top = shot.y;
+      const row = document.querySelector(`tr.pick[data-id="${id}"]`);
+      if (!document.getElementById("pane-trace").hidden) row?.scrollIntoView({ block: "nearest" });
+    }
+
+    function paintUrls(app) {
+      const set = urls[app] || urls.global;
+      document.querySelectorAll("[data-env]").forEach((node) => { node.textContent = `三方 · Web · ${set[node.dataset.env]}`; });
+    }
+
+    function show(view) {
+      document.querySelectorAll(".states button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+      document.getElementById("blurb").textContent = blurbs[view];
+      createScrim.hidden = view !== "create";
+      importScrim.hidden = view !== "import";
+      if (view === "run") selectPoint(current);
+    }
+
+    document.querySelectorAll(".states button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
+    main.addEventListener("click", (event) => {
+      const paneBtn = event.target.closest("[data-pane]");
+      if (paneBtn) {
+        const pane = paneBtn.dataset.pane;
+        document.querySelectorAll("[data-pane]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.pane === pane)));
+        document.getElementById("pane-script").hidden = pane !== "script";
+        document.getElementById("pane-trace").hidden = pane !== "trace";
+        return;
+      }
+      const seg = event.target.closest(".seg[data-id], tr.pick");
+      if (seg) selectPoint(seg.dataset.id);
+      if (event.target.id === "back") show("create");
+    });
+    createScrim.addEventListener("click", (event) => {
+      if (event.target === createScrim || event.target.closest("[data-close='create']")) show("run");
+      const choice = event.target.closest(".choice");
+      if (choice) {
+        choice.parentElement.querySelectorAll(".choice").forEach((item) => item.setAttribute("aria-pressed", "false"));
+        choice.setAttribute("aria-pressed", "true");
+        const app = choice.dataset.app;
+        if (app) paintUrls(app);
+      }
+      if (event.target.id === "start") show("run");
+    });
+    importScrim.addEventListener("click", (event) => {
+      const modeBtn = event.target.closest(".modes button");
+      if (modeBtn) {
+        const box = modeBtn.closest(".field");
+        const mode = modeBtn.dataset.mode;
+        box.querySelectorAll(".modes button").forEach((button) => button.setAttribute("aria-pressed", String(button === modeBtn)));
+        box.querySelector(".raw").hidden = mode !== "raw";
+        box.querySelector(".preview").hidden = mode !== "preview";
+        return;
+      }
+      if (event.target === importScrim || event.target.closest("[data-close='import']")) show("run");
+    });
+    paintUrls("global");
+    selectPoint("ex-2-1");
+  </script>
+</body>
+</html>

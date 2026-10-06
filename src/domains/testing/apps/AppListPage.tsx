@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cloneElement, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Boxes, FolderPlus, FolderTree, Plus, RefreshCw, Search, TriangleAlert } from 'lucide-react'
-import { Button, EmptyState, Input, Skeleton, Tooltip, errText } from '@/ui'
+import { Activity, Boxes, ChevronDown, FolderTree, RefreshCw, Search, TriangleAlert } from 'lucide-react'
+import { Button, Dropdown, EmptyState, Input, Tooltip, errText } from '@/ui'
 import { useUrlState } from '@/hooks/useUrlState'
-import type { AppRow as App, ProjectRow } from '@/types/project'
-import { useAppTaskStats, useProjects, type AppTaskStat } from './queries'
+import type { AppRow as App } from '@/types/project'
+import { useAppTaskStats, useProjects } from './queries'
 import { CreateDialog, type CreateKind } from './CreateDialog'
 import { AppRow } from './AppRow'
 import { markAppOpened, recentAppIds } from './recent'
@@ -18,11 +18,10 @@ interface Flat {
 }
 
 /**
- * 应用列表 —— 登录后的落地页。
+ * 应用列表，登录后的落地页。
  *
- * 设计见 docs/交互设计.md §一：
- * 单列表而非按项目分组的网格（大多数项目只有一个应用，分组纯属开销），
- * 排序按「执行中 → 最近打开 → 名称」，全程键盘可达。
+ * 单列表，不按项目分组。排序：执行中 → 最近打开 → 名称。
+ * 新建收成一个入口：主按钮是新建应用，新建项目在菜单里。
  */
 export function AppListPage() {
   const navigate = useNavigate()
@@ -32,30 +31,31 @@ export function AppListPage() {
   const [cursor, setCursor] = useState(0)
   const searchRef = useRef<any>(null)
 
+  const projectList = projects.data || []
   const appIds = useMemo(
-    () => (projects.data || []).flatMap((p) => (p.apps || []).map((a) => a.id)).filter(Boolean),
-    [projects.data],
+    () => projectList.flatMap((p) => (p.apps || []).map((a) => a.id)).filter(Boolean),
+    [projectList],
   )
   const stats = useAppTaskStats(appIds)
+  const statMap = stats.data?.byId
+  const degraded = !!stats.data?.degraded
 
   const runningTotal = useMemo(
-    () => Object.values(stats.data || {}).reduce((n, s) => n + (s.runningCount || 0), 0),
-    [stats.data],
+    () => Object.values(statMap || {}).reduce((n, s) => n + (s.runningCount || 0), 0),
+    [statMap],
   )
 
-  // 拍平成一维列表并排序：执行中 → 最近打开 → 名称
   const rows = useMemo<Flat[]>(() => {
     const recents = recentAppIds()
-    const statMap = stats.data || {}
     const flat: Flat[] = []
-    for (const p of projects.data || []) {
+    for (const p of projectList) {
       for (const app of p.apps || []) {
         if (!app?.id) continue
         flat.push({
           app,
           projectId: p.id,
           projectName: p.name || '',
-          running: statMap[app.id]?.runningCount || 0,
+          running: degraded ? 0 : statMap?.[app.id]?.runningCount || 0,
           recentRank: recents.indexOf(app.id),
         })
       }
@@ -67,7 +67,7 @@ export function AppListPage() {
       if (ar !== br) return ar - br
       return String(a.app.name || '').localeCompare(String(b.app.name || ''), 'zh-Hans-CN')
     })
-  }, [projects.data, stats.data])
+  }, [projectList, statMap, degraded])
 
   const kw = q.trim().toLowerCase()
   const visible = useMemo(
@@ -78,29 +78,43 @@ export function AppListPage() {
     [rows, kw],
   )
 
-  const open = useCallback((row: Flat) => {
-    markAppOpened(row.app.id)
+  const hrefOf = (row: Flat) => {
     const qs = new URLSearchParams({
       appName: row.app.name || '',
       projectName: row.projectName,
       projectId: row.projectId,
     })
-    navigate(`/testing/${row.app.id}?${qs}`)
+    return `/testing/${row.app.id}?${qs}`
+  }
+
+  const open = useCallback((row: Flat) => {
+    markAppOpened(row.app.id)
+    navigate(hrefOf(row))
   }, [navigate])
 
-  // 键盘：/ 聚焦搜索，↑↓ 移动，Enter 进入。高频导航页不该强制用鼠标。
+  const openAppDialog = () => {
+    setCreating({
+      kind: 'app',
+      projects: projectList.map((p) => ({ id: p.id, name: p.name || '未命名项目' })),
+    })
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const typing = /^(INPUT|TEXTAREA)$/.test((e.target as HTMLElement)?.tagName || '')
-      if (e.key === '/' && !typing) {
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName || ''
+      const inField = /^(INPUT|TEXTAREA)$/.test(tag)
+      const inControl = /^(BUTTON|A|SELECT)$/.test(tag) || !!el?.closest?.('[role="menu"]')
+      if (e.key === '/' && !inField) {
         e.preventDefault()
         searchRef.current?.focus?.()
         return
       }
+      if (inControl) return
       if (!visible.length) return
       if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => Math.min(c + 1, visible.length - 1)) }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)) }
-      else if (e.key === 'Enter' && !typing) { e.preventDefault(); open(visible[cursor] || visible[0]) }
+      else if (e.key === 'Enter' && !inField) { e.preventDefault(); open(visible[cursor] || visible[0]) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -108,69 +122,45 @@ export function AppListPage() {
 
   useEffect(() => { setCursor(0) }, [kw])
 
-  if (projects.isLoading) {
-    return (
-      <Page>
-        <Skeleton active title={{ width: 100 }} paragraph={{ rows: 1 }} />
-        <Skeleton active title={false} paragraph={{ rows: 8 }} style={{ marginTop: 24 }} />
-      </Page>
-    )
-  }
+  useEffect(() => {
+    document.querySelector('[data-focus="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [cursor, visible])
 
-  if (projects.isError) {
-    return (
-      <Page>
-        <Surface>
-          <EmptyState
-            icon={<TriangleAlert size={30} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
-            title="读取项目列表失败"
-            hint={errText(projects.error, '确认 Nexus 是否已启动，以及当前账号是否已登录。')}
-            action={<Button size="small" onClick={() => void projects.refetch()}>重试</Button>}
-          />
-        </Surface>
-      </Page>
-    )
-  }
-
-  const projectCount = (projects.data || []).length
+  const projectCount = projectList.length
+  const showSearch = projectCount > 0 && !projects.isError && !projects.isLoading
 
   return (
-    <Page>
-      <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 'var(--w-space-4)' }}>
-        <h1 style={{ margin: 0, fontSize: 19, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--w-text)' }}>
+    <div>
+      <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 'var(--w-space-3)' }}>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--w-text)' }}>
           应用
         </h1>
-        {/* 概览压成一条细横条，不占卡片高度 */}
-        <div
-          className="flex items-center gap-3"
-          style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)', fontWeight: 650 }}
-        >
-          <Metric icon={<FolderTree size={12} />} label="项目" value={projectCount} />
-          <Dot />
-          <Metric icon={<Boxes size={12} />} label="应用" value={appIds.length} />
-          {runningTotal > 0 && (
-            <>
-              <Dot />
-              <Metric
-                icon={<Activity size={12} strokeWidth={2.4} />}
-                label="执行中"
-                value={runningTotal}
-                color="var(--w-running)"
-              />
-            </>
-          )}
-        </div>
-        <span style={{ flex: 1 }} />
-        <Input
-          ref={searchRef}
-          allowClear
-          size="small"
-          prefix={<Search size={13} style={{ color: 'var(--w-text-quaternary)' }} />}
-          placeholder="搜索应用  /"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ width: 220 }}
-        />
+        {!projects.isLoading && !projects.isError && projectCount > 0 && (
+          <div className="flex items-center gap-3" style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)', fontWeight: 650 }}>
+            <Metric icon={<FolderTree size={12} />} label="项目" value={projectCount} />
+            <Metric icon={<Boxes size={12} />} label="应用" value={appIds.length} />
+            {!degraded && runningTotal > 0 && (
+              <Metric icon={<Activity size={12} strokeWidth={2.4} />} label="执行中" value={runningTotal} color="var(--w-pass)" />
+            )}
+          </div>
+        )}
+        <div className="flex items-center gap-2 shrink-0" style={{ marginLeft: 'auto' }}>
+        {showSearch && (
+          <Input
+            ref={searchRef}
+            allowClear
+            size="small"
+            prefix={<Search size={13} style={{ color: 'var(--w-text-tertiary)' }} />}
+            suffix={!q ? <kbd className="w-kbd">/</kbd> : <span />}
+            placeholder="搜索应用…"
+            aria-label="搜索应用"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            style={{ width: 240 }}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        )}
         <Tooltip title="刷新">
           <Button
             size="small"
@@ -180,109 +170,158 @@ export function AppListPage() {
             aria-label="刷新"
           />
         </Tooltip>
-        <Button size="small" icon={<FolderPlus size={13} />} onClick={() => setCreating({ kind: 'project' })}>
-          新建项目
-        </Button>
+        {!projects.isLoading && !projects.isError && (projectCount > 0 ? (
+          <Dropdown.Button
+            size="small"
+            icon={<ChevronDown size={12} />}
+            buttonsRender={([left, right]) => [
+              left,
+              cloneElement(right as ReactElement<{ 'aria-label'?: string }>, { 'aria-label': '更多新建方式' }),
+            ]}
+            menu={{
+              items: [{ key: 'project', label: '新建项目' }],
+              onClick: () => setCreating({ kind: 'project' }),
+            }}
+            onClick={openAppDialog}
+          >
+            新建应用
+          </Dropdown.Button>
+        ) : (
+          <Button size="small" type="primary" onClick={() => setCreating({ kind: 'project' })}>
+            新建项目
+          </Button>
+        ))}
+        </div>
       </div>
 
-      {!projectCount ? (
-        <Surface>
+      {degraded && rows.length > 0 && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 10,
+            padding: '8px 12px',
+            borderRadius: 'var(--w-radius-sm)',
+            background: 'var(--w-warn-bg)',
+            color: 'var(--w-warn)',
+            fontSize: 'var(--w-font-sm)',
+            fontWeight: 650,
+          }}
+        >
+          执行计数暂时不可用。列表仍可进入。
+        </div>
+      )}
+
+      {projects.isLoading ? (
+        <div className="w-surface-card" aria-busy="true">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} style={{ height: 'var(--w-row-height)', borderBottom: '1px solid var(--w-border)', padding: '16px 14px' }}>
+              <div style={{ height: 10, width: i % 3 === 0 ? '46%' : '32%', borderRadius: 99, background: 'var(--w-fill)' }} />
+            </div>
+          ))}
+        </div>
+      ) : projects.isError ? (
+        <div className="w-surface-card">
+          <EmptyState
+            icon={<TriangleAlert size={30} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
+            title="读取项目列表失败"
+            hint={errText(projects.error, '确认 Nexus 是否已启动，以及当前账号是否已登录。')}
+            action={<Button size="small" type="primary" onClick={() => void projects.refetch()}>重试</Button>}
+          />
+        </div>
+      ) : !projectCount ? (
+        <div className="w-surface-card">
           <EmptyState
             title="还没有项目"
             hint="项目是应用的容器。先建一个项目，再在它下面创建应用。"
-            action={
-              <Button type="primary" icon={<FolderPlus size={14} />} onClick={() => setCreating({ kind: 'project' })}>
-                新建项目
-              </Button>
-            }
+            action={<Button type="primary" onClick={() => setCreating({ kind: 'project' })}>新建项目</Button>}
           />
-        </Surface>
+        </div>
       ) : !rows.length ? (
-        <Surface>
+        <div className="w-surface-card">
           <EmptyState
             title="还没有应用"
-            hint="项目已经建好了，下一步在项目下创建应用。"
-            action={<ProjectPicker projects={projects.data || []} onPick={(p) => setCreating({ kind: 'app', projectId: p.id, projectName: p.name || '未命名项目' })} />}
+            hint="项目已经建好。下一步在项目下创建应用。"
+            action={<Button type="primary" onClick={openAppDialog}>新建应用</Button>}
           />
-        </Surface>
+        </div>
       ) : !visible.length ? (
-        <Surface>
-          <EmptyState title="没有匹配的应用" hint={`换个关键字试试，当前搜索「${q}」。`} />
-        </Surface>
+        <div className="w-surface-card">
+          <EmptyState title="没有匹配的应用" hint={`换个关键字试试。当前搜索「${q}」。`} />
+        </div>
       ) : (
         <>
-          <Surface>
-            {visible.map((row, i) => (
-              <AppRow
-                key={row.app.id}
-                app={row.app}
-                projectName={row.projectName}
-                stat={stats.data?.[row.app.id] as AppTaskStat | undefined}
-                recent={row.recentRank >= 0}
-                focused={i === cursor}
-                onOpen={() => open(row)}
-                onHover={() => setCursor(i)}
-              />
-            ))}
-          </Surface>
+          <div className="w-surface-card" role="list">
+            <RowGroup rows={visible} kw={kw} cursor={cursor} hrefOf={hrefOf} onHover={setCursor} />
+          </div>
           <div
             className="flex items-center justify-between"
-            style={{ marginTop: 'var(--w-space-3)', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}
+            style={{ marginTop: 'var(--w-space-3)', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}
           >
+            <span className="flex items-center gap-3">
+              <span><kbd className="w-kbd">/</kbd> 搜索</span>
+              <span><kbd className="w-kbd">↑</kbd> <kbd className="w-kbd">↓</kbd> 选择</span>
+              <span><kbd className="w-kbd">Enter</kbd> 进入</span>
+            </span>
             <span>
               {kw ? `${visible.length} / ${rows.length} 个应用` : `${rows.length} 个应用`}
-              <span style={{ marginLeft: 10 }}>↑↓ 选择 · Enter 进入 · / 搜索</span>
+              {visible[cursor] && (
+                <strong style={{ marginLeft: 8, fontWeight: 700, color: 'var(--w-text)' }}>
+                  {visible[cursor].app.name || '未命名应用'}
+                </strong>
+              )}
             </span>
-            <ProjectPicker
-              projects={projects.data || []}
-              onPick={(p) => setCreating({ kind: 'app', projectId: p.id, projectName: p.name || '未命名项目' })}
-            />
           </div>
         </>
       )}
 
       <CreateDialog target={creating} onClose={() => setCreating(null)} />
-    </Page>
+    </div>
   )
 }
 
-/** 新建应用要先选项目。项目只有一个时直接用它，不让用户多点一下。 */
-function ProjectPicker({ projects, onPick }: { projects: ProjectRow[]; onPick: (p: ProjectRow) => void }) {
-  if (!projects.length) return null
-  if (projects.length === 1) {
+function RowGroup({
+  rows,
+  kw,
+  cursor,
+  hrefOf,
+  onHover,
+}: {
+  rows: Flat[]
+  kw: string
+  cursor: number
+  hrefOf: (row: Flat) => string
+  onHover: (index: number) => void
+}) {
+  const showBand = !kw && rows.some((r) => r.running > 0)
+  const running = showBand ? rows.filter((r) => r.running > 0) : []
+  const rest = showBand ? rows.filter((r) => r.running === 0) : rows
+  const render = (list: Flat[]) => list.map((row) => {
+    const index = rows.indexOf(row)
     return (
-      <Button size="small" type="text" icon={<Plus size={13} />} onClick={() => onPick(projects[0])}>
-        新建应用
-      </Button>
+      <AppRow
+        key={row.app.id}
+        app={row.app}
+        projectName={row.projectName}
+        running={row.running}
+        recent={row.recentRank >= 0}
+        focused={index === cursor}
+        href={hrefOf(row)}
+        onHover={() => onHover(index)}
+        onOpen={() => markAppOpened(row.app.id)}
+      />
     )
-  }
+  })
+
   return (
-    <Tooltip title="选项目后新建应用">
-      <span>
-        <select
-          onChange={(e) => {
-            const hit = projects.find((p) => p.id === e.target.value)
-            if (hit) onPick(hit)
-            e.currentTarget.selectedIndex = 0
-          }}
-          style={{
-            fontSize: 'var(--w-font-sm)',
-            fontWeight: 650,
-            color: 'var(--w-text-secondary)',
-            background: 'transparent',
-            border: '1px solid var(--w-border-strong)',
-            borderRadius: 'var(--w-radius-sm)',
-            padding: '3px 6px',
-            cursor: 'pointer',
-          }}
-        >
-          <option value="">+ 新建应用…</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.name || '未命名项目'}</option>
-          ))}
-        </select>
-      </span>
-    </Tooltip>
+    <>
+      {showBand && (
+        <div className="w-run-group">
+          <div className="w-band">正在执行</div>
+          {render(running)}
+        </div>
+      )}
+      {render(rest)}
+    </>
   )
 }
 
@@ -291,30 +330,7 @@ function Metric({ icon, label, value, color }: { icon: React.ReactNode; label: s
     <span className="inline-flex items-center gap-1" style={{ color }}>
       {icon}
       <span>{label}</span>
-      <strong style={{ fontWeight: 800, color: color || 'var(--w-text)', fontVariantNumeric: 'tabular-nums' }}>
-        {value}
-      </strong>
+      <strong style={{ fontWeight: 800, color: color || 'var(--w-text)', fontVariantNumeric: 'tabular-nums' }}>{value}</strong>
     </span>
-  )
-}
-
-const Dot = () => <span aria-hidden style={{ color: 'var(--w-border-strong)' }}>·</span>
-
-function Page({ children }: { children: React.ReactNode }) {
-  return <div>{children}</div>
-}
-
-function Surface({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        background: 'var(--w-surface)',
-        border: '1px solid var(--w-border)',
-        borderRadius: 'var(--w-radius-lg)',
-        overflow: 'hidden',
-      }}
-    >
-      {children}
-    </div>
   )
 }

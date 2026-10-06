@@ -1,67 +1,51 @@
-import { Activity, ChevronRight } from 'lucide-react'
-import { formatPlatformTags, getPlatformIcon } from '@/constants/appPlatforms'
+import { Link } from 'react-router-dom'
+import { Activity } from 'lucide-react'
+import { formatPlatformTags } from '@/constants/appPlatforms'
 import type { AppRow as App } from '@/types/project'
-import type { AppTaskStat } from './queries'
 
 /**
- * 应用行。列表优先于网格：本产品数据密度高，
- * 网格方案一屏只放得下 4 个应用，列表能放 10+。
+ * 应用行。整行是链接，方便中键和新标签打开。
+ * 焦点行右侧写出「进入」，键盘和鼠标共用这一态。
  */
 export function AppRow({
   app,
   projectName,
-  stat,
+  running,
   recent,
   focused,
-  onOpen,
+  href,
   onHover,
+  onOpen,
 }: {
   app: App
   projectName?: string
-  stat?: AppTaskStat
+  running: number
   recent?: boolean
   focused?: boolean
-  onOpen: () => void
+  href: string
   onHover: () => void
+  onOpen: () => void
 }) {
   const tags = formatPlatformTags(app.platforms)
-  const running = stat?.runningCount || 0
 
   return (
-    <button
-      type="button"
+    <Link
+      to={href}
       onClick={onOpen}
       onMouseEnter={onHover}
-      className="flex w-full items-center text-left"
-      style={{
-        gap: 'var(--w-space-3)',
-        minHeight: 'var(--w-row-height)',
-        padding: '0 var(--w-space-3)',
-        border: 'none',
-        borderLeft: `2px solid ${running > 0 ? 'var(--w-running)' : 'transparent'}`,
-        borderBottom: '1px solid var(--w-border)',
-        background: focused ? 'var(--w-surface-hover)' : 'transparent',
-        cursor: 'pointer',
-        minWidth: 0,
-      }}
+      data-focus={focused ? 'true' : 'false'}
+      className="w-app-row w-hit"
+      title={app.name}
     >
-      <span style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }} aria-hidden>
-        {getPlatformIcon(app.platforms)}
-      </span>
-
-      <span className="min-w-0 flex-1 flex items-baseline gap-2">
+      <span className="min-w-0 flex items-baseline gap-2">
         <strong
           className="truncate"
           style={{ fontSize: 'var(--w-font-base)', fontWeight: 650, color: 'var(--w-text)' }}
-          title={app.name}
         >
           {app.name || '未命名应用'}
         </strong>
         {projectName && (
-          <span
-            className="truncate"
-            style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-quaternary)', flexShrink: 1 }}
-          >
+          <span className="truncate" style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
             {projectName}
           </span>
         )}
@@ -70,7 +54,7 @@ export function AppRow({
             style={{
               fontSize: 'var(--w-font-meta)',
               fontWeight: 700,
-              color: 'var(--w-text-quaternary)',
+              color: 'var(--w-text-tertiary)',
               border: '1px solid var(--w-border-strong)',
               padding: '0 5px',
               borderRadius: 'var(--w-radius-pill)',
@@ -82,14 +66,14 @@ export function AppRow({
         )}
       </span>
 
-      <span className="flex items-center gap-1.5 shrink-0">
+      <span className="w-app-tags flex items-center gap-1.5">
         {tags.map((t) => (
           <span
             key={t}
             style={{
               fontSize: 'var(--w-font-meta)',
               fontWeight: 650,
-              color: 'var(--w-text-tertiary)',
+              color: 'var(--w-text-secondary)',
               background: 'var(--w-fill)',
               padding: '1px 7px',
               borderRadius: 'var(--w-radius-pill)',
@@ -101,20 +85,28 @@ export function AppRow({
         ))}
       </span>
 
-      {/* 状态三件齐备：颜色 + 图标 + 文字 */}
-      <span className="shrink-0" style={{ width: 92, textAlign: 'right' }}>
+      <span className="w-app-status" style={{ textAlign: 'right' }}>
         {running > 0 && (
           <span
-            className="inline-flex items-center gap-1"
-            style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-running)' }}
+            className="inline-flex items-center justify-end gap-1"
+            style={{ fontSize: 'var(--w-font-sm)', fontWeight: 700, color: 'var(--w-pass)', fontVariantNumeric: 'tabular-nums' }}
           >
-            <Activity size={11} strokeWidth={2.4} />
+            <Activity size={12} strokeWidth={2.2} aria-hidden />
             {running} 执行中
           </span>
         )}
       </span>
 
-      <ChevronRight size={15} style={{ color: 'var(--w-text-quaternary)', flexShrink: 0 }} />
-    </button>
+      <span
+        style={{
+          textAlign: 'right',
+          fontSize: 'var(--w-font-sm)',
+          fontWeight: focused ? 700 : 500,
+          color: focused ? 'var(--w-primary)' : 'var(--w-text-quaternary)',
+        }}
+      >
+        {focused ? '进入' : '›'}
+      </span>
+    </Link>
   )
 }

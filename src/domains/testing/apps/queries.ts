@@ -27,6 +27,12 @@ export interface AppTaskStat {
   total?: number
 }
 
+export interface AppTaskStats {
+  byId: Record<string, AppTaskStat>
+  /** summary 和 runs 都失败。列表仍可用，只是没有执行计数。 */
+  degraded: boolean
+}
+
 /**
  * 任务角标。summary 接口在老 Nexus 上不存在，失败时降级到 /case-runner/runs。
  * 两个都失败就返回空 —— 计数是增强信息，不该拖垮主列表（契约「边界」节）。
@@ -37,24 +43,24 @@ export const useAppTaskStats = (appIds: string[]) =>
     enabled: appIds.length > 0,
     refetchInterval: 30_000,
     retry: false,
-    queryFn: async (): Promise<Record<string, AppTaskStat>> => {
+    queryFn: async (): Promise<AppTaskStats> => {
       try {
         const res = await listTestingTaskSummary(appIds)
         const raw = (res?.data as any)?.items ?? res?.data
         const list: any[] = Array.isArray(raw) ? raw : []
         if (list.length) {
-          const out: Record<string, AppTaskStat> = {}
+          const byId: Record<string, AppTaskStat> = {}
           for (const row of list) {
             const id = row.app_id || row.appId
             if (!id) continue
-            out[id] = {
+            byId[id] = {
               runningCount: Number(row.running_count || 0),
               status: row.status || row.latest?.status,
               completed: row.completed ?? row.latest?.completed,
               total: row.total ?? row.latest?.total,
             }
           }
-          return out
+          return { byId, degraded: false }
         }
       } catch {
         // 落到 runs 兜底
@@ -63,22 +69,22 @@ export const useAppTaskStats = (appIds: string[]) =>
       try {
         const res = await listCaseRunnerRuns(40)
         const runs: any[] = (res?.data as any)?.runs || []
-        const out: Record<string, AppTaskStat> = {}
+        const byId: Record<string, AppTaskStat> = {}
         for (const run of runs) {
           const id = run.app_id || run.appId
           if (!id) continue
-          const prev = out[id] || { runningCount: 0 }
+          const prev = byId[id] || { runningCount: 0 }
           const running = String(run.status || '').toLowerCase() === 'running'
-          out[id] = {
+          byId[id] = {
             runningCount: prev.runningCount + (running ? 1 : 0),
             status: prev.status ?? run.status,
             completed: prev.completed ?? run.completed,
             total: prev.total ?? run.total,
           }
         }
-        return out
+        return { byId, degraded: false }
       } catch {
-        return {}
+        return { byId: {}, degraded: true }
       }
     },
   })

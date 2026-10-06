@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react'
+import { usePersistedFlag } from '@/hooks/usePersistedFlag'
 import { useSearchParams } from 'react-router-dom'
-import { CircleSlash, ExternalLink, Search, TriangleAlert } from 'lucide-react'
+import { CircleSlash, ExternalLink, Search, TriangleAlert, Upload } from 'lucide-react'
 import {
   Button, DataTable, EmptyState, Input, Segmented, Skeleton, StatusPill, errText,
   type DataColumn,
 } from '@/ui'
 import type { CaseRow } from '@/api/projectCases'
 import { ModuleFilter } from './ModuleFilter'
-import { NumberedLines } from './NumberedLines'
+import { ScriptField } from './ScriptField'
 import { RunBar, type DispatchedRun } from './RunBar'
+import { CaseImportDialog } from './CaseImportDialog'
+import { CasePreview } from './CasePreview'
 import { useLastResults, useProjectCases, useRunDevices, type LastResult } from './queries'
 
 type ResultFilter = 'all' | 'failed' | 'never'
@@ -24,7 +27,7 @@ const EMPTY_RESULTS: Record<string, LastResult> = {}
  * 3. 下发后**不跳页**，就地出现执行条
  */
 export function CasesPanel({ appId }: { appId: string }) {
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const projectId = params.get('projectId') || ''
 
   const cases = useProjectCases(projectId)
@@ -32,11 +35,14 @@ export function CasesPanel({ appId }: { appId: string }) {
   const lastResults = useLastResults(appId)
 
   const [moduleKey, setModuleKey] = useState('')
-  const [filterCollapsed, setFilterCollapsed] = useState(false)
+  const [filterCollapsed, setFilterCollapsed] = usePersistedFlag('mino.cases.modules', false)
   const [kw, setKw] = useState('')
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all')
   const [selected, setSelected] = useState<React.Key[]>([])
   const [dispatched, setDispatched] = useState<DispatchedRun | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const previewId = params.get('case') || ''
+  const previewRow = (cases.data || []).find((row) => row.case_id === previewId)
 
   // 每次渲染都写 `data || {}` 会造出新对象，下面三个 useMemo 的依赖就永远在变，
   // 缓存等于没做。用一个模块级常量兜底。
@@ -121,22 +127,22 @@ export function CasesPanel({ appId }: { appId: string }) {
       },
     },
     {
+      key: 'precondition',
+      title: '前置条件',
+      width: 240,
+      render: (_: unknown, row) => <ScriptField kind="pre" value={row.precondition} />,
+    },
+    {
       key: 'steps',
       title: '操作步骤',
-      width: 300,
-      render: (_: unknown, row) => <NumberedLines value={row.steps ?? row.steps_raw} />,
+      width: 320,
+      render: (_: unknown, row) => <ScriptField kind="op" value={row.steps ?? row.steps_raw} />,
     },
     {
       key: 'expected',
       title: '预期结果',
-      width: 280,
-      render: (_: unknown, row) => <NumberedLines value={row.expected ?? row.expected_raw} />,
-    },
-    {
-      key: 'precondition',
-      title: '前置条件',
-      width: 200,
-      render: (_: unknown, row) => <NumberedLines value={row.precondition} max={2} />,
+      width: 320,
+      render: (_: unknown, row) => <ScriptField kind="ex" value={row.expected ?? row.expected_raw} />,
     },
   ], [results])
 
@@ -169,13 +175,30 @@ export function CasesPanel({ appId }: { appId: string }) {
 
   if (!(cases.data || []).length) {
     return (
-      <Card>
-        <EmptyState
-          icon={<CircleSlash size={28} strokeWidth={1.5} />}
-          title="这个项目还没有用例"
-          hint="用例可以从表格导入，或由需求流程生成。导入功能排在后续阶段。"
-        />
-      </Card>
+      <>
+        <Card>
+          <EmptyState
+            icon={<CircleSlash size={28} strokeWidth={1.5} />}
+            title="这个项目还没有用例"
+            hint="从表格导入。导入前会先预览，冲突的行默认跳过。"
+            action={<Button size="small" icon={<Upload size={13} />} onClick={() => setImportOpen(true)}>导入用例</Button>}
+          />
+        </Card>
+        <CaseImportDialog projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
+      </>
+    )
+  }
+
+  if (previewRow) {
+    return (
+      <CasePreview
+        row={previewRow}
+        onBack={() => {
+          const next = new URLSearchParams(params)
+          next.delete('case')
+          setParams(next, { replace: true })
+        }}
+      />
     )
   }
 
@@ -221,14 +244,14 @@ export function CasesPanel({ appId }: { appId: string }) {
           onToggle={() => setFilterCollapsed((v) => !v)}
         />
 
-        <div className="flex flex-col flex-1 min-w-0" style={{ gap: 'var(--w-space-2)' }}>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ gap: 'var(--w-space-2)' }}>
           <DataTable<CaseRow>
             viewId="testing.cases"
             columns={columns}
             dataSource={rows}
             rowKey="case_id"
             loading={cases.isFetching && !cases.data}
-            scrollY="calc(100vh - 320px)"
+            fill
             toolbar={
               <>
                 <Input
@@ -253,6 +276,7 @@ export function CasesPanel({ appId }: { appId: string }) {
                 <span style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
                   {rows.length} / {(cases.data || []).length}
                 </span>
+                <Button size="small" icon={<Upload size={13} />} onClick={() => setImportOpen(true)}>导入</Button>
               </>
             }
             selection={{
@@ -261,7 +285,12 @@ export function CasesPanel({ appId }: { appId: string }) {
               actions: null,
             }}
             emptyTitle="没有匹配的用例"
-            emptyHint="调整模块、搜索或结果筛选试试。"
+            emptyHint="调整模块、搜索或结果筛选试试。点一行可预览步骤和预期。"
+            onRowClick={(row) => {
+              const next = new URLSearchParams(params)
+              next.set('case', row.case_id)
+              setParams(next, { replace: true })
+            }}
           />
 
           <RunBar
@@ -274,6 +303,7 @@ export function CasesPanel({ appId }: { appId: string }) {
           />
         </div>
       </div>
+      <CaseImportDialog projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   )
 }

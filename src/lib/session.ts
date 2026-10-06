@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { getAuthStatus, logoutAccount } from '@/api/auth'
-import { clearTokens, persistAuthTokens } from '@/lib/tokens'
+import { clearTokens, hasToken, persistAuthTokens } from '@/lib/tokens'
 import { normalizeRole } from '@/lib/iam'
 import type { AuthStatus } from '@/types/auth'
 
 interface SessionState {
   user: AuthStatus | null
   role: string
-  /** null = 还没查过；true/false = 查过了 */
+  /** null = 本地有票据、还没向 Nexus 核对；true/false = 已有结论 */
   loggedIn: boolean | null
   loading: boolean
   refresh: () => Promise<boolean>
@@ -18,10 +18,16 @@ interface SessionState {
 export const useSession = create<SessionState>((set) => ({
   user: null,
   role: '',
-  loggedIn: null,
+  // 没有票据就不必打 /auth/status。Nexus 不可达时那次请求会挂很久，
+  // 门禁会一直停在「正在确认登录状态」。
+  loggedIn: hasToken() ? null : false,
   loading: false,
 
   refresh: async () => {
+    if (!hasToken()) {
+      set({ loading: false, loggedIn: false, user: null, role: '' })
+      return false
+    }
     set({ loading: true })
     try {
       const res = await getAuthStatus()

@@ -13,7 +13,8 @@ const AuditPage = lazy(() => import('@/domains/admin/audit/AuditPage').then((m) 
 const AppListPage = lazy(() => import('@/domains/testing/apps/AppListPage').then((m) => ({ default: m.AppListPage })))
 const AppWorkbench = lazy(() => import('@/domains/testing/workbench/AppWorkbench').then((m) => ({ default: m.AppWorkbench })))
 const NodesPage = lazy(() => import('@/domains/settings/nodes/NodesPage').then((m) => ({ default: m.NodesPage })))
-const PluginsPage = lazy(() => import('@/domains/settings/plugins/PluginsPage').then((m) => ({ default: m.PluginsPage })))
+const DeviceDetailPage = lazy(() => import('@/domains/settings/devices/DeviceDetailPage').then((m) => ({ default: m.DeviceDetailPage })))
+const KeysPage = lazy(() => import('@/domains/settings/keys/KeysPage').then((m) => ({ default: m.KeysPage })))
 
 const lazyPage = (node: ReactNode) => (
   <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} style={{ padding: 4 }} />}>
@@ -42,14 +43,14 @@ export const router = createBrowserRouter([
       { path: '/settings/runtime', element: lazyPage(<NodesPage />) },
       {
         path: '/settings/runtime/device/:sn',
-        element: <Planned title="设备详情" phase="阶段 3" source="Settings/DeviceDetailPage.vue 370 行" />,
+        element: lazyPage(<DeviceDetailPage />),
       },
       // 调用记录（原 /settings/dispatch）本期不做
       { path: '/settings/dispatch', element: <Navigate to="/testing" replace /> },
       { path: '/settings/dispatch/*', element: <Navigate to="/testing" replace /> },
-      { path: '/settings/plugins', element: lazyPage(<PluginsPage />) },
-      { path: '/settings/plugins/:pluginId', element: <Planned title="插件详情" phase="阶段 3" source="Settings/PluginDetailPage.vue 1,725 行" /> },
-      { path: '/settings/keys', element: <Planned title="模型密钥" phase="阶段 3" source="Settings/KeysPage.vue 996 行" /> },
+      { path: '/settings/plugins', element: <Navigate to="/settings/runtime" replace /> },
+      { path: '/settings/plugins/:pluginId', element: <Navigate to="/settings/runtime" replace /> },
+      { path: '/settings/keys', element: lazyPage(<KeysPage />) },
       { path: '/settings/apps/:appId/:section', element: <Planned title="应用配置" phase="阶段 3" note="只保留环境配置一项。" source="Settings/AppConfigPage.vue 546 行" /> },
       { path: '/settings/projects/:projectId/env', element: <Planned title="项目环境" phase="阶段 3" source="Settings/ProjectEnvPage.vue 42 行" /> },
 

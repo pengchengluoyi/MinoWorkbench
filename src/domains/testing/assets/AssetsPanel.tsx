@@ -91,7 +91,7 @@ function Accounts({ projectId }: { projectId: string }) {
       rowKey={(r) => String(r.account_id || r.account_ident || r.username || Math.random())}
       loading={q.isLoading}
       error={q.isError ? q.error : undefined}
-      scrollY="calc(100vh - 230px)"
+      fill
       emptyTitle="这个项目还没有测试账号"
       emptyHint="账号可以从号池模板分配，或手工登记。"
     />
@@ -134,7 +134,7 @@ function ResourceLogs({ projectId }: { projectId: string }) {
       rowKey={(r) => String(r.id || `${r.created_at}-${r.action}`)}
       loading={q.isLoading}
       error={q.isError ? q.error : undefined}
-      scrollY="calc(100vh - 230px)"
+      fill
       emptyTitle="还没有资源日志"
       emptyHint="账号的分配、归还、转移会记录在这里。"
     />
@@ -185,7 +185,7 @@ function DeviceApps({ projectId }: { projectId: string }) {
       rowKey={(r) => String(`${r.sn}-${r.package_id}-${r.created_at}`)}
       loading={q.isLoading}
       error={q.isError ? q.error : undefined}
-      scrollY="calc(100vh - 230px)"
+      fill
       emptyTitle="还没有机态记录"
       emptyHint="执行时观察到的「设备上装了哪个版本、登的哪个账号」会记录在这里。"
     />

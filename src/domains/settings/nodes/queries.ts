@@ -11,11 +11,15 @@ export const nodeKeys = {
   release: (os: string, arch: string) => ['releases', 'scout', os, arch] as const,
 }
 
-/** 节点状态变化快，15 秒刷一次。 */
+/** 平时 15 秒。有节点在下安装包时改成 2 秒，进度才跟得上。 */
 export const useNodes = () =>
   useQuery({
     queryKey: nodeKeys.all,
-    refetchInterval: 15_000,
+    refetchInterval: (query) => {
+      const rows = query.state.data as ScoutNode[] | undefined
+      if (rows?.some((n) => n.update_job?.active || n.plugin_job?.active)) return 2_000
+      return 15_000
+    },
     queryFn: async () =>
       unwrapList<ScoutNode>(await listRuntimeNodes(), {
         keys: ['nodes', 'executors'],
@@ -32,8 +36,9 @@ export const useScoutRelease = (node: ScoutNode | undefined) => {
   return useQuery({
     queryKey: nodeKeys.release(target.os, target.arch),
     enabled: !!node,
-    retry: false,
-    staleTime: 5 * 60_000,
+    retry: 1,
+    staleTime: 30_000,
+    refetchInterval: (query) => (query.state.data?.packaging ? 8_000 : false),
     queryFn: async (): Promise<ScoutRelease> =>
       unwrapOne<ScoutRelease>(await getScoutRelease(target.os, target.arch)) || {},
   })

@@ -6,6 +6,7 @@ import { loginAccount } from '@/api/auth'
 import { useSession } from '@/lib/session'
 import { persistAuthTokens } from '@/lib/tokens'
 import { connectRealtime } from '@/lib/realtime'
+import { AuthShell } from './AuthShell'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -30,7 +31,7 @@ export function LoginPage() {
 
       // 执行链路的实时推送走这个通道，登录后即连
       connectRealtime(res?.data?.ws_token)
-      const from = (location.state as any)?.from
+      const from = (location.state as { from?: string } | null)?.from
       navigate(from || '/testing', { replace: true })
     } catch (e) {
       fb.fail(errText(e, '登录失败，检查账号密码或 Nexus 是否可达'))
@@ -40,58 +41,33 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center" style={{ padding: 24 }}>
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 360,
-          padding: 28,
-          background: 'var(--w-surface)',
-          border: '1px solid var(--w-border)',
-          borderRadius: 'var(--w-radius-xl)',
-          boxShadow: 'var(--w-shadow)',
-        }}
-      >
-        <div className="flex items-center gap-3" style={{ marginBottom: 20 }}>
-          <div
-            className="flex items-center justify-center"
-            style={{
-              width: 32, height: 32, borderRadius: 9,
-              background: 'var(--w-primary)', color: '#fff', fontSize: 12, fontWeight: 800,
-            }}
-          >
-            MW
-          </div>
-          <div>
-            <strong style={{ display: 'block', fontSize: 'var(--w-font-title)', color: 'var(--w-text)' }}>
-              Mino Workbench
-            </strong>
-            <span style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
-              测试工作台与管理后台
-            </span>
-          </div>
-        </div>
+    <AuthShell>
+      <h1 style={{ margin: '0 0 4px', fontSize: 'var(--w-font-h2)', fontWeight: 800, color: 'var(--w-text)' }}>
+        登录
+      </h1>
+      <p style={{ margin: '0 0 18px', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)', lineHeight: 'var(--w-line-relaxed)' }}>
+使用 Nexus 账号。连不上时，先核对底部地址。
+      </p>
 
-        <Form layout="vertical" onFinish={onSubmit} requiredMark={false} disabled={loading}>
-          <Form.Item
-            name="account"
-            label="账号"
-            rules={[{ required: true, message: '请输入账号或邮箱' }]}
-          >
-            <Input placeholder="邮箱或用户名" autoComplete="username" size="large" />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            label="密码"
-            rules={[{ required: true, message: '请输入密码' }]}
-          >
-            <Input.Password placeholder="密码" autoComplete="current-password" size="large" />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" block size="large" loading={loading}>
-            登录
-          </Button>
-        </Form>
-      </div>
-    </div>
+      <Form layout="vertical" onFinish={onSubmit} requiredMark={false} disabled={loading}>
+        <Form.Item
+          name="account"
+          label="账号"
+          rules={[{ required: true, message: '请输入账号或邮箱' }]}
+        >
+          <Input placeholder="邮箱或用户名" autoComplete="username" size="large" autoFocus />
+        </Form.Item>
+        <Form.Item
+          name="password"
+          label="密码"
+          rules={[{ required: true, message: '请输入密码' }]}
+        >
+          <Input.Password placeholder="密码" autoComplete="current-password" size="large" />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" block size="large" loading={loading}>
+          登录
+        </Button>
+      </Form>
+    </AuthShell>
   )
 }

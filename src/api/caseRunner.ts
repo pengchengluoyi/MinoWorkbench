@@ -21,6 +21,12 @@ export const listTestingTasks = (
 export const getTestingTask = (taskId: string) =>
   request<unknown>({ url: `/case-runner/tasks/${taskId}`, method: 'get' })
 
+export const getSessionTrajectory = (sessionId: string) =>
+  request<Record<string, unknown>>({ url: `/case-runner/sessions/${encodeURIComponent(sessionId)}/trajectory`, method: 'get' })
+
+export const getCaseRunnerTraceDetail = (runId: string) =>
+  request<Record<string, unknown>>({ url: `/case-runner/traces/${encodeURIComponent(runId)}`, method: 'get' })
+
 export const cancelTestingTask = (taskId: string) =>
   request({ url: `/case-runner/tasks/${taskId}/cancel`, method: 'post' })
 
