@@ -18,7 +18,7 @@ export function StackPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ gap: 16 }}>
-      <PageHeader title="编排" subtitle="当前角色和技能的绑定，以及触发器。提示词在角色页修改。" />
+      <PageHeader title="编排" subtitle="绑定写在 prompts/stack/stack.yaml，这里只读。" />
       <section className="min-h-0 flex-1">
         <h2 style={heading}>角色绑定</h2>
         <DataTable<StackRole>

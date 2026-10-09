@@ -16,7 +16,7 @@ export function SkillsPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader title="技能" subtitle="执行时可以调用的技能目录" count={`${rows.length} 条`} />
+      <PageHeader title="技能" subtitle="技能在仓库 prompts/skills 里维护，这里只读。" count={`${rows.length} 条`} />
       <DataTable<SkillRow>
         viewId="admin.skills"
         fill
@@ -45,8 +45,10 @@ const columns: DataColumn<SkillRow>[] = [
     key: 'description',
     title: '说明',
     ellipsis: true,
-    render: (_: unknown, row) => row.description || '无',
+    render: (_: unknown, row) => row.summary || row.description || '无',
   },
+  { key: 'version', title: '版本', width: 72, render: (_: unknown, row) => String(row.version || '') },
+  { key: 'path', title: '文件', ellipsis: true, render: (_: unknown, row) => <span className="w-mono">{row.source_path || ''}</span> },
   {
     key: 'enabled',
     title: '状态',

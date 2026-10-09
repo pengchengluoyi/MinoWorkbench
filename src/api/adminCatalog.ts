@@ -24,9 +24,13 @@ export interface TransitionRule {
 export interface SkillRow {
   id: string
   label?: string
+  summary?: string
   description?: string
   enabled?: boolean
   sort_order?: number
+  version?: number
+  sha?: string
+  source_path?: string
 }
 
 export const getCaseResourceCatalog = () =>
@@ -54,6 +58,9 @@ export interface JobRow {
   engine?: string
   role_id?: string
   enabled?: boolean
+  prompt_version?: number
+  prompt_sha?: string
+  source_path?: string
 }
 
 export interface JobHealth {
@@ -67,6 +74,9 @@ export interface RoleRow {
   group?: string
   system_prompt?: string
   skill_ids?: string[]
+  version?: number
+  sha?: string
+  source_path?: string
 }
 
 export interface StackSkill { id: string; label?: string }
@@ -103,13 +113,6 @@ export const listRoles = () =>
 
 export const getRole = (id: string) =>
   request<RoleRow>({ url: `/settings/ai/roles/${encodeURIComponent(id)}`, method: 'get' })
-
-export const saveRolePrompt = (id: string, system_prompt: string) =>
-  request<RoleRow>({
-    url: `/settings/ai/roles/${encodeURIComponent(id)}/prompt`,
-    method: 'put',
-    data: { system_prompt },
-  })
 
 export const getStack = () =>
   request<{ roles?: StackRole[]; skills?: StackSkill[]; triggers?: StackTrigger[] }>({

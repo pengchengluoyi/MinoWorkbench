@@ -23,7 +23,7 @@ export function JobsPage() {
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="Jobs"
-        subtitle={broken.length ? `${broken.length} 个启用中的 Job 渲染失败` : '模型任务模板。启用的条目会参与健康检查'}
+        subtitle={broken.length ? `${broken.length} 个启用中的 Job 渲染失败` : '模型任务模板在仓库 prompts/jobs 里维护。这里只读。'}
         count={health.data?.ok != null ? `可用 ${health.data.ok}` : `${rows.length} 条`}
       />
       <DataTable<JobRow>
@@ -52,6 +52,9 @@ const columns: DataColumn<JobRow>[] = [
   },
   { key: 'summary', title: '说明', ellipsis: true, render: (_: unknown, row) => row.summary || '无' },
   { key: 'engine', title: '引擎', width: 120, render: (_: unknown, row) => row.engine || '无' },
+  { key: 'version', title: '版本', width: 72, render: (_: unknown, row) => String(row.prompt_version || '') },
+  { key: 'sha', title: 'sha', width: 88, render: (_: unknown, row) => <span className="w-mono">{(row.prompt_sha || '').slice(0, 7)}</span> },
+  { key: 'path', title: '文件', ellipsis: true, render: (_: unknown, row) => <span className="w-mono">{row.source_path || ''}</span> },
   { key: 'role', title: '角色', width: 140, render: (_: unknown, row) => <span className="w-mono">{row.role_id || '无'}</span> },
   {
     key: 'enabled',
