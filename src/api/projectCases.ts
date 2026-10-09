@@ -30,6 +30,7 @@ export interface ImportPreviewRow {
   conflict?: boolean
   selected_by_default?: boolean
   selected?: boolean
+  parse_status?: string
   [key: string]: unknown
 }
 
@@ -40,11 +41,27 @@ export const listImportRequirements = (projectId: string) =>
   })
 
 export const previewCaseImport = (projectId: string, data: Record<string, unknown>) =>
-  request<{ preview_token?: string; rows?: ImportPreviewRow[]; parsed?: number; conflicts?: unknown[] }>({
+  request<{ preview_token?: string; rows?: ImportPreviewRow[]; parsed?: number; total?: number; done?: boolean; conflicts?: unknown[] }>({
     url: `/project/${projectId}/cases/import/preview`,
     method: 'post',
     data,
-    timeout: 120_000,
+    timeout: 60_000,
+  })
+
+export const getImportPreview = (projectId: string, token: string) =>
+  request<{ preview_token?: string; rows?: ImportPreviewRow[]; parsed?: number; total?: number; done?: boolean }>({
+    url: `/project/${projectId}/cases/import/preview/${token}`,
+    method: 'get',
+  })
+
+export const cancelImportPreview = (projectId: string, token: string) =>
+  request({ url: `/project/${projectId}/cases/import/preview/${token}/cancel`, method: 'post' })
+
+export const retryImportPreviewRow = (projectId: string, token: string, rowIndex: number) =>
+  request<{ rows?: ImportPreviewRow[]; parsed?: number; total?: number; done?: boolean }>({
+    url: `/project/${projectId}/cases/import/preview/${token}/retry`,
+    method: 'post',
+    data: { row_index: rowIndex },
   })
 
 export const commitCaseImport = (projectId: string, data: Record<string, unknown>) =>

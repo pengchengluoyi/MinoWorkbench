@@ -21,11 +21,11 @@ export function CasePreview({ row, onBack }: { row: CaseRow; onBack: () => void 
         </section>
         <section style={card}>
           <h2 style={heading}>操作步骤</h2>
-          <ScriptField kind="op" value={row.steps || row.steps_raw} max={80} />
+          <ScriptField kind="op" value={row.steps || row.steps_raw} compiled={row.steps_parsed ?? []} max={80} />
         </section>
         <section style={card}>
           <h2 style={heading}>预期结果</h2>
-          <ScriptField kind="ex" value={row.expected || row.expected_raw} max={80} />
+          <ScriptField kind="ex" value={row.expected || row.expected_raw} compiled={row.expected_parsed ?? []} max={80} />
         </section>
       </div>
     </div>

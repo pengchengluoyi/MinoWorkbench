@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import * as XLSX from 'xlsx'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, InputNumber, Modal, Select, StatusPill, errText, useFeedback } from '@/ui'
-import { commitCaseImport, listImportRequirements, previewCaseImport, type ImportPreviewRow } from '@/api/projectCases'
+import { cancelImportPreview, commitCaseImport, getImportPreview, listImportRequirements, previewCaseImport, retryImportPreviewRow, type ImportPreviewRow } from '@/api/projectCases'
 import { getProjectEnv } from '@/api/projectEnv'
 import { unwrapOne } from '@/lib/unwrap'
 import { channelTitle, normalizeEnvDoc } from '../config/envModel'
@@ -51,6 +51,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   const [platform, setPlatform] = useState('')
   const [error, setError] = useState('')
   const [onlyIssues, setOnlyIssues] = useState(false)
+  const [progress, setProgress] = useState({ parsed: 0, total: 0, done: true })
 
   const requirements = useQuery({
     queryKey: ['project', projectId, 'import-requirements'],
@@ -156,15 +157,14 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
       })
       const data = res.data || {}
       setToken(data.preview_token || '')
+      setProgress({ parsed: data.parsed || 0, total: data.total || data.rows?.length || 0, done: Boolean(data.done) })
       setRows((data.rows || []).map((row) => ({
         ...row,
-        selected: row.selected_by_default !== false,
+        selected: row.selected_by_default !== false && row.parse_status !== 'incomplete',
         on_conflict: row.conflict ? 'skip' : 'skip',
       })))
       setStep('preview')
-      const count = data.parsed || data.rows?.length || 0
-      if (data.conflicts?.length) fb.warn(`已解析 ${count} 条，${data.conflicts.length} 条和库里的用例冲突`)
-      else fb.ok(`已解析 ${count} 条用例`)
+      fb.ok(`开始解析 ${data.total || data.rows?.length || 0} 条，每 5 条一批`)
     } catch (e) {
       const message = errText(e, '解析失败')
       setError(message)
@@ -173,6 +173,29 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
       setBusy(false)
     }
   }
+
+  useEffect(() => {
+    if (step !== 'preview' || !token || progress.done) return
+    let stop = false
+    const timer = window.setInterval(() => {
+      void getImportPreview(projectId, token).then((res) => {
+        if (stop) return
+        const data = res.data || {}
+        setProgress({ parsed: data.parsed || 0, total: data.total || 0, done: Boolean(data.done) })
+        if (data.rows) {
+          setRows((prev) => (data.rows || []).map((row) => {
+            const old = prev.find((item) => item.row_index === row.row_index)
+            return {
+              ...row,
+              selected: row.parse_status === 'incomplete' ? false : (old?.selected !== false),
+              on_conflict: old?.on_conflict || 'skip',
+            }
+          }))
+        }
+      }).catch(() => {})
+    }, 1000)
+    return () => { stop = true; window.clearInterval(timer) }
+  }, [step, token, progress.done, projectId])
 
   const commit = async () => {
     const picked = rows.filter((row) => row.selected !== false)
@@ -206,7 +229,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
     <Modal
       title="导入用例"
       open={open}
-      onCancel={() => { reset(); onClose() }}
+      onCancel={() => { if (token) void cancelImportPreview(projectId, token); reset(); onClose() }}
       width={step === 'file' ? 560 : 'min(1440px, calc(100vw - 32px))'}
       footer={null}
       destroyOnHidden
@@ -333,7 +356,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
         <div className="flex flex-col" style={{ gap: 12 }}>
           <div className="flex flex-wrap items-center gap-2">
             <span style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>
-              共 {rows.length} 条{issueCount ? `，${issueCount} 条需要看` : ''}{conflicts.length ? `，冲突 ${conflicts.length} 条` : ''}
+              已解析 {progress.parsed}/{progress.total || rows.length}{progress.done ? '' : '，解析中'}{issueCount ? `，${issueCount} 条需要看` : ''}{conflicts.length ? `，冲突 ${conflicts.length} 条` : ''}
             </span>
             <span style={{ flex: 1 }} />
             <Button size="small" type={onlyIssues ? 'primary' : 'default'} onClick={() => setOnlyIssues((value) => !value)}>
@@ -349,17 +372,23 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
               </thead>
               <tbody>
                 {shown.map((row) => {
+                  const incomplete = row.parse_status === 'incomplete'
                   const remark = remarkOf(row)
-                  const tone = row.conflict ? 'fail' : remark ? 'warn' : undefined
-                  const paint = (extra?: CSSProperties): CSSProperties => ({ ...td, ...toneCell(tone), ...extra })
+                  const tone = incomplete ? undefined : row.conflict ? 'fail' : remark ? 'warn' : undefined
+                  const paint = (extra?: CSSProperties): CSSProperties => ({
+                    ...td,
+                    ...toneCell(tone),
+                    ...(incomplete ? { color: 'var(--w-text-quaternary)', background: 'var(--w-fill)' } : {}),
+                    ...extra,
+                  })
                   return (
                     <tr key={row.row_index}>
                       <td style={paint({ boxShadow: tone === 'fail' ? 'inset 3px 0 0 var(--w-fail)' : tone === 'warn' ? 'inset 3px 0 0 var(--w-warn)' : undefined })}>
-                        <input type="checkbox" checked={row.selected !== false} onChange={(e) => setRows((prev) => prev.map((item) => item.row_index === row.row_index ? { ...item, selected: e.target.checked } : item))} />
+                        <input type="checkbox" disabled={incomplete || row.parse_status === 'pending'} checked={!incomplete && row.selected !== false} onChange={(e) => setRows((prev) => prev.map((item) => item.row_index === row.row_index ? { ...item, selected: e.target.checked } : item))} />
                       </td>
                       <td style={paint()}>
-                        <StatusPill status={tone === 'fail' ? 'fail' : tone === 'warn' ? 'warn' : 'pass'}>
-                          {tone === 'fail' ? '冲突' : tone === 'warn' ? '需处理' : '可导入'}
+                        <StatusPill status={incomplete ? 'muted' : row.parse_status === 'pending' ? 'running' : tone === 'fail' ? 'fail' : tone === 'warn' ? 'warn' : 'pass'}>
+                          {incomplete ? '缺列' : row.parse_status === 'pending' ? '解析中' : row.parse_status === 'error' ? '失败' : tone === 'fail' ? '冲突' : tone === 'warn' ? '需处理' : '可导入'}
                         </StatusPill>
                       </td>
                       <td style={paint({ whiteSpace: 'nowrap' })}>{String(row.case_id || '（系统生成）')}</td>
@@ -368,7 +397,10 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
                       <td style={paint({ width: '18%' })}><ScriptField kind="pre" value={row.precondition_preview || row.precondition} /></td>
                       <td style={paint({ width: '24%' })}><ScriptField kind="op" value={row.steps_preview || row.steps} compiled={row.steps_parsed ?? []} /></td>
                       <td style={paint({ width: '24%' })}><ScriptField kind="ex" value={row.expected_preview || row.expected} compiled={row.expected_parsed ?? []} /></td>
-                      <td style={paint({ width: '12%' })}>{flagLine(row) || '—'}</td>
+                      <td style={paint({ width: '12%' })}>
+                        {flagLine(row) || '—'}
+                        {row.parse_status === 'error' ? <Button size="small" onClick={() => void retryImportPreviewRow(projectId, token, Number(row.row_index))}>重试</Button> : null}
+                      </td>
                     </tr>
                   )
                 })}
@@ -377,7 +409,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
           </div>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setStep('map')}>上一步</Button>
-            <Button type="primary" loading={busy} onClick={() => void commit()}>确认导入</Button>
+            <Button type="primary" loading={busy} disabled={!progress.done} onClick={() => void commit()}>确认导入</Button>
           </div>
         </div>
       )}

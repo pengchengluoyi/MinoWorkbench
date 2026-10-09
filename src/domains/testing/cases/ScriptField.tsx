@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { conditionPair, markClauses, scriptSource, splitNumbered } from './caseText'
+import { conditionPair, scriptSource, splitNumbered } from './caseText'
 
 /**
  * 用例的一格：前置、操作或预期。
@@ -19,8 +19,8 @@ export function ScriptField({
 }) {
   const [mode, setMode] = useState<'raw' | 'preview'>('preview')
   const [open, setOpen] = useState(false)
-  const compiledLines = compiled == null ? null : stringList(compiled)
   const lines = splitNumbered(scriptSource(value))
+  const compiledLines = kind === 'pre' ? null : stringList(compiled ?? [])
   const previewRows = compiledLines ? compiledRows(compiledLines, lines) : lines.map((line) => ({ num: line.num, line, items: null as { text: string }[] | null }))
   const shown = mode === 'preview' && compiledLines ? previewRows : lines.map((line) => ({ num: line.num, line, items: null as { text: string }[] | null }))
   const visible = open ? shown : shown.slice(0, max)
@@ -39,11 +39,16 @@ export function ScriptField({
               {mode === 'raw' ? (
                 <span style={plain}>{item.line?.text || '无'}</span>
               ) : item.items ? (
-                <CompiledLine items={item.items} />
+                <>
+                  {uncoveredMarks(item.items).length ? (
+                    <PaintedText text={item.line?.text || ''} marks={uncoveredMarks(item.items)} />
+                  ) : null}
+                  {recognizedItems(item.items).length ? <CompiledLine items={recognizedItems(item.items)} /> : uncoveredMarks(item.items).length ? null : <CompiledLine items={[]} />}
+                </>
               ) : kind === 'pre' ? (
                 <PreLine text={item.line?.text || ''} />
               ) : (
-                <MarkedLine text={item.line?.text || ''} />
+                <CompiledLine items={[]} />
               )}
             </div>
           ))}
@@ -100,12 +105,58 @@ function stringList(value: unknown): { step: string; text: string }[] {
   })
 }
 
+function uncoveredMarks(items: { text: string }[]): string[] {
+  const mark = '未执行：'
+  return items.flatMap((item) => {
+    const at = item.text.indexOf(mark)
+    if (at < 0) return []
+    const text = item.text.slice(at + mark.length).trim()
+    return text ? [text] : []
+  })
+}
+
+function recognizedItems(items: { text: string }[]) {
+  return items.filter((item) => !item.text.includes('未执行：'))
+}
+
+function PaintedText({ text, marks }: { text: string; marks: string[] }) {
+  const nodes: { text: string; gray: boolean }[] = []
+  let rest = text
+  while (rest) {
+    let hit = -1
+    let mark = ''
+    for (const item of marks) {
+      const at = item ? rest.indexOf(item) : -1
+      if (at >= 0 && (hit < 0 || at < hit)) {
+        hit = at
+        mark = item
+      }
+    }
+    if (hit < 0 || !mark) {
+      nodes.push({ text: rest, gray: false })
+      break
+    }
+    if (hit > 0) nodes.push({ text: rest.slice(0, hit), gray: false })
+    nodes.push({ text: mark, gray: true })
+    rest = rest.slice(hit + mark.length)
+  }
+  return (
+    <span style={plain}>
+      {nodes.map((node, index) => (
+        <span key={index} style={node.gray ? { color: 'var(--w-text-quaternary)' } : undefined}>{node.text}</span>
+      ))}
+      <span style={{ marginLeft: 6, color: 'var(--w-text-quaternary)', fontSize: 11 }}>未执行</span>
+    </span>
+  )
+}
+
 function CompiledLine({ items }: { items: { text: string }[] }) {
   if (!items.length) return <span style={plain}>未编译</span>
   return (
     <span style={{ lineHeight: 1.7 }}>
       {items.map((item, index) => {
-        const blocked = item.text.startsWith('×') || item.text.includes('无法')
+        const uncovered = item.text.includes('未执行')
+        const blocked = uncovered || item.text.startsWith('×') || item.text.includes('无法')
         return (
           <span key={index} style={{ display: 'block', marginBottom: 4 }}>
             <span style={{ ...chip, ...(blocked ? skip : {}) }}>
@@ -115,25 +166,6 @@ function CompiledLine({ items }: { items: { text: string }[] }) {
           </span>
         )
       })}
-    </span>
-  )
-}
-
-function MarkedLine({ text }: { text: string }) {
-  const clauses = markClauses(text)
-  return (
-    <span style={{ lineHeight: 1.7 }}>
-      {clauses.map((clause, index) => (
-        <span key={index}>
-          {index > 0 ? <span>，</span> : null}
-          <span style={{ ...chip, ...(clause.skip ? skip : {}) }}>
-            <i style={{ ...badge, background: clause.skip ? 'var(--w-warn)' : 'var(--w-primary)' }}>{index + 1}</i>
-            {clause.verb ? <span style={verb}>{clause.verb}</span> : null}
-            <b>{clause.param}</b>
-          </span>
-          {clause.skip ? <span style={cant}>无法执行</span> : null}
-        </span>
-      ))}
     </span>
   )
 }
@@ -156,7 +188,6 @@ const badge: CSSProperties = {
   display: 'inline-grid', placeItems: 'center', width: 15, height: 15, marginRight: 3,
   borderRadius: 4, color: '#fff', fontSize: 10, fontWeight: 800, fontStyle: 'normal', verticalAlign: '1px',
 }
-const cant: CSSProperties = { marginLeft: 4, color: 'var(--w-warn)', fontSize: 11, fontWeight: 750 }
 const mode: CSSProperties = {
   border: '1px solid var(--w-border-strong)', background: 'var(--w-surface)', borderRadius: 8,
   padding: '2px 8px', fontSize: 11, fontWeight: 700, color: 'var(--w-text-secondary)', cursor: 'pointer',

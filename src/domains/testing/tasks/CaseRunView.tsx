@@ -4,7 +4,7 @@ import { Button, Segmented, Skeleton, StatusPill, toStatusKind, useFeedback } fr
 import { SessionDetail } from '../sessions/SessionDetail'
 import { getCaseRunnerTraceDetail, getSessionTrajectory } from '@/api/caseRunner'
 import { unwrapOne } from '@/lib/unwrap'
-import { conditionPair, markClauses, splitNumbered } from '../cases/caseText'
+import { conditionPair, splitNumbered } from '../cases/caseText'
 import { caseId, failReason, verdictOf, type TaskCase } from './types'
 import { mergeTraceSteps, parseTrace, type TraceStep } from './trace'
 
@@ -43,14 +43,16 @@ export function CaseRunView({ row, taskId, onBack }: { row: TaskCase; taskId: st
     op: splitNumbered(row.steps || row.steps_raw),
     ex: splitNumbered(row.expected || row.expected_raw),
   }), [row.precondition, row.steps, row.steps_raw, row.expected, row.expected_raw])
+  const opEvents = useMemo(() => columnEvents(row.steps_parsed, script.op, 'op'), [row.steps_parsed, script.op])
+  const exEvents = useMemo(() => columnEvents(row.expected_parsed, script.ex, 'ex'), [row.expected_parsed, script.ex])
 
-  const linked = useMemo(() => linkClauses(script.op, script.ex, steps), [script.op, script.ex, steps])
+  const linked = useMemo(() => linkClauses(opEvents, exEvents, steps), [opEvents, exEvents, steps])
   const [pane, setPane] = useState<'script' | 'trace' | 'log'>('script')
   const [picked, setPicked] = useState('')
   const activeId = picked || linked.fallbackId
 
   const currentTrace = linked.byClause.get(activeId) || steps.find((step) => `tr-${step.step}` === activeId)
-  const currentScript = findClause(script, activeId)
+  const currentScript = findClause({ op: opEvents, ex: exEvents }, activeId)
 
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ gap: 10 }}>
@@ -95,10 +97,10 @@ export function CaseRunView({ row, taskId, onBack }: { row: TaskCase; taskId: st
                 }) : <Empty>没有写前置条件</Empty>}
               </Card>
               <Card title="操作步骤">
-                <ScriptColumn lines={script.op} prefix="op" activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写操作步骤" />
+                <ScriptColumn events={opEvents} activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写操作步骤" />
               </Card>
               <Card title="预期结果">
-                <ScriptColumn lines={script.ex} prefix="ex" activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写预期结果" />
+                <ScriptColumn events={exEvents} activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写预期结果" />
               </Card>
             </div>
           ) : null}
@@ -112,13 +114,13 @@ export function CaseRunView({ row, taskId, onBack }: { row: TaskCase; taskId: st
               )}
             </div>
             <div style={params}>
-              <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{currentTrace?.event || currentScript?.clause.verb || '当前步骤'}</h3>
+              <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{currentTrace?.event || currentScript?.clause.param || '当前步骤'}</h3>
               <dl style={grid}>
-                <Param k="事件" v={currentTrace?.event || currentScript?.clause.verb || '无'} />
+                <Param k="事件" v={currentTrace?.event || currentScript?.clause.param || '无'} />
                 <Param k="参数" v={currentTrace?.param || currentScript?.clause.param || '无'} bold />
                 <Param k="属性" v={currentTrace?.attrs || '无'} />
                 <Param k="步骤" v={currentTrace?.stepRef || currentScript?.stepRef || '无'} />
-                <Param k="状态" v={currentTrace ? statusLabel(currentTrace.status) : currentScript?.clause.skip ? '跳过' : '无'} />
+                <Param k="状态" v={currentTrace ? statusLabel(currentTrace.status) : currentScript?.clause.blocked ? '无法执行' : '无'} />
                 <Param k="时间" v={currentTrace?.seconds ? `${currentTrace.seconds} s` : '无'} />
               </dl>
             </div>
@@ -161,37 +163,71 @@ export function CaseRunView({ row, taskId, onBack }: { row: TaskCase; taskId: st
   )
 }
 
+type ScriptEvent = {
+  id: string
+  stepNum: number
+  verb: string
+  param: string
+  blocked: boolean
+  uncovered: boolean
+}
+
+function columnEvents(
+  parsed: unknown,
+  lines: { num: number; text: string }[],
+  prefix: 'op' | 'ex',
+): ScriptEvent[][] {
+  const compiled = Array.isArray(parsed)
+    ? parsed.map((item) => String(item ?? '').trim()).filter(Boolean).map((line) => {
+      const matched = line.match(/^(\d+)\.\s*(.*)$/)
+      return matched ? { step: matched[1], text: matched[2] } : { step: '', text: line }
+    })
+    : []
+  const grouped = new Map<string, string[]>()
+  for (const item of compiled) {
+    const key = item.step || '1'
+    grouped.set(key, [...(grouped.get(key) || []), item.text])
+  }
+  return lines.map((line) => {
+    const texts = compiled.length ? (grouped.get(String(line.num)) || []) : []
+    const shown = texts.length ? texts : ['未编译']
+    return shown.map((text, index) => ({
+      id: `${prefix}-${line.num}-${index + 1}`,
+      stepNum: line.num,
+      verb: '',
+      param: text,
+      uncovered: text.includes('未执行'),
+      blocked: text.startsWith('×') || (text.includes('无法') && !text.includes('未执行')),
+    }))
+  })
+}
+
 function ScriptColumn({
-  lines, prefix, activeId, onPick, toneOf, empty,
+  events, activeId, onPick, toneOf, empty,
 }: {
-  lines: { num: number; text: string }[]
-  prefix: 'op' | 'ex'
+  events: ScriptEvent[][]
   activeId: string
   onPick: (id: string) => void
   toneOf: (id: string) => CSSProperties
   empty: string
 }) {
-  if (!lines.length) return <Empty>{empty}</Empty>
+  if (!events.length) return <Empty>{empty}</Empty>
   return (
     <>
-      {lines.map((line) => (
-        <div key={line.num} style={lineRow}>
-          <span style={num}>{line.num}</span>
+      {events.map((row) => (
+        <div key={row[0]?.id || 'empty'} style={lineRow}>
+          <span style={num}>{row[0]?.stepNum}</span>
           <span style={{ lineHeight: 1.75 }}>
-            {markClauses(line.text).map((clause, index) => {
-              const id = `${prefix}-${line.num}-${index + 1}`
-              return (
-                <span key={id}>
-                  {index > 0 ? <span>，</span> : null}
-                  <button type="button" onClick={() => onPick(id)} style={{ ...chipBtn, ...(clause.skip ? skipChip : toneOf(id)), ...(id === activeId ? onChip : {}) }}>
-                    <i style={{ ...badge, background: clause.skip ? 'var(--w-warn)' : 'var(--w-primary)' }}>{index + 1}</i>
-                    {clause.verb ? <span style={verb}>{clause.verb}</span> : null}
-                    <b>{clause.param}</b>
-                  </button>
-                  {clause.skip ? <span style={{ marginLeft: 4, color: 'var(--w-warn)', fontSize: 11, fontWeight: 750 }}>无法执行</span> : null}
-                </span>
-              )
-            })}
+            {row.map((clause, index) => (
+              <span key={clause.id}>
+                {index > 0 ? <span>，</span> : null}
+                <button type="button" onClick={() => onPick(clause.id)} style={{ ...chipBtn, ...(clause.uncovered ? { background: 'transparent', color: 'var(--w-text-quaternary)' } : clause.blocked ? skipChip : toneOf(clause.id)), ...(clause.id === activeId ? onChip : {}) }}>
+                  <i style={{ ...badge, background: clause.uncovered ? 'var(--w-text-quaternary)' : clause.blocked ? 'var(--w-warn)' : 'var(--w-primary)' }}>{index + 1}</i>
+                  <b>{clause.param}</b>
+                </button>
+                {clause.blocked ? <span style={{ marginLeft: 4, color: 'var(--w-warn)', fontSize: 11, fontWeight: 750 }}>无法执行</span> : null}
+              </span>
+            ))}
           </span>
         </div>
       ))}
@@ -261,11 +297,11 @@ function Empty({ children }: { children: string }) {
 
 /** 三栏徽章按先后对上带截图的轨迹。有「操作 1-2」这种步骤号就直接用。 */
 function linkClauses(
-  ops: { num: number; text: string }[],
-  expects: { num: number; text: string }[],
+  ops: ScriptEvent[][],
+  expects: ScriptEvent[][],
   steps: TraceStep[],
 ) {
-  const points = [...pointsOf(ops, 'op'), ...pointsOf(expects, 'ex')]
+  const points = [...ops.flat(), ...expects.flat()]
   const byClause = new Map<string, TraceStep>()
   const used = new Set<number>()
   for (const step of steps) {
@@ -276,7 +312,7 @@ function linkClauses(
   }
   const pool = () => steps.filter((step) => !used.has(step.step))
   for (const point of points) {
-    if (byClause.has(point.id) || point.skip) continue
+    if (byClause.has(point.id) || point.blocked) continue
     // 预期没有对上的执行步就保持未执行。不要借前面已通过的打开页面或租号来涂绿。
     if (point.id.startsWith('ex-')) continue
     const open = pool()
@@ -292,32 +328,19 @@ function linkClauses(
   return { byClause, byStep, fallbackId }
 }
 
-function pointsOf(lines: { num: number; text: string }[], prefix: 'op' | 'ex') {
-  return lines.flatMap((line) => markClauses(line.text).map((clause, index) => ({
-    id: `${prefix}-${line.num}-${index + 1}`,
-    verb: clause.verb,
-    param: clause.param,
-    skip: clause.skip,
-  })))
-}
-
 function refId(ref: string) {
   const matched = ref.match(/^(操作|预期)\s*(\d+)\s*-\s*(\d+)$/)
   if (!matched) return ''
   return `${matched[1] === '预期' ? 'ex' : 'op'}-${matched[2]}-${matched[3]}`
 }
 
-function findClause(
-  script: { op: { num: number; text: string }[]; ex: { num: number; text: string }[] },
-  id: string,
-) {
+function findClause(events: { op: ScriptEvent[][]; ex: ScriptEvent[][] }, id: string) {
   const matched = id.match(/^(op|ex)-(\d+)-(\d+)$/)
   if (!matched) return null
-  const lines = matched[1] === 'ex' ? script.ex : script.op
-  const line = lines.find((item) => item.num === Number(matched[2]))
-  const clause = line ? markClauses(line.text)[Number(matched[3]) - 1] : undefined
-  if (!line || !clause) return null
-  const stepRef = `${matched[1] === 'ex' ? '预期' : '操作'} ${line.num}-${matched[3]}`
+  const rows = matched[1] === 'ex' ? events.ex : events.op
+  const clause = rows.flat().find((item) => item.id === id)
+  if (!clause) return null
+  const stepRef = `${matched[1] === 'ex' ? '预期' : '操作'} ${clause.stepNum}-${matched[3]}`
   return { clause, stepRef }
 }
 

@@ -160,14 +160,14 @@ export function CasesPanel({ appId }: { appId: string }) {
       key: 'steps',
       title: '操作步骤',
       width: 360,
-      render: (_: unknown, row) => <ScriptField kind="op" value={row.steps ?? row.steps_raw} max={3} />,
+      render: (_: unknown, row) => <ScriptField kind="op" value={row.steps ?? row.steps_raw} compiled={row.steps_parsed ?? []} max={3} />,
       onCell: () => ({ style: scriptCell }),
     },
     {
       key: 'expected',
       title: '预期结果',
       width: 360,
-      render: (_: unknown, row) => <ScriptField kind="ex" value={row.expected ?? row.expected_raw} max={3} />,
+      render: (_: unknown, row) => <ScriptField kind="ex" value={row.expected ?? row.expected_raw} compiled={row.expected_parsed ?? []} max={3} />,
       onCell: () => ({ style: scriptCell }),
     },
   ], [results])
