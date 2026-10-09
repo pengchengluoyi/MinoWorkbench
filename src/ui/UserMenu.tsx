@@ -1,26 +1,32 @@
 import { useNavigate } from 'react-router-dom'
-import { ChevronUp, LogOut, Monitor, Moon, Rows3, Rows4, ShieldCheck, Sun } from 'lucide-react'
+import { ChevronUp, FlaskConical, LogOut, Monitor, Moon, Rows3, Rows4, ShieldCheck, Sun } from 'lucide-react'
 import { Dropdown } from 'antd'
 import { displayName, useSession } from '@/lib/session'
 import { isAdmin, roleLabel } from '@/lib/iam'
 import { useAppearance } from '@/hooks/useAppearance'
 
 /**
- * 左下角用户入口。点击上拉，含主题、密度、管理后台、退出登录。
+ * 左下角用户入口。点击上拉，含主题、密度、平台切换、退出登录。
  *
- * 管理后台只对 admin 可见 —— 普通账号不该看到自己进不去的地方
- * （路由层的 RequireAdmin 继续兜底，这里只负责"看不见"）。
+ * 人在测试工作台时，管理员看到「去管理后台」。
+ * 人已经在管理后台时，同一位置变成「去测试工作台」，不再指向当前所在的后台。
+ * 管理后台只对 admin 可见。路由层的 RequireAdmin 继续兜底。
  *
  * 外观设置并进这里之后，右上角那条只放一个图标的 header 就可以删掉，
  * 每页净赚 48px 垂直空间。
  */
-export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
+export function UserMenu({ collapsed = false, place = 'testing' }: { collapsed?: boolean; place?: 'testing' | 'admin' }) {
   const navigate = useNavigate()
   const { user, role, logout } = useSession()
   const { theme, setTheme, density, setDensity } = useAppearance()
   const admin = isAdmin(role)
   const name = displayName(user)
   const initial = name.slice(0, 1).toUpperCase()
+  const switchItem = place === 'admin'
+    ? { key: 'testing', label: <Row icon={<FlaskConical size={13} />} text="去测试工作台" /> }
+    : admin
+      ? { key: 'admin', label: <Row icon={<ShieldCheck size={13} />} text="去管理后台" /> }
+      : null
 
   const items = [
     { key: 'who', type: 'group' as const, label: `${name} · ${roleLabel(role)}` },
@@ -36,10 +42,10 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
     { key: 'density:comfortable', label: <Row icon={<Rows3 size={13} />} text="舒适" on={density === 'comfortable'} /> },
     { key: 'density:compact', label: <Row icon={<Rows4 size={13} />} text="紧凑" on={density === 'compact'} /> },
 
-    ...(admin
+    ...(switchItem
       ? [
           { type: 'divider' as const, key: 'd2' },
-          { key: 'admin', label: <Row icon={<ShieldCheck size={13} />} text="管理后台" /> },
+          switchItem,
         ]
       : []),
 
@@ -57,6 +63,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
           if (key.startsWith('theme:')) return setTheme(key.slice(6) as any)
           if (key.startsWith('density:')) return setDensity(key.slice(8) as any)
           if (key === 'admin') return navigate('/dashboard')
+          if (key === 'testing') return navigate('/testing')
           if (key === 'logout') { await logout(); navigate('/login', { replace: true }) }
         },
       }}

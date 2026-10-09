@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Filter, RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
-import { Button, DataTable, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, type DataColumn } from '@/ui'
+import { Button, DataTable, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
 import { onRealtimeState, realtimeState, type RealtimeState } from '@/lib/realtime'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
 import { CreateTaskDialog } from './CreateTaskDialog'
@@ -16,6 +16,7 @@ import { byAttention, caseId, failReason, taskId, verdictOf, type TaskCase, type
  * 用例页回答「这一条卡在哪一步」。点进去才换页，不在同一屏里再开一栏。
  */
 export function TasksPanel({ appId }: { appId: string }) {
+  const fb = useFeedback()
   const [params, setParams] = useSearchParams()
   const list = useTaskList(appId)
   const tasks: TaskRow[] = list.data ?? EMPTY_ARRAY
@@ -138,6 +139,8 @@ export function TasksPanel({ appId }: { appId: string }) {
       <header className="flex shrink-0 flex-wrap items-center gap-3">
         <Button size="small" onClick={() => setQuery({ run: null, tcase: null })}>返回列表</Button>
         <strong className="min-w-0 truncate" style={{ fontSize: 18 }}>{title}</strong>
+        <button type="button" className="w-mono" title="复制任务 ID" onClick={() => copyTaskId(urlRun, fb)} style={idBtn}>{urlRun}</button>
+        <span style={{ color: 'var(--w-text-tertiary)', fontSize: 12 }}>{taskClock(task)}</span>
         {live && <StatusPill status="running">执行中</StatusPill>}
         {live && rt !== 'open' && (
           <Tooltip title="实时推送已中断，当前靠 5 秒轮询兜底。">
@@ -250,6 +253,12 @@ const caseColumns: DataColumn<TaskCase>[] = [
     },
   },
   {
+    key: 'duration',
+    title: '耗时',
+    width: 100,
+    render: (_: unknown, row) => caseDuration(row),
+  },
+  {
     key: 'summary',
     title: '结果',
     render: (_: unknown, row) => {
@@ -272,6 +281,37 @@ function batchFacts(task: TaskRow | undefined) {
   return bits
 }
 
+function copyTaskId(text: string, fb: { ok: (s: string) => void; fail: (s: string) => void }) {
+  navigator.clipboard.writeText(text).then(() => fb.ok('已复制')).catch(() => fb.fail('剪贴板不可用'))
+}
+
+function taskClock(task: TaskRow | undefined) {
+  if (!task) return '总耗时 无'
+  const done = elapsedText(task)
+  if (done) return `总耗时 ${done}`
+  const start = Date.parse(String(task.started_at || task.startedAt || ''))
+  if (verdictOf(task.status) === 'running' && Number.isFinite(start)) {
+    const seconds = Math.max(0, Math.round((Date.now() - start) / 1000))
+    return `已进行 ${seconds} 秒`
+  }
+  return '总耗时 无'
+}
+
+function caseDuration(row: TaskCase) {
+  const explicit = Number(row.duration_ms)
+  if (Number.isFinite(explicit) && explicit > 0) return formatSpan(explicit)
+  const start = Date.parse(String(row.started_at || ''))
+  const end = Date.parse(String(row.finished_at || ''))
+  if (Number.isFinite(start) && Number.isFinite(end) && end > start) return formatSpan(end - start)
+  return '无'
+}
+
+function formatSpan(ms: number) {
+  const seconds = Math.round(ms / 1000)
+  const minutes = Math.floor(seconds / 60)
+  return minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`
+}
+
 function elapsedText(task: TaskRow) {
   const start = Date.parse(String(task.started_at || task.startedAt || ''))
   const end = Date.parse(String(task.finished_at || task.finishedAt || ''))
@@ -289,6 +329,16 @@ function Stat({ kicker, value, note, tone }: { kicker: string; value: string; no
       {note ? <div style={{ marginTop: 2, fontSize: 12, color: 'var(--w-text-tertiary)' }}>{note}</div> : null}
     </section>
   )
+}
+
+const idBtn: CSSProperties = {
+  border: '1px solid var(--w-border)',
+  background: 'var(--w-surface)',
+  borderRadius: 8,
+  padding: '2px 8px',
+  fontSize: 12,
+  color: 'var(--w-text-secondary)',
+  cursor: 'pointer',
 }
 
 function Card({ children }: { children: ReactNode }) {

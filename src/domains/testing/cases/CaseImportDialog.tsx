@@ -366,8 +366,8 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
                       <td style={paint({ fontWeight: 650 })}>{String(row.name || '')}</td>
                       <td style={paint()}>{String(row.platform || platform || '—')}</td>
                       <td style={paint({ width: '18%' })}><ScriptField kind="pre" value={row.precondition_preview || row.precondition} /></td>
-                      <td style={paint({ width: '24%' })}><ScriptField kind="op" value={row.steps_preview || row.steps_parsed || row.steps} /></td>
-                      <td style={paint({ width: '24%' })}><ScriptField kind="ex" value={row.expected_preview || row.expected_parsed || row.expected} /></td>
+                      <td style={paint({ width: '24%' })}><ScriptField kind="op" value={row.steps_preview || row.steps} compiled={row.steps_parsed ?? []} /></td>
+                      <td style={paint({ width: '24%' })}><ScriptField kind="ex" value={row.expected_preview || row.expected} compiled={row.expected_parsed ?? []} /></td>
                       <td style={paint({ width: '12%' })}>{flagLine(row) || '—'}</td>
                     </tr>
                   )

@@ -56,12 +56,25 @@ export function CreateTaskDialog({
     setSn((cur) => cur || devices.data?.[0]?.sn || '')
   }, [open, devices.data])
 
-  const rows = useMemo(() => {
+  const groups = useMemo(() => {
     const q = kw.trim().toLowerCase()
-    return (cases.data || []).filter((row) => {
+    const matched = (cases.data || []).filter((row) => {
       if (!q) return true
-      return `${row.case_id} ${row.title || ''}`.toLowerCase().includes(q)
+      return `${row.case_id} ${row.title || ''} ${row.module || ''}`.toLowerCase().includes(q)
     })
+    const buckets = new Map<string, CaseRow[]>()
+    for (const row of matched) {
+      const name = String(row.module || '').trim() || '未分组'
+      const list = buckets.get(name) || []
+      list.push(row)
+      buckets.set(name, list)
+    }
+    return [...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, 'zh'))
+      .map(([name, items]) => ({
+        name,
+        items: items.sort((a, b) => String(a.title || a.case_id).localeCompare(String(b.title || b.case_id), 'zh')),
+      }))
   }, [cases.data, kw])
 
   const device = (devices.data || []).find((item) => item.sn === sn)
@@ -168,12 +181,20 @@ export function CreateTaskDialog({
           <Input size="small" value={kw} placeholder="按名称或编号筛选" onChange={(event) => setKw(event.target.value)} style={{ marginBottom: 8 }} />
           <div className="flex flex-col" style={{ gap: 4, maxHeight: 220, overflow: 'auto' }}>
             {cases.isLoading ? <p style={hint}>正在读取用例…</p> : null}
-            {!cases.isLoading && !rows.length ? <p style={hint}>{projectId ? '没有可选用例' : '链接里没有项目，从应用列表重新进入后才能勾选用例。'}</p> : null}
-            {rows.map((row) => (
-              <label key={row.case_id} className="flex items-center gap-2" style={{ padding: '4px 2px', cursor: 'pointer' }}>
-                <Checkbox checked={picked.includes(row.case_id)} onChange={(event) => toggleCase(row, event.target.checked, setPicked)} />
-                <span className="min-w-0 truncate">{row.title || row.case_id}</span>
-              </label>
+            {!cases.isLoading && !groups.length ? <p style={hint}>{projectId ? '没有可选用例' : '链接里没有项目，从应用列表重新进入后才能勾选用例。'}</p> : null}
+            {groups.map((group) => (
+              <div key={group.name}>
+                <div style={{ margin: '8px 0 4px', fontSize: 12, fontWeight: 750, color: 'var(--w-text-tertiary)' }}>{group.name}</div>
+                {group.items.map((row) => (
+                  <label key={row.case_id} className="flex items-start gap-2" style={{ padding: '4px 2px', cursor: 'pointer' }}>
+                    <Checkbox checked={picked.includes(row.case_id)} onChange={(event) => toggleCase(row, event.target.checked, setPicked)} />
+                    <span className="min-w-0">
+                      <span className="block truncate" style={{ fontWeight: 650 }}>{row.title || '无标题'}</span>
+                      <span className="w-mono block truncate" style={{ fontSize: 11, color: 'var(--w-text-quaternary)' }}>{row.case_id}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
             ))}
           </div>
           {block && picked.length === 0 ? null : block ? <p style={{ ...hint, marginTop: 8 }}>{block}</p> : null}

@@ -15,6 +15,13 @@ const AppWorkbench = lazy(() => import('@/domains/testing/workbench/AppWorkbench
 const NodesPage = lazy(() => import('@/domains/settings/nodes/NodesPage').then((m) => ({ default: m.NodesPage })))
 const DeviceDetailPage = lazy(() => import('@/domains/settings/devices/DeviceDetailPage').then((m) => ({ default: m.DeviceDetailPage })))
 const KeysPage = lazy(() => import('@/domains/settings/keys/KeysPage').then((m) => ({ default: m.KeysPage })))
+const CaseResourcePage = lazy(() => import('@/domains/admin/resources/CaseResourcePage').then((m) => ({ default: m.CaseResourcePage })))
+const SkillsPage = lazy(() => import('@/domains/admin/skills/SkillsPage').then((m) => ({ default: m.SkillsPage })))
+const JobsPage = lazy(() => import('@/domains/admin/jobs/JobsPage').then((m) => ({ default: m.JobsPage })))
+const RolesPage = lazy(() => import('@/domains/admin/roles/RolesPage').then((m) => ({ default: m.RolesPage })))
+const StackPage = lazy(() => import('@/domains/admin/stack/StackPage').then((m) => ({ default: m.StackPage })))
+const PacksPage = lazy(() => import('@/domains/admin/packs/PacksPage').then((m) => ({ default: m.PacksPage })))
+const FlowBlocksPage = lazy(() => import('@/domains/admin/flow/FlowBlocksPage').then((m) => ({ default: m.FlowBlocksPage })))
 
 const lazyPage = (node: ReactNode) => (
   <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} style={{ padding: 4 }} />}>
@@ -75,15 +82,16 @@ export const router = createBrowserRouter([
       { path: '/catalog/:projectId/apps/:appId/*', element: <Planned title="应用" phase="阶段 2" note="4 个 tab：概览 / 知识 / 文档 / 信息基座。" source="Catalog/AppShell.vue 132 行" /> },
       { path: '/nodes', element: <Planned title="节点与设备" phase="阶段 2" source="Catalog/NodesPage.vue 171 行" /> },
       { path: '/account-pool-templates', element: <Planned title="号池模板" phase="阶段 2" source="Settings/AccountPoolTemplatesPage.vue 297 行" /> },
-      { path: '/case-resource-key', element: <Planned title="用例密钥" phase="阶段 2" source="Settings/CaseResourceKeyPage.vue 187 行" /> },
-      { path: '/resource-transition-rules', element: <Planned title="转移规则" phase="阶段 2" source="Settings/ResourceTransitionRulesPage.vue 132 行" /> },
+      { path: '/case-resource', element: lazyPage(<CaseResourcePage />) },
+      { path: '/case-resource-key', element: <Navigate to="/case-resource?zone=keys" replace /> },
+      { path: '/resource-transition-rules', element: <Navigate to="/case-resource?zone=rules" replace /> },
       { path: '/permissions', element: <Planned title="权限配置" phase="阶段 2" source="Permissions/index.vue 194 行" /> },
-      { path: '/skills', element: <Planned title="技能" phase="阶段 2" note="原 1,601 行，必须拆。" source="Settings/SkillsPage.vue" /> },
-      { path: '/jobs', element: <Planned title="Jobs" phase="阶段 2" note="原 805 行，必须拆。" source="Settings/JobsPage.vue" /> },
-      { path: '/roles', element: <Planned title="角色" phase="阶段 2" source="Settings/RolesPage.vue 733 行" /> },
-      { path: '/stack', element: <Planned title="编排" phase="阶段 2" source="Settings/LayerStack.vue 284 行" /> },
-      { path: '/packs', element: <Planned title="扩展包" phase="阶段 2" source="Settings/PacksPage + PacksPanel 等 1,123 行" /> },
-      { path: '/flow-blocks', element: <Planned title="FSM 逻辑块" phase="阶段 2" source="Settings/FlowBlocksPage.vue 493 行" /> },
+      { path: '/skills', element: lazyPage(<SkillsPage />) },
+      { path: '/jobs', element: lazyPage(<JobsPage />) },
+      { path: '/roles', element: lazyPage(<RolesPage />) },
+      { path: '/stack', element: lazyPage(<StackPage />) },
+      { path: '/packs', element: lazyPage(<PacksPage />) },
+      { path: '/flow-blocks', element: lazyPage(<FlowBlocksPage />) },
       { path: '/knowledge', element: <Planned title="知识审核" phase="阶段 2" source="Knowledge/index.vue + panels/KnowledgePanel 551 行" /> },
       { path: '/network', element: <Planned title="网络 / 内网域名" phase="阶段 2" source="Network/index.vue 72 行" /> },
 

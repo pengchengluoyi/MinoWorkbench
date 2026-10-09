@@ -225,7 +225,7 @@ export function DataTable<T extends object>({
         </div>
       )}
 
-      {selection && selection.selectedKeys.length > 0 && (
+      {selection && selection.actions != null && selection.selectedKeys.length > 0 && (
         <FloatingActions count={selection.selectedKeys.length} onClear={() => selection.onChange([])}>
           {selection.actions}
         </FloatingActions>

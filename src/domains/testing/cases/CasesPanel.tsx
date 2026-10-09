@@ -1,18 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePersistedFlag } from '@/hooks/usePersistedFlag'
 import { useSearchParams } from 'react-router-dom'
 import { CircleSlash, ExternalLink, Search, TriangleAlert, Upload } from 'lucide-react'
 import {
-  Button, DataTable, EmptyState, Input, Segmented, Skeleton, StatusPill, errText,
+  Button, DataTable, EmptyState, Input, Segmented, Skeleton, StatusPill, errText, useFeedback,
   type DataColumn,
 } from '@/ui'
-import type { CaseRow } from '@/api/projectCases'
+import { deleteProjectCases, type CaseRow } from '@/api/projectCases'
 import { ModuleFilter } from './ModuleFilter'
 import { ScriptField } from './ScriptField'
 import { RunBar, type DispatchedRun } from './RunBar'
 import { CaseImportDialog } from './CaseImportDialog'
 import { CasePreview } from './CasePreview'
-import { useLastResults, useProjectCases, useRunDevices, type LastResult } from './queries'
+import { caseKeys, useLastResults, useProjectCases, useRunDevices, type LastResult } from './queries'
 
 type ResultFilter = 'all' | 'failed' | 'never'
 
@@ -27,6 +28,8 @@ const EMPTY_RESULTS: Record<string, LastResult> = {}
  * 3. 下发后**不跳页**，就地出现执行条
  */
 export function CasesPanel({ appId }: { appId: string }) {
+  const fb = useFeedback()
+  const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
   const projectId = params.get('projectId') || ''
 
@@ -39,6 +42,26 @@ export function CasesPanel({ appId }: { appId: string }) {
   const [kw, setKw] = useState('')
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all')
   const [selected, setSelected] = useState<React.Key[]>([])
+  const remove = useMutation({
+    mutationFn: (ids: string[]) => deleteProjectCases(projectId, ids),
+    onSuccess: (_res, ids) => {
+      setSelected([])
+      void qc.invalidateQueries({ queryKey: caseKeys.list(projectId) })
+      fb.ok(`已删除 ${ids.length} 条用例`)
+    },
+    onError: (error) => fb.fail(errText(error, '删除失败')),
+  })
+  const removeSelected = async () => {
+    const ids = selected.map(String)
+    if (!ids.length) return
+    const ok = await fb.confirm({
+      title: `删除选中的 ${ids.length} 条用例？`,
+      content: '删除后不能从这里恢复。',
+      okText: '删除',
+      danger: true,
+    })
+    if (ok) remove.mutate(ids)
+  }
   const [dispatched, setDispatched] = useState<DispatchedRun | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const previewId = params.get('case') || ''
@@ -130,19 +153,22 @@ export function CasesPanel({ appId }: { appId: string }) {
       key: 'precondition',
       title: '前置条件',
       width: 240,
-      render: (_: unknown, row) => <ScriptField kind="pre" value={row.precondition} />,
+      render: (_: unknown, row) => <ScriptField kind="pre" value={row.precondition} max={3} />,
+      onCell: () => ({ style: scriptCell }),
     },
     {
       key: 'steps',
       title: '操作步骤',
-      width: 320,
-      render: (_: unknown, row) => <ScriptField kind="op" value={row.steps ?? row.steps_raw} />,
+      width: 360,
+      render: (_: unknown, row) => <ScriptField kind="op" value={row.steps ?? row.steps_raw} max={3} />,
+      onCell: () => ({ style: scriptCell }),
     },
     {
       key: 'expected',
       title: '预期结果',
-      width: 320,
-      render: (_: unknown, row) => <ScriptField kind="ex" value={row.expected ?? row.expected_raw} />,
+      width: 360,
+      render: (_: unknown, row) => <ScriptField kind="ex" value={row.expected ?? row.expected_raw} max={3} />,
+      onCell: () => ({ style: scriptCell }),
     },
   ], [results])
 
@@ -295,10 +321,13 @@ export function CasesPanel({ appId }: { appId: string }) {
 
           <RunBar
             appId={appId}
+            projectId={projectId}
             selected={selected.map(String)}
             devices={devices.data || []}
             devicesLoading={devices.isLoading}
             onClear={() => setSelected([])}
+            deleting={remove.isPending}
+            onDelete={() => void removeSelected()}
             onDispatched={(run) => { setDispatched(run); setSelected([]) }}
           />
         </div>
@@ -306,6 +335,12 @@ export function CasesPanel({ appId }: { appId: string }) {
       <CaseImportDialog projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   )
+}
+
+const scriptCell: CSSProperties = {
+  verticalAlign: 'top',
+  overflow: 'hidden',
+  maxWidth: 360,
 }
 
 function Card({ children }: { children: React.ReactNode }) {

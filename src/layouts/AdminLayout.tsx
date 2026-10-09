@@ -1,10 +1,9 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Button } from 'antd'
 import {
-  LayoutDashboard, Activity, FolderTree, Cpu, NotebookTabs, KeyRound, Share2,
+  LayoutDashboard, Activity, FolderTree, Cpu, NotebookTabs, KeyRound,
   Lock, FileClock, Sparkles, ListChecks, Users, Layers, Package, GitBranch,
-  BookCheck, Link2, FlaskConical,
+  BookCheck, Link2,
 } from 'lucide-react'
 import { ErrorBoundary, UserMenu } from '@/ui'
 import { CommandPalette } from './CommandPalette'
@@ -23,8 +22,7 @@ const GROUPS = [
       { to: '/catalog', label: '项目与应用', icon: FolderTree },
       { to: '/nodes', label: '节点与设备', icon: Cpu },
       { to: '/account-pool-templates', label: '号池模板', icon: NotebookTabs },
-      { to: '/case-resource-key', label: '用例密钥', icon: KeyRound },
-      { to: '/resource-transition-rules', label: '转移规则', icon: Share2 },
+      { to: '/case-resource', label: '用例资源', icon: KeyRound },
     ],
   },
   {
@@ -52,8 +50,6 @@ const GROUPS = [
 ]
 
 export function AdminLayout() {
-  const navigate = useNavigate()
-
   // 30 秒一次的 Nexus 连通性，用 Query 的 refetchInterval，不自己写 setInterval
   const { data: info, isError } = useQuery({
     queryKey: ['sys', 'server_info'],
@@ -96,8 +92,8 @@ export function AdminLayout() {
             <strong style={{ display: 'block', fontSize: 'var(--w-font-base)', color: 'var(--w-text)' }}>
               管理后台
             </strong>
-            <span style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
-              Mino Workbench
+            <span style={{ fontSize: 'var(--w-font-meta)', color: isError ? 'var(--w-fail)' : 'var(--w-text-quaternary)' }}>
+              {nexusText}
             </span>
           </div>
         </div>
@@ -142,24 +138,7 @@ export function AdminLayout() {
         </nav>
 
         <div style={{ padding: 8, borderTop: '1px solid var(--w-border)' }}>
-          <Button
-            block
-            size="small"
-            type="text"
-            icon={<FlaskConical size={14} />}
-            onClick={() => navigate('/testing')}
-            style={{ justifyContent: 'flex-start', fontWeight: 600, marginBottom: 4 }}
-          >
-            去测试工作台
-          </Button>
-          <span
-            className="w-pill"
-            data-status={isError ? 'fail' : 'pass'}
-            style={{ marginBottom: 6, width: '100%', justifyContent: 'center' }}
-          >
-            {nexusText}
-          </span>
-          <UserMenu />
+          <UserMenu place="admin" />
         </div>
       </aside>
 
