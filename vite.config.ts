@@ -12,7 +12,7 @@ import { fileURLToPath, URL } from 'node:url'
  * 由两个原项目的 api 层全量扫描得到（grep "url: '/..."），共 24 个。
  */
 const NEXUS_PREFIXES = [
-  'ability', 'api', 'app_graph', 'app-automation', 'apps', 'auth',
+  'ability', 'api', 'assistant', 'app_graph', 'app-automation', 'apps', 'auth',
   'case-runner', 'device', 'feishu', 'file', 'flow-blocks', 'get_api',
   'health', 'hitl', 'logs', 'me', 'nav-fsm', 'packs', 'project',
   'releases', 'runtime', 'schedule', 'settings', 'static', 'sys', 'task',
@@ -20,7 +20,8 @@ const NEXUS_PREFIXES = [
 ]
 
 export default defineConfig(({ mode }) => {
-  const nexus = process.env.VITE_NEXUS_URL || 'http://mino.local:10104'
+  // VITE_PROXY_TARGET：仅 dev 代理目标（联调指向本机 Nexus），不影响生产 origin
+  const nexus = process.env.VITE_PROXY_TARGET || process.env.VITE_NEXUS_URL || 'http://mino.local:10104'
   return {
     plugins: [react(), tailwindcss()],
     resolve: {

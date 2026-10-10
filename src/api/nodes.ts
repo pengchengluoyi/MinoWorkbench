@@ -50,7 +50,7 @@ export interface ScoutNode {
 }
 
 export interface NodePluginStatus {
-  class: 'cli' | 'mcp' | 'bot' | 'mail' | string
+  class: 'cli' | 'mcp' | 'bot' | 'mail' | 'im' | string
   id: string
   installed?: boolean
   configured?: boolean
@@ -58,6 +58,33 @@ export interface NodePluginStatus {
   values?: Record<string, string>
   /** 已写入保险库的密钥字段名，不含密钥本身 */
   saved_secrets?: string[]
+  /** 对话类（微信 iLink / LangBot）的连接状态；Scout 还不上报时为空 */
+  status?: PluginConnStatus
+  /** class==='im' 的动态条目由 Scout 自带表单定义 */
+  label?: string
+  title?: string
+  name?: string
+  fields?: PluginFieldDef[]
+  /** LangBot 把多家渠道放在同一个插件里，用 group 区分 */
+  groups?: { id: string; label: string }[]
+  platforms?: Record<string, PluginConnStatus & { enabled?: boolean; holding?: boolean }>
+}
+
+export interface PluginConnStatus {
+  connected?: boolean
+  last_message_at?: number
+  error?: string
+}
+
+export interface PluginFieldDef {
+  key: string
+  label: string
+  secret?: boolean
+  optional?: boolean
+  placeholder?: string
+  /** 同一插件里的渠道，例如 lark / dingtalk */
+  group?: string
+  type?: string
 }
 
 export interface NodePluginJob {
@@ -182,4 +209,17 @@ export const releaseTargetOf = (n: ScoutNode): { os: string; arch: string } => {
       : 'linux'
   const arch = String(n.arch || '').toLowerCase().includes('arm') ? 'arm64' : 'x64'
   return { os, arch }
+}
+
+/**
+ * 这台节点正连着哪些对话渠道。微信 iLink 的数据仍在 class='bot' id='wechat' 这一行，
+ * LangBot 等以后出现在 class='im'。status.connected 为真才算持有。
+ */
+export const heldChannels = (n: ScoutNode): string[] => {
+  const out: string[] = []
+  for (const p of n.plugins || []) {
+    const isChat = (p.class === 'bot' && p.id === 'wechat') || p.class === 'im'
+    if (isChat && p.status?.connected) out.push(p.id === 'wechat' ? '微信' : p.label || p.title || p.name || p.id)
+  }
+  return out
 }

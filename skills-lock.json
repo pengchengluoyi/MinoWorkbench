@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "bencium-impact-designer": {
+      "source": "bencium/bencium-marketplace",
+      "sourceType": "github",
+      "skillPath": "bencium-impact-designer/skills/bencium-impact-designer/SKILL.md",
+      "computedHash": "a1811508c23426aebfdac4fc449c3985a505c3cd0edf00582a7b7aac664f0bb7"
+    },
+    "design-taste-frontend": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "6d838b246d0e35d0b53f4f23f98ba7a1dd561937e64f7d0c7553b0928e376c3e"
+    }
+  }
+}

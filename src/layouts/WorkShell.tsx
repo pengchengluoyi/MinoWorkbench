@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { NavLink, Outlet, useMatch, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Bot, ChevronRight, Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Button, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
 import { CommandPalette } from './CommandPalette'
 import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab, type Tab } from '@/domains/testing/workbench/nav'
@@ -12,6 +12,7 @@ const readCollapsed = () => {
 }
 
 const GLOBAL_NAV = [
+  { to: '/assistant', label: '我的助手', icon: Bot },
   { to: '/settings/runtime', label: 'Scout 节点', icon: Cpu },
   { to: '/settings/keys', label: '模型密钥', icon: KeyRound },
 ]

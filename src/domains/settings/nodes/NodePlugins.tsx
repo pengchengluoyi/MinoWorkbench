@@ -1,34 +1,117 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Button, Input, QRCode, errText, useFeedback } from '@/ui'
+import { Button, Input, QRCode, Switch, errText, useFeedback } from '@/ui'
 import {
   callNodePlugin,
   configNodePlugin,
   installNodePlugin,
   removeNodePlugin,
+  heldChannels,
   nodeIsOnline,
   type NodePluginJob,
   type NodePluginStatus,
   type ScoutNode,
 } from '@/api/nodes'
 import { unwrapOne } from '@/lib/unwrap'
+import { fmtAgo } from '@/lib/timeText'
 import { nodeKeys } from './queries'
 
 interface FieldDef {
   key: string
   label: string
   secret?: boolean
+  optional?: boolean
+  placeholder?: string
+  group?: string
+  type?: string
 }
 
 interface ItemDef {
   id: string
   label: string
+  /** 节点插件快照里这一行的 class。缺省等于所在分类；微信在「对话」里展示，但数据仍是 class=bot */
+  kind?: string
   needsInstall?: boolean
   wechat?: boolean
+  /** 展示连接状态（对话类） */
+  conn?: boolean
+  hint?: string
   fields?: FieldDef[]
+  /** 左侧选中用。LangBot 一家渠道一个，避免和插件 id 撞车 */
+  navId?: string
+  /** 实际下发的插件 id。渠道行仍是 langbot，不是渠道名 */
+  pluginId?: string
+  /** 这一行只编辑、只保存这个渠道 */
+  groupId?: string
 }
 
-export type PluginPane = 'cli' | 'bot' | 'mail'
+export type PluginPane = 'cli' | 'bot' | 'mail' | 'im'
+export const PLUGIN_PANES: readonly PluginPane[] = ['cli', 'bot', 'mail', 'im']
+
+const kindOf = (group: PluginPane, item: ItemDef) => item.kind ?? group
+const pluginIdOf = (item: ItemDef) => item.pluginId || item.id
+const navKey = (pane: string, item: ItemDef) => `${pane}:${item.navId || item.id}`
+
+/** LangBot 是一个插件、多家渠道。字段 key 已经按渠道加了前缀，页面按渠道拆开编辑和保存。 */
+function imChannels(row: NodePluginStatus): ItemDef[] {
+  const fields = (row.fields || []) as FieldDef[]
+  const grouped = new Map<string, FieldDef[]>()
+  for (const field of fields) {
+    if (!field.group) continue
+    const list = grouped.get(field.group) || []
+    list.push(field)
+    grouped.set(field.group, list)
+  }
+  const labelOf = row.label || row.title || row.name || row.id
+  if (grouped.size < 2) {
+    return [{
+      id: row.id,
+      label: labelOf,
+      kind: 'im',
+      conn: true,
+      needsInstall: row.installed !== undefined,
+      fields,
+      hint: '这是一整份配置。节点若把多家渠道放在同一插件里，会按渠道拆开。',
+    }]
+  }
+  const names = new Map((row.groups || []).map((group) => [group.id, group.label]))
+  return [...grouped.entries()].map(([groupId, groupFields]) => {
+    const fromSwitch = groupFields.find((field) => field.type === 'bool')?.label.replace(/^启用/, '')
+    const label = names.get(groupId) || fromSwitch || groupId
+    return {
+      id: row.id,
+      navId: `${row.id}:${groupId}`,
+      pluginId: row.id,
+      groupId,
+      label,
+      kind: 'im' as const,
+      conn: true,
+      needsInstall: true,
+      fields: groupFields,
+      hint: `只保存${label}。每家渠道单独一份，保存这里不会改动其它渠道。`,
+    }
+  })
+}
+
+function channelFilled(st: NodePluginStatus | undefined, fields: FieldDef[] | undefined) {
+  const required = (fields || []).filter((field) => !field.optional && field.type !== 'bool')
+  if (!required.length) return !!st?.configured
+  return required.every((field) => (
+    field.secret
+      ? (st?.saved_secrets || []).includes(field.key)
+      : !!String(st?.values?.[field.key] || '').trim()
+  ))
+}
+
+function channelState(st: NodePluginStatus | undefined, item: ItemDef) {
+  if (!item.groupId) return ''
+  const filled = channelFilled(st, item.fields)
+  const flag = (item.fields || []).find((field) => field.type === 'bool' && field.key.endsWith('.enabled'))
+  const on = flag ? st?.values?.[flag.key] === '1' : filled
+  if (filled && on) return '已启用'
+  if (filled) return '已填写'
+  return '待填写'
+}
 
 const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
   {
@@ -61,7 +144,6 @@ const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
     id: 'bot',
     title: '通知',
     items: [
-      { id: 'wechat', label: '微信', wechat: true },
       {
         id: 'feishu_bot',
         label: '飞书机器人',
@@ -72,6 +154,13 @@ const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
         label: '企业微信',
         fields: [{ key: 'webhook_url', label: 'Webhook', secret: true }],
       },
+    ],
+  },
+  {
+    id: 'im',
+    title: '对话',
+    items: [
+      { id: 'wechat', label: '微信 iLink', kind: 'im', wechat: true, conn: true },
     ],
   },
   {
@@ -94,7 +183,7 @@ const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
  * 每台 Scout 自己的插件参数。密钥不进 Nexus，表单只负责下发到这台在线节点。
  * 分类按接入方式：CLI / MCP / Bot / 邮箱。
  */
-export function NodePlugins({ node }: { node: ScoutNode }) {
+export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPane?: PluginPane }) {
   const fb = useFeedback()
   const qc = useQueryClient()
   const online = nodeIsOnline(node)
@@ -130,7 +219,12 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
     const bag = `${kind}:${item.id}`
     const values: Record<string, string> = {}
     for (const field of item.fields || []) {
-      const text = String(drafts[bag]?.[field.key] || '').trim()
+      const draft = drafts[bag]?.[field.key]
+      if (field.type === 'bool') {
+        if (draft !== undefined) values[field.key] = draft === '1' ? '1' : '0'
+        continue
+      }
+      const text = String(draft || '').trim()
       if (text) values[field.key] = text
     }
     if (!Object.keys(values).length) {
@@ -243,6 +337,22 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
 
   const locked = !online || !known
 
+  const dynamicIm: ItemDef[] = (node.plugins || [])
+    .filter((row) => row.class === 'im' && row.id !== 'wechat')
+    .flatMap((row) => imChannels(row))
+
+  const groups = GROUPS.map((g) => {
+    const items = g.items.map((item) => {
+      const kind = item.kind ?? g.id
+      const row = (node.plugins || []).find((plugin) => plugin.class === kind && plugin.id === item.id)
+      if (row?.fields?.length) return { ...item, fields: row.fields, label: row.label || item.label }
+      return item
+    })
+    if (g.id !== 'im') return { ...g, items }
+    const have = new Set(items.map((item) => item.navId || item.id))
+    return { ...g, items: [...items, ...dynamicIm.filter((item) => !have.has(item.navId || item.id))] }
+  })
+
   const runProbe = (item: ItemDef) => {
     if (item.id === 'feishu') return probe(item.id, 'plugin.cli.feishu', { action: 'check' })
     if (item.id === 'meego') return probe(item.id, 'plugin.cli.meego', { action: 'token' })
@@ -259,13 +369,18 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
   }, [node.node_id, online, known])
 
   const submitEditItem = async (kind: PluginPane, item: ItemDef) => {
+    kind = kindOf(kind, item) as PluginPane
     const st = statusOf(kind, item.id)
-    if (item.needsInstall && !st?.installed) {
+    if (!item.groupId && item.needsInstall && !st?.installed) {
       const ok = await install(kind, item)
       if (!ok) return
     }
     const bag = `${kind}:${item.id}`
-    const has = (item.fields || []).some((field) => String(drafts[bag]?.[field.key] || '').trim())
+    const has = (item.fields || []).some((field) => {
+      const draft = drafts[bag]?.[field.key]
+      if (field.type === 'bool') return draft !== undefined
+      return !!String(draft || '').trim()
+    })
     if (!has) {
       fb.warn('先填写要保存的参数')
       return
@@ -273,16 +388,20 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
     await save(kind, item)
   }
 
-  const selectedKey = openId || 'cli:feishu'
-  const selected = GROUPS.flatMap((group) => group.items.map((item) => ({ group, item }))).find((row) => `${row.group.id}:${row.item.id}` === selectedKey)
-    || { group: GROUPS[0], item: GROUPS[0].items[0] }
-  const selectedSt = statusOf(selected.group.id, selected.item.id)
+  const selectedKey = openId || (initialPane ? navKey(initialPane, groups.find((g) => g.id === initialPane)?.items[0] || groups[0].items[0]) : 'cli:feishu')
+  const selected = groups.flatMap((group) => group.items.map((item) => ({ group, item }))).find((row) => navKey(row.group.id, row.item) === selectedKey)
+    || { group: groups[0], item: groups[0].items[0] }
+  const selectedKind = kindOf(selected.group.id, selected.item)
+  const selectedSt = statusOf(selectedKind, selected.item.id)
   const selectedReady = selected.item.wechat
     ? (wechat.logged_in || !!selectedSt?.configured)
     : !!selectedSt?.configured
   const selectedMissing = !!selected.item.needsInstall && !selectedSt?.installed && !selected.item.wechat
   const selectedTest = lastTest[selected.item.id]
-  const selectedBag = `${selected.group.id}:${selected.item.id}`
+  const selectedPluginId = pluginIdOf(selected.item)
+  const selectedBag = `${selectedKind}:${selectedPluginId}`
+  const selectedChannel = channelState(selectedSt, selected.item)
+  const selectedPlatform = selected.item.groupId ? selectedSt?.platforms?.[selected.item.groupId] : undefined
 
   return (
     <div className="flex h-full min-h-0">
@@ -290,38 +409,52 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
         {online && !known ? (
           <div style={{ padding: '10px 12px', fontSize: 'var(--w-font-meta)', color: 'var(--w-warn)' }}>先升级，才能保存</div>
         ) : null}
-        {GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.id}>
             <div style={{ padding: '10px 12px 4px', fontSize: 11, fontWeight: 700, color: 'var(--w-text-quaternary)' }}>{group.title}</div>
             {group.items.map((item) => {
-              const st = statusOf(group.id, item.id)
+              const st = statusOf(kindOf(group.id, item), item.id)
               const logged = item.wechat && (wechat.logged_in || !!st?.configured)
               const ready = item.wechat ? logged : !!st?.configured
               const missing = !!item.needsInstall && !st?.installed && !item.wechat
-              const installing = jobMatches(job, group.id, item.id)
-              const on = `${group.id}:${item.id}` === `${selected.group.id}:${selected.item.id}`
-              const label = item.wechat ? (logged ? '已登录' : '未登录') : missing ? '未安装' : installing ? '安装中' : ready ? '已配置' : '待填写'
+              const installing = jobMatches(job, kindOf(group.id, item), item.id)
+              const on = navKey(group.id, item) === navKey(selected.group.id, selected.item)
+              const channel = channelState(st, item)
+              const label = item.groupId
+                ? (missing ? '未安装' : installing ? '安装中' : channel)
+                : item.conn && st?.status?.connected ? '已连接' : item.wechat ? (logged ? '已登录' : '未登录') : missing ? '未安装' : installing ? '安装中' : ready ? '已配置' : '待填写'
               return (
                 <button
-                  key={item.id}
+                  key={item.navId || item.id}
                   type="button"
                   data-active={on ? 'true' : 'false'}
                   className="w-hit flex w-full items-center gap-2"
-                  onClick={() => setOpenId(`${group.id}:${item.id}`)}
+                  onClick={() => setOpenId(navKey(group.id, item))}
                   style={{ border: 'none', cursor: 'pointer', textAlign: 'left', padding: '8px 12px', minHeight: 40 }}
                 >
                   <span className="min-w-0 flex-1 truncate" style={{ fontWeight: on ? 700 : 600 }}>{item.label}</span>
-                  <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: ready ? 'var(--w-pass)' : 'var(--w-text-quaternary)' }}>{label}</span>
+                  <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: (item.groupId ? channel === '已启用' : ready) ? 'var(--w-pass)' : 'var(--w-text-quaternary)' }}>{label}</span>
                 </button>
               )
             })}
+            {group.id === 'im' && !dynamicIm.length ? (
+              <div style={{ padding: '4px 12px 8px', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
+                LangBot 渠道层将在节点安装后出现
+              </div>
+            ) : null}
           </div>
         ))}
       </nav>
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ padding: '16px 20px 40px' }}>
         <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>{selected.item.label}</div>
-        <p style={{ margin: '4px 0 16px', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>{HINT[selected.item.id]}</p>
-        {jobMatches(job, selected.group.id, selected.item.id) ? <JobBar job={job} /> : null}
+        <p style={{ margin: '4px 0 16px', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>{selected.item.hint || HINT[selected.item.id]}</p>
+        {selected.item.conn ? <ConnLine st={selectedPlatform ? { ...selectedSt, status: selectedPlatform } : selectedSt} /> : null}
+        {selected.item.groupId && selectedChannel ? (
+          <div style={{ margin: '0 0 14px', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
+            {selectedChannel === '已启用' ? '这家已启用，凭据只属于这一家。' : selectedChannel === '已填写' ? '必填项已齐，打开下面的启用才会连接。' : '这家还没填完。其它渠道不受影响。'}
+          </div>
+        ) : null}
+        {jobMatches(job, selectedKind, selected.item.id) ? <JobBar job={job} /> : null}
         {selected.item.wechat ? (
           <div className="flex flex-col" style={{ gap: 10 }}>
             <WechatQr raw={wechat.qrcode_img} />
@@ -347,20 +480,30 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
           </div>
         ) : (
           <div className="grid" style={{ gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))' }}>
-            {(selected.item.fields || []).map((field) => {
+            {(selected.item.fields || []).filter((field) => field.type === 'bool').map((field) => {
+              const draft = drafts[selectedBag]?.[field.key]
+              const on = draft !== undefined ? draft === '1' : selectedSt?.values?.[field.key] === '1'
+              return (
+                <label key={field.key} className="flex items-center justify-between" style={{ gridColumn: '1 / -1', padding: '8px 0' }}>
+                  <span style={{ fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>{field.label}</span>
+                  <Switch checked={on} disabled={!!busy || locked} onChange={(checked) => setField(selectedKind, selectedPluginId, field.key, checked ? '1' : '0')} />
+                </label>
+              )
+            })}
+            {(selected.item.fields || []).filter((field) => field.type !== 'bool').map((field) => {
               const savedText = selectedSt?.values?.[field.key] || ''
-              const secretSaved = (selectedSt?.saved_secrets || []).includes(field.key) || (!selectedSt?.saved_secrets && !!selectedSt?.configured && !!field.secret)
+              const secretSaved = (selectedSt?.saved_secrets || []).includes(field.key) || (!selectedSt?.saved_secrets && !!selectedSt?.configured && !selected.item.groupId && !!field.secret)
               const draft = drafts[selectedBag]?.[field.key]
               return (
               <label key={field.key} className="flex flex-col" style={{ gap: 6 }}>
                 <span className="flex items-center justify-between">
-                  <span style={{ fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>{field.label}</span>
+                  <span style={{ fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>{field.label}{field.optional ? <span style={{ fontWeight: 400, color: 'var(--w-text-quaternary)' }}>（可选）</span> : null}</span>
                   {field.secret && secretSaved ? (
                     <span className="flex gap-1">
                       {draft === undefined ? (
-                        <Button size="small" type="text" disabled={!!busy || locked} onClick={() => setField(selected.group.id, selected.item.id, field.key, '')}>更换</Button>
+                        <Button size="small" type="text" disabled={!!busy || locked} onClick={() => setField(selectedKind, selectedPluginId, field.key, '')}>更换</Button>
                       ) : null}
-                      <Button size="small" type="text" disabled={!!busy || locked} onClick={() => clearField(selected.group.id, selected.item, field.key)}>清除</Button>
+                      <Button size="small" type="text" disabled={!!busy || locked} onClick={() => clearField(selectedKind, selected.item, field.key)}>清除</Button>
                     </span>
                   ) : null}
                 </span>
@@ -370,29 +513,40 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
                   ) : (
                     <Input.Password
                       value={draft || ''}
-                      placeholder="填写新密钥后保存"
+                      placeholder={field.placeholder || '填写新密钥后保存'}
                       autoComplete="off"
-                      onChange={(e) => setField(selected.group.id, selected.item.id, field.key, e.target.value)}
+                      onChange={(e) => setField(selectedKind, selectedPluginId, field.key, e.target.value)}
                     />
                   )
                 ) : (
                   <Input
                     value={draft !== undefined ? draft : savedText}
+                    placeholder={field.placeholder}
                     autoComplete="off"
-                    onChange={(e) => setField(selected.group.id, selected.item.id, field.key, e.target.value)}
+                    onChange={(e) => setField(selectedKind, selectedPluginId, field.key, e.target.value)}
                   />
                 )}
               </label>
             )})}
             <div className="flex flex-wrap gap-2">
+              {selected.item.groupId && selectedMissing ? (
+                <Button
+                  size="small"
+                  disabled={!!busy || locked}
+                  loading={busy.startsWith('install:')}
+                  onClick={() => void install(selectedKind, selected.item)}
+                >
+                  安装 LangBot
+                </Button>
+              ) : null}
               <Button
                 size="small"
                 type="primary"
                 disabled={!!busy || locked}
-                loading={busy.startsWith('save:') || busy.startsWith('install:')}
+                loading={busy.startsWith('save:') || (!selected.item.groupId && busy.startsWith('install:'))}
                 onClick={() => void submitEditItem(selected.group.id, selected.item)}
               >
-                {selectedMissing ? '安装并保存' : '保存'}
+                {selected.item.groupId ? `保存${selected.item.label}` : selectedMissing ? '安装并保存' : '保存'}
               </Button>
               {selectedReady && testLabel(selected.item) ? (
                 <Button size="small" disabled={!!busy || locked} onClick={() => void runProbe(selected.item)}>{testLabel(selected.item)}</Button>
@@ -401,7 +555,13 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
                 <span style={{ width: '100%', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>{testExplain(selected.item)}</span>
               ) : null}
               {selected.item.needsInstall && selectedSt?.installed ? (
-                <Button size="small" type="text" disabled={!!busy || locked} onClick={() => remove(selected.group.id, selected.item)}>移除</Button>
+                <Button size="small" type="text" disabled={!!busy || locked} onClick={() => {
+                  const title = selected.item.groupId ? '移除 LangBot？' : '移除这个插件？'
+                  const content = selected.item.groupId ? 'LangBot 是共用的运行层。移除后，飞书、钉钉、企业微信的配置都会从这台机器清掉。' : '移除后需要重新安装才能再用。'
+                  void fb.confirm({ title, content, okText: '移除' }).then((ok) => {
+                    if (ok) void remove(selectedKind, selected.item)
+                  })
+                }}>{selected.item.groupId ? '移除 LangBot' : '移除'}</Button>
               ) : null}
             </div>
             {selectedTest ? (
@@ -411,8 +571,48 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
             ) : null}
           </div>
         )}
+        {selected.group.id === 'im' ? <ImNotes node={node} hasDynamic={dynamicIm.length > 0} /> : null}
       </div>
     </div>
+  )
+}
+
+/** 对话渠道的连接状态：读插件快照里的 status。Scout 没上报就明说「未知」，不猜。 */
+function ConnLine({ st }: { st: NodePluginStatus | undefined }) {
+  const s = st?.status
+  const known = s && typeof s.connected === 'boolean'
+  return (
+    <div className="flex flex-wrap items-center gap-3" style={{ margin: '-8px 0 14px', fontSize: 'var(--w-font-sm)' }}>
+      <span style={{ fontWeight: 700, color: !known ? 'var(--w-text-tertiary)' : s.connected ? 'var(--w-pass)' : 'var(--w-warn)' }}>
+        {!known ? '连接状态：未知' : s.connected ? '● 已连接' : '○ 未连接'}
+      </span>
+      {known ? <span style={{ color: 'var(--w-text-tertiary)' }}>最后收到消息 {fmtAgo(s.last_message_at)}</span> : null}
+      {s?.error ? <span style={{ color: 'var(--w-fail)' }}>{s.error}</span> : null}
+    </div>
+  )
+}
+
+function ImNotes({ node, hasDynamic }: { node: ScoutNode; hasDynamic: boolean }) {
+  const held = heldChannels(node)
+  const box = { marginTop: 20, padding: '10px 12px', borderRadius: 'var(--w-radius-sm)', border: '1px solid var(--w-border)', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-secondary)' } as const
+  return (
+    <>
+      <div style={{ ...box, background: held.length ? 'var(--w-warn-bg)' : 'var(--w-surface-subtle)' }}>
+          <strong>这台机器上的机器人</strong>
+        <div style={{ marginTop: 2 }}>
+          这里只让机器人登录到这台 Scout。谁的微信账号可以指挥它，在「我的助手」里用绑定码认领，两步都要做，不是二选一。
+          {held.length
+            ? ` 本节点正连着「${held.join('、')}」，需要常驻。`
+            : ' 本节点当前没有连着对话渠道。'}
+        </div>
+      </div>
+      {!hasDynamic ? (
+        <div style={{ ...box, background: 'var(--w-surface-subtle)' }}>
+          <strong>LangBot 渠道层</strong>
+          <div style={{ marginTop: 2 }}>飞书 / 企业微信 / 钉钉等渠道由 LangBot 提供，将在节点安装后出现在这里。当前节点还没有上报这类条目。</div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -420,7 +620,7 @@ export function NodePlugins({ node }: { node: ScoutNode }) {
 const HINT: Record<string, string> = {
   feishu: '拉需求，把结果写回去',
   meego: '读写工作项',
-  wechat: '登录态只留在这台机器',
+  wechat: '让机器人登录到这台机器。登录态只留在这里。个人账号的认领在「我的助手」，不要在这里填绑定码。',
   feishu_bot: '往群里发一条消息',
   wecom: '往群里发一条消息',
   gmail: '收验证码',
@@ -458,8 +658,8 @@ function wechatHint(state: { error: string; logged_in: boolean; status: string; 
   if (state.logged_in) return '这台机器已登录微信'
   if (state.status === 'expired') return '二维码过期了，重新拿一张。'
   if (state.status === 'scaned' || state.status === 'scanned') return '已扫码，在手机上确认。'
-  if (state.qrcode_img) return '用手机微信扫这一张。登录态只留在这台机器。'
-  return '点显示二维码，向微信要一张登录码。'
+  if (state.qrcode_img) return '用将要作为机器人的微信号扫这一张。扫完后，每个人再到「我的助手」生成绑定码。'
+  return '点显示二维码，让机器人微信号登录这台机器。'
 }
 
 function testLabel(item: ItemDef) {

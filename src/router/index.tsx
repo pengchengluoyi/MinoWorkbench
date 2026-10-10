@@ -21,6 +21,8 @@ const JobsPage = lazy(() => import('@/domains/admin/jobs/JobsPage').then((m) => 
 const RolesPage = lazy(() => import('@/domains/admin/roles/RolesPage').then((m) => ({ default: m.RolesPage })))
 const StackPage = lazy(() => import('@/domains/admin/stack/StackPage').then((m) => ({ default: m.StackPage })))
 const PacksPage = lazy(() => import('@/domains/admin/packs/PacksPage').then((m) => ({ default: m.PacksPage })))
+const AssistantPage = lazy(() => import('@/domains/assistant/AssistantPage').then((m) => ({ default: m.AssistantPage })))
+const AssistantToolsPage = lazy(() => import('@/domains/admin/assistant-tools/AssistantToolsPage').then((m) => ({ default: m.AssistantToolsPage })))
 const FlowBlocksPage = lazy(() => import('@/domains/admin/flow/FlowBlocksPage').then((m) => ({ default: m.FlowBlocksPage })))
 
 const lazyPage = (node: ReactNode) => (
@@ -47,6 +49,7 @@ export const router = createBrowserRouter([
       { path: '/testing', element: lazyPage(<AppListPage />) },
       { path: '/testing/:appId', element: lazyPage(<AppWorkbench />) },
       { path: '/settings', element: <Navigate to="/settings/runtime" replace /> },
+      { path: '/assistant', element: lazyPage(<AssistantPage />) },
       { path: '/settings/runtime', element: lazyPage(<NodesPage />) },
       {
         path: '/settings/runtime/device/:sn',
@@ -88,6 +91,7 @@ export const router = createBrowserRouter([
       { path: '/permissions', element: <Planned title="权限配置" phase="阶段 2" source="Permissions/index.vue 194 行" /> },
       { path: '/skills', element: lazyPage(<SkillsPage />) },
       { path: '/jobs', element: lazyPage(<JobsPage />) },
+      { path: '/assistant-tools', element: lazyPage(<AssistantToolsPage />) },
       { path: '/roles', element: lazyPage(<RolesPage />) },
       { path: '/stack', element: lazyPage(<StackPage />) },
       { path: '/packs', element: lazyPage(<PacksPage />) },

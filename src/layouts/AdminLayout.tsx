@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Activity, FolderTree, Cpu, NotebookTabs, KeyRound,
   Lock, FileClock, Sparkles, ListChecks, Users, Layers, Package, GitBranch,
-  BookCheck, Link2,
+  BookCheck, Link2, Bot,
 } from 'lucide-react'
 import { ErrorBoundary, UserMenu } from '@/ui'
 import { CommandPalette } from './CommandPalette'
@@ -35,6 +35,7 @@ const GROUPS = [
     id: 'caps', label: '能力', items: [
       { to: '/skills', label: '技能', icon: Sparkles },
       { to: '/jobs', label: 'Jobs', icon: ListChecks },
+      { to: '/assistant-tools', label: '助手工具', icon: Bot },
       { to: '/roles', label: '角色', icon: Users },
       { to: '/stack', label: '编排', icon: Layers },
       { to: '/packs', label: '扩展包', icon: Package },

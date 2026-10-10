@@ -11,6 +11,7 @@ interface Command {
 
 const STATIC: Command[] = [
   { id: 'apps', label: '应用', hint: '工作台', to: '/testing' },
+  { id: 'assistant', label: '我的助手', hint: '设置', to: '/assistant' },
   { id: 'nodes', label: 'Scout 节点', hint: '设置', to: '/settings/runtime' },
   { id: 'keys', label: '模型密钥', hint: '设置', to: '/settings/keys' },
   { id: 'health', label: '运行状态', hint: '管理后台', to: '/health' },

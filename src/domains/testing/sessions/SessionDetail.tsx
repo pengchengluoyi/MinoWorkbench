@@ -11,7 +11,38 @@ const EVENT_LABEL: Record<string, string> = {
   'resource/transition': '资源转移',
   'session/start': '会话开始',
   'session/end': '会话结束',
+  'session/attribution': '终态归因',
+  'contract/blocked': '业务前置阻塞',
   'stream/emit': '流式步骤',
+  'assert/vision': '逐项看图验收',
+  'orchestrator/blocked': '能力阻塞',
+  'progress/stop': '无进展停止',
+}
+
+type CheckpointScope = {
+  point_id?: string
+  passed?: boolean
+  evidence_scope?: string
+  hidden_content_verified?: boolean
+}
+
+type Attribution = {
+  first_blocker?: { reason_code?: string; capability_id?: string; turn?: number }
+  latest_error?: { error_kind?: string; capability_id?: string; turn?: number }
+  stop_reason?: { status?: string; kind?: string }
+}
+
+const checkpointScopes = (event: SessionEvent | null): CheckpointScope[] => {
+  if (event?.type !== 'assert/vision' || !event.payload || typeof event.payload !== 'object') return []
+  const rows = (event.payload as { checkpoint_results?: unknown }).checkpoint_results
+  return Array.isArray(rows) ? rows.filter((row) => row && typeof row === 'object') as CheckpointScope[] : []
+}
+
+const scopeLabel = (row: CheckpointScope) => {
+  if (!row.passed) return '未通过'
+  if (row.evidence_scope === 'visible_partial') return '通过（仅可见部分，隐藏内容未验证）'
+  if (row.evidence_scope === 'visible_full') return '通过（完整可见）'
+  return '验证范围未知'
 }
 
 const clip = (value: unknown, max = 160) => {
@@ -62,6 +93,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     () => [...new Set(events.map((e) => e.type).filter(Boolean))] as string[],
     [events],
   )
+  const attribution = [...events].reverse().find((e) => e.type === 'session/attribution')?.payload as Attribution | undefined
 
   if (detail.isLoading) return <Skeleton active paragraph={{ rows: 6 }} title={{ width: 180 }} />
 
@@ -131,6 +163,13 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
       {data.meta?.summary && (
         <p style={{ margin: 0, color: 'var(--w-text-secondary)', fontSize: 'var(--w-font-sm)' }}>{data.meta.summary}</p>
+      )}
+      {attribution && (
+        <div style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-secondary)' }}>
+          终止类别：{attribution.stop_reason?.kind || '未分类'}
+          {attribution.first_blocker && ` · 首个阻塞：${attribution.first_blocker.reason_code || 'blocked'}（回合 ${attribution.first_blocker.turn ?? '?'}）`}
+          {attribution.latest_error && ` · 最近错误：${attribution.latest_error.error_kind || '未知'}（回合 ${attribution.latest_error.turn ?? '?'}）`}
+        </div>
       )}
 
       <Segmented
@@ -204,7 +243,11 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
               >
                 <span className="w-mono" style={{ width: 36, color: 'var(--w-text-quaternary)' }}>{e.seq ?? ''}</span>
                 <span style={{ width: 88, fontWeight: 650 }}>{EVENT_LABEL[e.type || ''] || e.type || '—'}</span>
-                <span className="truncate" style={{ flex: 1, color: 'var(--w-text-tertiary)' }}>{clip(e.payload)}</span>
+                <span className="truncate" style={{ flex: 1, color: 'var(--w-text-tertiary)' }}>
+                  {checkpointScopes(e).length
+                    ? checkpointScopes(e).map((row) => `${row.point_id || '?'} ${scopeLabel(row)}`).join(' · ')
+                    : clip(e.payload)}
+                </span>
               </button>
             ))}
             {hasMore && (
@@ -228,6 +271,11 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
             {picked ? (
               <>
                 <strong style={{ fontSize: 'var(--w-font-sm)' }}>#{picked.seq} {picked.type}</strong>
+                {checkpointScopes(picked).map((row) => (
+                  <div key={row.point_id} style={{ marginTop: 5, fontSize: 'var(--w-font-sm)' }}>
+                    {row.point_id || '检查点'}：{scopeLabel(row)}
+                  </div>
+                ))}
                 <div style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)', margin: '4px 0 8px' }}>
                   回合 {picked.turn ?? '—'} · {picked.phase || '—'}
                 </div>

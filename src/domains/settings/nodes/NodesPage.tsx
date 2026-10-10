@@ -3,11 +3,11 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Cpu, PanelLeftClose, PanelLeftOpen, Power, RefreshCw, RotateCw, TriangleAlert, Upload } from 'lucide-react'
 import { Button, EmptyState, Skeleton, Tooltip, errText, useFeedback } from '@/ui'
 import { usePersistedFlag } from '@/hooks/usePersistedFlag'
-import { compareVersion, executableDevices, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
+import { compareVersion, executableDevices, heldChannels, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
 import { useNodeCommand, useNodes, useScoutRelease } from './queries'
 import { NodeLogs } from './NodeLogs'
-import { NodePlugins } from './NodePlugins'
+import { NodePlugins, PLUGIN_PANES, type PluginPane } from './NodePlugins'
 
 type Pane = 'overview' | 'connect' | 'logs'
 
@@ -48,11 +48,13 @@ export function NodesPage() {
   const totals = useMemo(() => {
     let online = 0
     let devices = 0
+    let holders = 0
     for (const n of list) {
       if (nodeIsOnline(n)) online += 1
       devices += executableDevices(n).length
+      if (heldChannels(n).length) holders += 1
     }
-    return { online, devices }
+    return { online, devices, holders }
   }, [list])
 
   if (nodes.isLoading) return <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
@@ -99,6 +101,11 @@ export function NodesPage() {
           <span className="inline-flex items-center gap-1">
             可执行设备 <strong style={{ color: totals.devices ? 'var(--w-pass)' : 'var(--w-warn)' }}>{totals.devices}</strong>
           </span>
+          {totals.holders ? (
+            <Tooltip title="持有任一对话渠道（如微信）的节点需要常驻，不要休眠或关机">
+              <span>对话持有节点 <strong style={{ color: 'var(--w-text)' }}>{totals.holders}</strong></span>
+            </Tooltip>
+          ) : null}
         </span>
         <span style={{ flex: 1 }} />
         {active ? (
@@ -133,7 +140,7 @@ export function NodesPage() {
           onSelect={selectNode}
         />
 
-        {active ? <NodeDetail node={active} pane={paneOf(params.get('pane'))} /> : null}
+        {active ? <NodeDetail node={active} pane={paneOf(params.get('pane'))} pluginPane={pluginPaneOf(params.get('pane'))} /> : null}
       </div>
     </div>
   )
@@ -253,6 +260,7 @@ function NodeRow({ node, active, onSelect }: { node: ScoutNode; active: boolean;
   const on = nodeIsOnline(node)
   const asleep = nodeIsAsleep(node)
   const label = asleep ? '已休眠' : on ? '在线' : '离线'
+  const held = heldChannels(node)
   return (
     <button
       type="button"
@@ -267,6 +275,11 @@ function NodeRow({ node, active, onSelect }: { node: ScoutNode; active: boolean;
         <span className="truncate" style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
           {devs} 台{node.scout_version ? ` · v${node.scout_version}` : ''}
         </span>
+        {held.length ? (
+          <Tooltip title={`连着：${held.join('、')}。持有对话渠道的节点需要常驻`}>
+            <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-primary)' }}>对话</span>
+          </Tooltip>
+        ) : null}
       </span>
       <span style={{ textAlign: 'right', fontSize: 'var(--w-font-sm)', fontWeight: 700, color: asleep ? 'var(--w-warn)' : on ? 'var(--w-pass)' : 'var(--w-text-tertiary)' }}>
         {label}
@@ -275,9 +288,13 @@ function NodeRow({ node, active, onSelect }: { node: ScoutNode; active: boolean;
   )
 }
 
+function pluginPaneOf(raw: string | null): PluginPane | undefined {
+  return PLUGIN_PANES.find((p) => p === raw)
+}
+
 function paneOf(raw: string | null): Pane {
   if (raw === 'logs') return 'logs'
-  if (raw === 'connect' || raw === 'cli' || raw === 'bot' || raw === 'mail') return 'connect'
+  if (raw === 'connect' || pluginPaneOf(raw)) return 'connect'
   return 'overview'
 }
 
@@ -381,7 +398,7 @@ function NodeToolbar({ node, pane, onPane }: { node: ScoutNode; pane: Pane; onPa
   )
 }
 
-function NodeDetail({ node, pane }: { node: ScoutNode; pane: Pane }) {
+function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; pluginPane?: PluginPane }) {
   const release = useScoutRelease(node)
   const devices = node.devices || []
 
@@ -441,7 +458,7 @@ function NodeDetail({ node, pane }: { node: ScoutNode; pane: Pane }) {
           })}
         </>
       ) : null}
-      {pane === 'connect' ? <div className="flex min-h-0 flex-1 flex-col"><NodePlugins node={node} /></div> : null}
+      {pane === 'connect' ? <div className="flex min-h-0 flex-1 flex-col"><NodePlugins key={node.node_id} node={node} initialPane={pluginPane} /></div> : null}
       {pane === 'logs' ? <div style={{ padding: 'var(--w-space-3)' }}><NodeLogs nodeId={node.node_id} embedded /></div> : null}
     </section>
   )
