@@ -1,7 +1,7 @@
 {
   "name": "mino-workbench",
   "private": true,
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "description": "Mino Workbench — 测试工作台与管理后台（纯 Web）",
   "engines": {
