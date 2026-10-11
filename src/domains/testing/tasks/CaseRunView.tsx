@@ -266,10 +266,11 @@ function copyId(text: string, fb: { ok: (s: string) => void; fail: (s: string) =
   navigator.clipboard.writeText(text).then(() => fb.ok(both ? '已复制任务和用例 ID' : '已复制')).catch(() => fb.fail('剪贴板不可用'))
 }
 
-type UiStatus = 'pass' | 'skip' | 'retry' | 'fail' | 'pending'
+type UiStatus = 'pass' | 'skip' | 'retry' | 'fail' | 'pending' | 'blocked'
 
 function uiStatus(step?: TraceStep): UiStatus {
   const raw = String((step as TraceStep & { ui_status?: string } | undefined)?.ui_status || step?.status || '').toLowerCase()
+  if (raw === 'blocked') return 'blocked'
   if (/retry/.test(raw)) return 'retry'
   if (/skip|cancel|无法/.test(raw)) return 'skip'
   if (/fail|error|give_up|declined/.test(raw)) return 'fail'
@@ -281,7 +282,7 @@ function eventTone(step?: TraceStep): CSSProperties {
   const status = uiStatus(step)
   if (status === 'pass') return { background: 'var(--w-pass-bg)', color: 'var(--w-pass)' }
   if (status === 'fail') return { background: 'var(--w-fail-bg)', color: 'var(--w-fail)' }
-  if (status === 'retry') return { background: 'var(--w-warn-bg)', color: 'var(--w-warn)' }
+  if (status === 'retry' || status === 'blocked') return { background: 'var(--w-warn-bg)', color: 'var(--w-warn)' }
   if (status === 'skip') return { background: 'transparent', color: 'var(--w-text-quaternary)', textDecoration: 'line-through' }
   return { background: 'var(--w-fill)', color: 'var(--w-text-tertiary)' }
 }
@@ -345,6 +346,7 @@ function findClause(events: { op: ScriptEvent[][]; ex: ScriptEvent[][] }, id: st
 }
 
 function statusLabel(status: string) {
+  if (String(status).toLowerCase() === 'blocked') return '阻塞（未验证）'
   const kind = toStatusKind(status)
   if (kind === 'pass') return '通过'
   if (kind === 'fail') return '失败'

@@ -71,6 +71,7 @@ const EVENT_LABEL: Record<string, string> = {
   type: '输入',
   swipe: '滑动',
   drag: '拖拽',
+  think: '决策（未执行）',
 }
 
 const titleOf = (row: Record<string, unknown>) => {
@@ -107,7 +108,15 @@ const pointOf = (row: Record<string, unknown>) => {
   return ''
 }
 
-const eventLabel = (raw: string) => EVENT_LABEL[raw] || raw
+const eventLabel = (raw: string, row: Record<string, unknown>) => {
+  if (raw === 'think') {
+    if (row.event_kind === 'output_contract_error') return '输出契约阻塞（未执行）'
+    if (row.event_kind === 'review_reask' || String(row.thought || '').includes('prior_status')) {
+      return '回看补答（未执行）'
+    }
+  }
+  return EVENT_LABEL[raw] || raw
+}
 
 const stepRefOf = (row: Record<string, unknown>) => {
   const kind = String(row.script_kind || row.kind || row.column || '')
@@ -167,13 +176,13 @@ export function parseTrace(raw: Record<string, unknown> | null | undefined, fall
     byStep.set(step, {
       step,
       title: rawTitle || `步骤 ${step}`,
-      event: eventLabel(rawTitle) || prev?.event || `步骤 ${step}`,
+      event: eventLabel(rawTitle, event) || prev?.event || `步骤 ${step}`,
       param,
       attrs,
       stepRef: stepRefOf(bag) || prev?.stepRef || '',
       seconds,
       status: String(event.result_status || event.status || prev?.status || ''),
-      summary: String(event.summary || event.error || prev?.summary || ''),
+      summary: String(event.summary || event.error || (rawTitle === 'think' ? event.thought : '') || prev?.summary || ''),
       thumb: thumb || prev?.thumb || '',
       expected: compared.expected || prev?.expected || '',
       actual: compared.actual || prev?.actual || '',
