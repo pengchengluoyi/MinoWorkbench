@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Button, Input, Form } from '@/ui'
-import { useFeedback, errText } from '@/ui'
+import { errText } from '@/ui'
 import { loginAccount } from '@/api/auth'
 import { useSession } from '@/lib/session'
 import { persistAuthTokens } from '@/lib/tokens'
@@ -12,8 +12,9 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { refresh } = useSession()
-  const fb = useFeedback()
   const [loading, setLoading] = useState(false)
+  const [form] = Form.useForm()
+  const state = location.state as { from?: string; email?: string; registered?: boolean } | null
 
   const onSubmit = async (values: { account: string; password: string }) => {
     setLoading(true)
@@ -34,7 +35,7 @@ export function LoginPage() {
       const from = (location.state as { from?: string } | null)?.from
       navigate(from || '/testing', { replace: true })
     } catch (e) {
-      fb.fail(errText(e, '登录失败，检查账号密码或 Nexus 是否可达'))
+      form.setFields([{ name: 'password', errors: [errText(e, '登录失败，检查账号密码或 Nexus 是否可达')] }])
     } finally {
       setLoading(false)
     }
@@ -49,7 +50,8 @@ export function LoginPage() {
 使用 Nexus 账号。连不上时，先核对底部地址。
       </p>
 
-      <Form layout="vertical" onFinish={onSubmit} requiredMark={false} disabled={loading}>
+      {state?.registered ? <p role="status" style={{ color: 'var(--w-pass)' }}>注册成功，请登录。</p> : null}
+      <Form form={form} initialValues={{ account: state?.email || '' }} layout="vertical" onFinish={onSubmit} requiredMark={false} disabled={loading}>
         <Form.Item
           name="account"
           label="账号"
@@ -68,6 +70,7 @@ export function LoginPage() {
           登录
         </Button>
       </Form>
+      <p style={{ margin: '16px 0 0', textAlign: 'center' }}><Link to="/register" state={{ from: state?.from }}>注册账号</Link></p>
     </AuthShell>
   )
 }

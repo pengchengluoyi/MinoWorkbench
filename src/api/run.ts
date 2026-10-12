@@ -7,6 +7,15 @@ export interface RunDevice {
   status?: string
   platform?: string
   node_id?: string
+  node_name?: string
+  os?: 'macos' | 'windows' | 'linux' | string
+  desktop_state?: string
+  session_key?: string
+  session_generation?: string
+  executable?: boolean
+  blocked_reason?: string
+  blocking_code?: string
+  capabilities?: string[] | null
   [key: string]: unknown
 }
 
@@ -33,16 +42,27 @@ export const runCaseRunner = (data: RunPayload) =>
     timeout: 120_000,
   })
 
-export const listRunDevices = (onlyOnline = true) =>
+export interface RunDeviceContext {
+  app_id?: string
+  env_surface?: string
+  env_profile?: string
+  action_scheme?: 'visual' | 'dom'
+  playwright_headless?: boolean
+}
+
+export const listRunDevices = (onlyOnline = false, context: RunDeviceContext = {}) =>
   request<{ items?: RunDevice[] }>({
     url: '/case-runner/devices',
     method: 'get',
-    params: { only_online: onlyOnline },
+    params: { only_online: onlyOnline, ...context },
   })
 
 /** 只有这些通道的设备真能跑用例。 */
 export const isExecutable = (d: RunDevice): boolean => {
-  const status = String(d.status || '').toLowerCase()
-  if (status && status !== 'online' && status !== 'idle' && status !== 'ready') return false
-  return !!d.sn
+  return d.executable === true && !!d.sn
 }
+
+export const deviceFamilyLabel = (d: RunDevice) =>
+  d.platform === 'desktop' ? `PC 桌面 · ${d.os || '系统未知'}` : d.platform === 'web' ? 'Web 浏览器' : `移动设备 · ${d.platform || '平台未知'}`
+
+export const deviceLabel = (d: RunDevice) => `${d.node_name || d.node_id || 'Scout'} / ${deviceFamilyLabel(d)}${d.model && d.platform !== 'desktop' ? ` · ${d.model}` : ''}`

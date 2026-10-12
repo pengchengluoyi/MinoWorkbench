@@ -6,9 +6,12 @@ import { Button, EmptyState, ErrorBoundary, Planned, Skeleton, errText } from '@
 import { getPlatformIcon } from '@/constants/appPlatforms'
 import { DEFAULT_TAB, isRetiredTab, resolveTab, type Tab } from './nav'
 import { useAppDetail } from './queries'
+import { loadCasesPanel, loadTasksPanel } from './listPrefetch'
+import { ensureListNavigation, failListNavigation } from './performance'
+import { useAppRealtime } from './useAppRealtime'
 
-const CasesPanel = lazy(() => import('@/domains/testing/cases/CasesPanel').then((m) => ({ default: m.CasesPanel })))
-const TasksPanel = lazy(() => import('@/domains/testing/tasks/TasksPanel').then((m) => ({ default: m.TasksPanel })))
+const CasesPanel = lazy(() => loadCasesPanel().then((m) => ({ default: m.CasesPanel })))
+const TasksPanel = lazy(() => loadTasksPanel().then((m) => ({ default: m.TasksPanel })))
 const AssetsPanel = lazy(() => import('@/domains/testing/assets/AssetsPanel').then((m) => ({ default: m.AssetsPanel })))
 const EnvConfigPanel = lazy(() => import('@/domains/testing/config/EnvConfigPanel').then((m) => ({ default: m.EnvConfigPanel })))
 const SessionLogPanel = lazy(() => import('@/domains/testing/sessions/SessionLogPanel').then((m) => ({ default: m.SessionLogPanel })))
@@ -35,6 +38,19 @@ export function AppWorkbench() {
   const rawTab = params.get('tab')
   const tab = resolveTab(rawTab)
   const detail = useAppDetail(appId)
+  const projectId = detail.data?.project_id || ''
+  useAppRealtime(appId, projectId)
+  if (tab === 'cases' || tab === 'tasks') ensureListNavigation(appId, tab)
+  useEffect(() => {
+    if (detail.isError && (tab === 'cases' || tab === 'tasks')) failListNavigation(appId, tab)
+  }, [detail.isError, appId, tab])
+
+  useEffect(() => {
+    if (!projectId || params.get('projectId') === projectId) return
+    const next = new URLSearchParams(params)
+    next.set('projectId', projectId)
+    setParams(next, { replace: true })
+  }, [projectId, params, setParams])
 
   // 已砍功能的旧 tab 值（process / knowledge / docs / intel）→ 回落默认 tab
   useEffect(() => {
@@ -107,7 +123,7 @@ export function AppWorkbench() {
         {/* 主工作区 */}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ErrorBoundary label="面板">
-            <Panel tab={tab} appId={appId} />
+            <Panel key={appId} tab={tab} appId={appId} projectId={projectId} contextLoading={detail.isPending} />
           </ErrorBoundary>
         </main>
       </div>
@@ -116,12 +132,13 @@ export function AppWorkbench() {
 }
 
 /** 面板分发。各面板按阶段陆续替换掉占位。 */
-function Panel({ tab, appId }: { tab: Tab; appId: string }) {
+function Panel({ tab, appId, projectId, contextLoading }: { tab: Tab; appId: string; projectId: string; contextLoading: boolean }) {
   switch (tab) {
     case 'cases':
-      return lazyPanel(<CasesPanel appId={appId} />)
+      if (!projectId) return contextLoading ? <Skeleton active paragraph={{ rows: 8 }} /> : <EmptyState title="应用未关联项目" hint="请检查应用的项目信息。" />
+      return lazyPanel(<CasesPanel appId={appId} projectId={projectId} />)
     case 'tasks':
-      return lazyPanel(<TasksPanel appId={appId} />)
+      return lazyPanel(<TasksPanel appId={appId} projectId={projectId} />)
     case 'session-log':
       return lazyPanel(<SessionLogPanel appId={appId} />)
     case 'navigation':

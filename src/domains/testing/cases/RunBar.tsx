@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Play, Smartphone, Trash2, X } from 'lucide-react'
+import { Play, Trash2, X } from 'lucide-react'
 import { Button, Select, Tooltip, errText, useFeedback } from '@/ui'
 import { getProjectEnv } from '@/api/projectEnv'
-import { runCaseRunner, type RunDevice } from '@/api/run'
+import { runCaseRunner, isExecutable } from '@/api/run'
 import { unwrapOne } from '@/lib/unwrap'
-import { normalizeEnvDoc } from '../config/envModel'
+import { normalizeEnvDoc, channelTitle } from '../config/envModel'
+import { useRunDevices } from './queries'
+import { DeviceSelect } from './DeviceSelect'
 
 export interface DispatchedRun {
   runId: string
@@ -30,8 +32,6 @@ export function RunBar({
   appId,
   projectId,
   selected,
-  devices,
-  devicesLoading,
   onClear,
   onDispatched,
   onDelete,
@@ -40,8 +40,6 @@ export function RunBar({
   appId: string
   projectId: string
   selected: string[]
-  devices: RunDevice[]
-  devicesLoading: boolean
   onClear: () => void
   onDispatched: (run: DispatchedRun) => void
   onDelete?: () => void
@@ -50,6 +48,7 @@ export function RunBar({
   const fb = useFeedback()
   const [sn, setSn] = useState<string>('')
   const [profile, setProfile] = useState('')
+  const [surface, setSurface] = useState('')
   const [scheme, setScheme] = useState<'visual' | 'dom'>('visual')
   const env = useQuery({
     queryKey: ['project', projectId, 'env'],
@@ -62,24 +61,20 @@ export function RunBar({
     setProfile((cur) => (cur && keys.includes(cur) ? cur : env.data?.default_profile || keys[0] || 'test'))
   }, [env.data, environments])
 
-  const options = useMemo(
-    () => devices.map((d) => ({
-      value: d.sn,
-      label: `${d.model || d.type || '设备'} · ${d.sn.slice(0, 10)}`,
-    })),
-    [devices],
-  )
-
-  const effectiveSn = sn || devices[0]?.sn || ''
-
-  const blockReason = devicesLoading
-    ? '正在查可用设备…'
-    : !devices.length
-      ? '没有在线设备。请先在设备上启动 Scout 并确认它已连上 Nexus。'
-      : ''
+  const deviceQuery = useRunDevices(selected.length > 0, { app_id: appId, env_surface: surface, env_profile: profile, action_scheme: scheme })
+  const devices = deviceQuery.data || []
+  const devicesLoading = deviceQuery.isLoading
+  const effectiveSn = sn
+  const device = devices.find((item) => item.sn === effectiveSn)
+  const blockReason = devicesLoading ? '正在查询设备…'
+    : deviceQuery.isError ? errText(deviceQuery.error, '设备信息读取失败')
+      : !device ? devices.some(isExecutable) ? '请选择执行设备' : '没有兼容且就绪的设备，请查看设备列表中的原因'
+        : !isExecutable(device) ? device.blocked_reason || '所选设备未就绪'
+        : ''
 
   const dispatch = useMutation({
     mutationFn: async () => {
+      if (blockReason) throw new Error(blockReason)
       const device = devices.find((d) => d.sn === effectiveSn)
       const res = await runCaseRunner({
         app_id: appId,
@@ -88,6 +83,7 @@ export function RunBar({
         sns: effectiveSn ? [effectiveSn] : [],
         platform: device?.platform || device?.type || undefined,
         env_profile: profile || undefined,
+        env_surface: surface || undefined,
         action_scheme: scheme,
         run_type: 'manual',
       })
@@ -112,8 +108,10 @@ export function RunBar({
         position: 'sticky',
         bottom: 'var(--w-space-3)',
         alignSelf: 'center',
+        width: 'fit-content',
+        maxWidth: '100%',
         padding: '8px 10px 8px 16px',
-        borderRadius: 'var(--w-radius-pill)',
+        borderRadius: 'var(--w-radius-lg)',
         background: 'var(--w-text)',
         color: 'var(--w-text-inverse)',
         boxShadow: 'var(--w-shadow-lg)',
@@ -126,20 +124,15 @@ export function RunBar({
 
       <span aria-hidden style={{ width: 1, height: 16, background: 'rgba(255,255,255,.22)' }} />
 
-      <span className="flex items-center gap-1.5" style={{ minWidth: 0 }}>
-        <Smartphone size={13} style={{ opacity: 0.7, flexShrink: 0 }} />
-        <Select
-          size="small"
-          value={effectiveSn || undefined}
-          onChange={setSn}
-          options={options}
-          placeholder="无可用设备"
-          disabled={!devices.length}
-          loading={devicesLoading}
-          style={{ width: 168 }}
-          popupMatchSelectWidth={false}
-        />
-      </span>
+      <DeviceSelect devices={devices} value={effectiveSn} onChange={setSn} loading={devicesLoading}
+        refreshing={deviceQuery.isFetching} onRefresh={() => void deviceQuery.refetch()} compact />
+
+      <Field label="被测渠道">
+        <Select size="small" value={surface || undefined} onChange={setSurface} placeholder="选择应用渠道"
+          options={(env.data?.channels || []).map((channel) => ({ value: channel.id, label: channelTitle(channel) }))}
+          loading={env.isLoading} style={{ width: 130 }} />
+      </Field>
+      {deviceQuery.isError ? <Button size="small" onClick={() => void deviceQuery.refetch()}>重试设备查询</Button> : null}
 
       <Field label="环境">
         <Select

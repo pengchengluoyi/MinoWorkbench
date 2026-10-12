@@ -1,4 +1,12 @@
-import axios, { type AxiosRequestConfig } from 'axios'
+import axios, { CanceledError, type AxiosRequestConfig } from 'axios'
+import { accountEpoch, trackAccountRequest, finishAccountRequest } from './accountEpoch'
+
+const scopes = new WeakMap<object, { epoch: number; controller: AbortController }>()
+const staleRequest = (config?: object) => {
+  const scope = config && scopes.get(config)
+  finishAccountRequest(scope?.controller)
+  return !!scope && scope.epoch !== accountEpoch()
+}
 import { CLIENT_NAME, getBaseUrl } from './config'
 import { clearTokens, getToken, hasToken } from './tokens'
 
@@ -51,6 +59,13 @@ const kickToLogin = () => {
 }
 
 service.interceptors.request.use((config) => {
+  const controller = new AbortController()
+  const upstream = config.signal
+  if (upstream?.aborted) controller.abort()
+  else upstream?.addEventListener?.('abort', () => controller.abort(), { once: true })
+  config.signal = controller.signal
+  scopes.set(config, { epoch: accountEpoch(), controller })
+  trackAccountRequest(controller)
   config.baseURL = getBaseUrl()
   config.headers.set('X-Mino-Client', CLIENT_NAME)
   // 显式声明期望 JSON：dev 的 vite proxy 靠 Accept 区分
@@ -64,6 +79,7 @@ service.interceptors.request.use((config) => {
 
 service.interceptors.response.use(
   (response) => {
+    if (staleRequest(response.config)) throw new CanceledError('账号已切换')
     /**
      * 兜底：拿到 HTML 说明这个路径没走到 Nexus
      * （dev 下漏配 vite proxy 前缀，或生产部署的 history fallback 吃掉了接口路径）。
@@ -79,11 +95,13 @@ service.interceptors.response.use(
     return response.data
   },
   async (error) => {
+    if (staleRequest(error?.config)) return Promise.reject(new CanceledError('账号已切换'))
+    const errorEpoch = accountEpoch()
     const status = error?.response?.status
     const url = String(error?.config?.url || '')
     const skipAuth = /\/auth\/(login|register|send-code|status)/.test(url)
     if (status === 401 && !skipAuth && (await sessionReallyGone())) {
-      kickToLogin()
+      if (errorEpoch === accountEpoch()) kickToLogin()
     }
     return Promise.reject(error)
   },

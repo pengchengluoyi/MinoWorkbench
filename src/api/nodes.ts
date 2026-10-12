@@ -1,11 +1,21 @@
 import { request } from '@/lib/request'
+import type { ImChannelStatus } from '@/types/im'
 
 export interface NodeDevice {
   sn: string
+  node_id?: string
+  current_scout_id?: string
+  node_alive?: boolean
+  channels?: Record<string, unknown>
   type?: string
   model?: string
   status?: string
   platform?: string
+  os?: string
+  executable?: boolean
+  desktop_state?: string
+  blocked_reason?: string
+  session_generation?: string
   last_online?: string
   [key: string]: unknown
 }
@@ -33,8 +43,13 @@ export interface ScoutNode {
   device_count?: number
   devices?: NodeDevice[]
   executors?: Record<string, NodeExecutor>
+  owner_user_id?: string
   owner_name?: string
   host?: {
+    os?: string
+    hostname?: string
+    arch?: string
+    desktop?: { state?: string; blocked_reason?: string; session_key?: string; session_generation?: string }
     mode?: string
     power_source?: string
     battery_percent?: number
@@ -44,6 +59,7 @@ export interface ScoutNode {
   }
   /** null：这台 Scout 还不认识插件状态。 */
   plugins?: NodePluginStatus[] | null
+  im_channels?: ImChannelStatus[]
   plugin_job?: NodePluginJob
   update_job?: NodePluginJob
   [key: string]: unknown
@@ -74,6 +90,8 @@ export interface PluginConnStatus {
   connected?: boolean
   last_message_at?: number
   error?: string
+  connection_verified?: boolean
+  connection_source?: string
 }
 
 export interface PluginFieldDef {
@@ -104,6 +122,46 @@ export type NodeCommand = 'sleep' | 'wake' | 'restart' | 'update'
 
 export const listRuntimeNodes = () =>
   request<{ nodes?: ScoutNode[] }>({ url: '/runtime/nodes', method: 'get' })
+
+export type ScoutSystem = 'darwin' | 'win32' | 'linux'
+
+export interface NodeInstallation {
+  install_id: string
+  expires_at: number
+  ttl_sec: number
+  nexus_url: string
+  targets: Partial<Record<ScoutSystem, string[]>>
+  commands: Partial<Record<ScoutSystem, string>>
+}
+
+export interface NodeInstallationStatus {
+  install_id: string
+  status: 'pending' | 'registered' | 'expired' | 'revoked'
+  expires_at: number
+  registered_at: number
+  node_id: string
+  hostname: string
+  online: boolean
+}
+
+export const createNodeInstallation = () =>
+  request<NodeInstallation>({ url: '/runtime/nodes/install-token', method: 'post' })
+
+export const getNodeInstallationStatus = (installId: string) =>
+  request<NodeInstallationStatus>({
+    url: `/runtime/nodes/installations/${encodeURIComponent(installId)}`,
+    method: 'get',
+  })
+
+export const detectScoutSystem = (): ScoutSystem | undefined => {
+  const agent = navigator as Navigator & { userAgentData?: { platform?: string } }
+  const value = `${agent.userAgentData?.platform || ''} ${navigator.platform || ''} ${navigator.userAgent || ''}`.toLowerCase()
+  if (/android|iphone|ipad|ipod/.test(value) || (value.includes('mac') && navigator.maxTouchPoints > 1)) return undefined
+  if (/windows|win32|win64/.test(value)) return 'win32'
+  if (/mac|darwin/.test(value)) return 'darwin'
+  if (/linux/.test(value)) return 'linux'
+  return undefined
+}
 
 export const sendNodeCommand = (nodeId: string, command: NodeCommand, reason = 'workbench') =>
   request({
@@ -170,9 +228,25 @@ export const nodeIsOnline = (n: ScoutNode): boolean => {
   return n.status === 'online' || n.online === true || n.alive === true
 }
 
-/** 真能跑用例的设备。离线设备不算。 */
+/** 节点页只使用当前节点的实时设备，不用历史首次归属兜底。 */
+export const connectedNodeDevices = (n: ScoutNode): NodeDevice[] => {
+  if (!nodeIsOnline(n)) return []
+  return (n.devices || []).filter((d) => {
+    if (d.node_id !== n.node_id || (d.current_scout_id && d.current_scout_id !== n.node_id)) return false
+    if (d.node_alive === false) return false
+    if (d.platform === 'desktop' || d.platform === 'web') return true
+    return Object.values(d.channels || {}).some((value) => {
+      const state = typeof value === 'object' && value !== null
+        ? String((value as { state?: string; status?: string }).state || (value as { status?: string }).status || '')
+        : String(value || '')
+      return ['connected', 'online', 'available'].includes(state.toLowerCase())
+    })
+  })
+}
+
+/** 真能跑用例的设备。离线及其他节点的设备不算。 */
 export const executableDevices = (n: ScoutNode): NodeDevice[] =>
-  (n.devices || []).filter((d) => String(d.status || '').toLowerCase() === 'online')
+  connectedNodeDevices(n).filter((d) => d.executable === true)
 
 export interface ScoutRelease {
   version?: string
@@ -216,10 +290,11 @@ export const releaseTargetOf = (n: ScoutNode): { os: string; arch: string } => {
  * LangBot 等以后出现在 class='im'。status.connected 为真才算持有。
  */
 export const heldChannels = (n: ScoutNode): string[] => {
-  const out: string[] = []
-  for (const p of n.plugins || []) {
-    const isChat = (p.class === 'bot' && p.id === 'wechat') || p.class === 'im'
-    if (isChat && p.status?.connected) out.push(p.id === 'wechat' ? '微信' : p.label || p.title || p.name || p.id)
-  }
-  return out
+  if (!nodeIsOnline(n)) return []
+  const labels: Record<string, string> = { wechat: '微信', 'langbot:lark': '飞书', 'langbot:dingtalk': '钉钉', 'langbot:wecombot': '企业微信' }
+  return (n.im_channels || [])
+    .filter((channel) => channel.connection_state === 'connected' && channel.connected === true && channel.holding !== false)
+    .map((channel) => labels[channel.channel] || channel.channel)
 }
+
+export const claimLegacyNode = (nodeId: string) => request({ url: `/runtime/nodes/${encodeURIComponent(nodeId)}/claim`, method: 'post' })

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Filter, RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
@@ -7,20 +7,27 @@ import { onRealtimeState, realtimeState, type RealtimeState } from '@/lib/realti
 import { EMPTY_ARRAY } from '@/lib/unwrap'
 import { CreateTaskDialog } from './CreateTaskDialog'
 import { useTaskDetail, useTaskList } from './queries'
-import { CaseRunView } from './CaseRunView'
 import { byAttention, caseId, failReason, taskId, verdictOf, type TaskCase, type TaskRow, type Verdict } from './types'
+import { beginListNavigation, useListPerformance } from '../workbench/performance'
+
+const CaseRunView = lazy(() => import('./CaseRunView').then((module) => ({ default: module.CaseRunView })))
 
 /**
  * 执行结果分三层，每层只回答一个问题：
  * 批次列表回答「哪一次跑挂了」；批次页回答「哪些用例要看」；
  * 用例页回答「这一条卡在哪一步」。点进去才换页，不在同一屏里再开一栏。
  */
-export function TasksPanel({ appId }: { appId: string }) {
+export function TasksPanel({ appId, projectId }: { appId: string; projectId: string }) {
   const fb = useFeedback()
   const [params, setParams] = useSearchParams()
-  const list = useTaskList(appId)
-  const tasks: TaskRow[] = list.data ?? EMPTY_ARRAY
+  const pageValue = Number(params.get('taskPage'))
+  const page = Number.isFinite(pageValue) ? Math.max(1, Math.trunc(pageValue) || 1) : 1
+  const sizeValue = Number(params.get('taskSize'))
+  const size = [20, 50, 100, 200].includes(sizeValue) ? sizeValue : 50
+  const list = useTaskList(appId, page, size)
+  const tasks: TaskRow[] = list.data?.items ?? EMPTY_ARRAY
   const urlRun = params.get('run') || ''
+  useListPerformance(appId, 'tasks', list.isSuccess && !urlRun, list.isError, !!list.data, JSON.stringify([page, size]))
   const tcase = params.get('tcase') || ''
 
   const detail = useTaskDetail(urlRun, true)
@@ -29,7 +36,6 @@ export function TasksPanel({ appId }: { appId: string }) {
   const [onlyAttention, setOnlyAttention] = useState(true)
   const [creating, setCreating] = useState(false)
   const [rt, setRt] = useState<RealtimeState>(realtimeState)
-  const projectId = params.get('projectId') || ''
 
   useEffect(() => onRealtimeState(setRt), [])
 
@@ -59,7 +65,7 @@ export function TasksPanel({ appId }: { appId: string }) {
   }
 
   const createButton = (
-    <Button size="small" type="primary" onClick={() => setCreating(true)}>新建任务</Button>
+    <Button size="small" type="primary" disabled={!projectId} onClick={() => setCreating(true)}>新建任务</Button>
   )
   const createDialog = (
     <CreateTaskDialog
@@ -74,7 +80,7 @@ export function TasksPanel({ appId }: { appId: string }) {
     />
   )
 
-  if (list.isError) {
+  if (list.isError && !urlRun) {
     return (
       <Card>
         <EmptyState
@@ -87,7 +93,7 @@ export function TasksPanel({ appId }: { appId: string }) {
     )
   }
 
-  if (!list.isLoading && !tasks.length) {
+  if (!urlRun && !list.isLoading && !tasks.length && !list.data?.total) {
     return (
       <>
         <Card>
@@ -109,6 +115,11 @@ export function TasksPanel({ appId }: { appId: string }) {
             dataSource={tasks}
             loading={list.isLoading}
             columns={batchColumns}
+            pagination={{ page, pageSize: size, total: list.data?.total || 0,
+              onChange: (next, nextSize) => {
+                beginListNavigation(appId, 'tasks')
+                setQuery({ taskPage: String(next), taskSize: String(nextSize) })
+              } }}
             onRowClick={(row) => setQuery({ run: taskId(row), tcase: null })}
             toolbar={(
               <>
@@ -125,8 +136,9 @@ export function TasksPanel({ appId }: { appId: string }) {
   }
 
   const current = allCases.find((row) => caseId(row) === tcase)
+  if (task && task.app_id !== appId) return <Card><EmptyState title="任务不属于当前应用" action={<Button onClick={() => setQuery({ run: null, tcase: null })}>返回列表</Button>} /></Card>
   if (tcase && current) {
-    return <CaseRunView row={current} taskId={urlRun} onBack={() => setQuery({ tcase: null })} />
+    return <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}><CaseRunView row={current} taskId={urlRun} onBack={() => setQuery({ tcase: null })} /></Suspense>
   }
 
   const total = Number(task?.total ?? allCases.length) || allCases.length
@@ -348,4 +360,3 @@ function Card({ children }: { children: ReactNode }) {
     </div>
   )
 }
-

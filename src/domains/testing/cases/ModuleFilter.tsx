@@ -1,7 +1,5 @@
-import { useMemo } from 'react'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Button, Tooltip } from '@/ui'
-import type { CaseRow } from '@/api/projectCases'
 
 /**
  * 模块筛选。
@@ -10,27 +8,20 @@ import type { CaseRow } from '@/api/projectCases'
  * 用户的目标是"挑一批用例跑"，模块只是缩小范围的手段，不是目的地。
  */
 export function ModuleFilter({
-  cases,
+  modules,
+  total,
   value,
   onChange,
   collapsed,
   onToggle,
 }: {
-  cases: CaseRow[]
+  modules: { name: string; count: number }[]
+  total: number
   value: string
   onChange: (next: string) => void
   collapsed: boolean
   onToggle: () => void
 }) {
-  const modules = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const c of cases) {
-      const key = String(c.module || '').trim() || '未分组'
-      counts.set(key, (counts.get(key) || 0) + 1)
-    }
-    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], 'zh-Hans-CN'))
-  }, [cases])
-
   if (collapsed) {
     return (
       <aside
@@ -72,8 +63,8 @@ export function ModuleFilter({
         </Tooltip>
       </div>
 
-      <FilterRow label="全部" count={cases.length} active={!value} onClick={() => onChange('')} />
-      {modules.map(([name, count]) => (
+      <FilterRow label="全部" count={total} active={!value} onClick={() => onChange('')} />
+      {[...modules].sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN')).map(({ name, count }) => (
         <FilterRow
           key={name}
           label={name}

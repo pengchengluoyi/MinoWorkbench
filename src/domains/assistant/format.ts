@@ -18,7 +18,10 @@ export const fmtMs = (ms?: number): string => {
 const CHANNEL_LABELS: Record<string, string> = {
   wechat: '微信', weixin: '微信', feishu: '飞书', lark: '飞书', wecom: '企业微信', dingtalk: '钉钉', qq: 'QQ', mcp: 'MCP',
 }
-export const channelLabel = (c: string): string => CHANNEL_LABELS[String(c || '').toLowerCase()] || c || '未知'
+export const channelLabel = (c: string): string => {
+  const key = String(c || '').toLowerCase().replace(/^langbot:/, '')
+  return CHANNEL_LABELS[key === 'wecombot' ? 'wecom' : key] || c || '未知'
+}
 
 export const surfaceLabel = (s: string): string => (s === 'mcp' ? 'MCP' : s === 'im' ? 'IM' : s || '未知')
 

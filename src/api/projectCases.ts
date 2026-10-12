@@ -18,6 +18,28 @@ export interface CaseRow {
 export const getProjectCases = (projectId: string) =>
   request<CaseRow[]>({ url: `/project/${projectId}/cases`, method: 'get' })
 
+export interface CasePageParams {
+  appId: string
+  page: number
+  size: number
+  search: string
+  module: string
+  result: 'all' | 'failed' | 'never'
+}
+
+export const getCasePage = (projectId: string, params: CasePageParams) =>
+  request<{ cases: CaseRow[]; total: number }>({
+    url: `/project/${projectId}/cases`, method: 'get',
+    params: { app_id: params.appId, limit: params.size, offset: (params.page - 1) * params.size,
+      search: params.search, module: params.module, result: params.result },
+  })
+
+export const getCaseModules = (projectId: string) =>
+  request<{ items: { name: string; count: number }[]; total: number }>({ url: `/project/${projectId}/case-modules`, method: 'get' })
+
+export const getProjectCase = (projectId: string, caseId: string) =>
+  request<{ case: CaseRow }>({ url: `/project/${projectId}/cases/${encodeURIComponent(caseId)}`, method: 'get' })
+
 export const deleteProjectCases = (projectId: string, caseIds: string[]) =>
   request({ url: `/project/${projectId}/cases/delete`, method: 'post', data: { case_ids: caseIds } })
 

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Drawer, Skeleton, StatusPill } from '@/ui'
 import { isAssistantNotReady, type AssistantTurn } from '@/api/assistant'
 import { channelLabel, fmtMs, fmtTime, surfaceLabel, turnStatus } from './format'
-import { useAssistantProfile, useTurn, useTurnMessages } from './queries'
+import { useTurn, useTurnMessages } from './queries'
 import { MinoCardView, TraceList } from './MinoCardView'
 import { QueryProblem } from './AssistantNotReady'
 
@@ -55,10 +55,9 @@ function Messages({ turnId }: { turnId: string }) {
 
 export function TurnDrawer({ turnId, onClose }: { turnId: string; onClose: () => void }) {
   const q = useTurn(turnId)
-  const profile = useAssistantProfile()
   const t = q.data
   const taskId = t ? findTaskId(t) : ''
-  const appId = (t && typeof t.detail?.app_id === 'string' && t.detail.app_id) || profile.data?.default_app_id || ''
+  const appId = (t && typeof t.detail?.app_id === 'string' && t.detail.app_id) || ''
   const st = t ? turnStatus(t.status) : null
 
   return (

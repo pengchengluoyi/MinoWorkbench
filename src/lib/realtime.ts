@@ -69,6 +69,7 @@ const scheduleReconnect = () => {
 }
 
 export const connectRealtime = (token?: string) => {
+  if (token && currentToken && token !== currentToken) disconnectRealtime()
   if (token) {
     currentToken = token
     setWsToken(token)
@@ -78,13 +79,16 @@ export const connectRealtime = (token?: string) => {
 
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
 
+  if (!currentToken) return
   const base = getWsUrl()
   const url = currentToken ? `${base}?token=${encodeURIComponent(currentToken)}` : base
 
   setState('connecting')
-  ws = new WebSocket(url)
+  const socket = new WebSocket(url)
+  ws = socket
 
-  ws.onopen = () => {
+  socket.onopen = () => {
+    if (ws !== socket) return
     reconnectAttempt = 0
     setState('open')
     const waiters = openWaiters
@@ -92,7 +96,8 @@ export const connectRealtime = (token?: string) => {
     waiters.forEach((fn) => { try { fn() } catch { /* noop */ } })
   }
 
-  ws.onmessage = (event) => {
+  socket.onmessage = (event) => {
+    if (ws !== socket) return
     let msg: RealtimeMessage
     try {
       msg = JSON.parse(event.data)
@@ -112,13 +117,15 @@ export const connectRealtime = (token?: string) => {
     listeners.forEach((fn) => { try { fn(msg) } catch (e) { console.error('[realtime] 订阅者出错', e) } })
   }
 
-  ws.onclose = () => {
+  socket.onclose = (event) => {
+    if (ws !== socket) return
     setState('closed')
     ws = null
-    scheduleReconnect()
+    if (event.code !== 1008 && currentToken) scheduleReconnect()
   }
 
-  ws.onerror = () => {
+  socket.onerror = () => {
+    if (ws !== socket) return
     console.warn('[realtime] 连接出错：', safeUrl(url))
     ws?.close()
   }
@@ -128,6 +135,9 @@ export const disconnectRealtime = () => {
   if (reconnectTimer != null) { clearTimeout(reconnectTimer); reconnectTimer = null }
   reconnectAttempt = 0
   currentToken = ''
+  pending.forEach((entry) => entry.reject(new Error('账号连接已关闭')))
+  pending.clear()
+  openWaiters = []
   const socket = ws
   ws = null
   setState('closed')

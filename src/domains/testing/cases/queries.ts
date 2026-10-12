@@ -1,17 +1,17 @@
-import { useQuery } from '@tanstack/react-query'
-import { getProjectCases, type CaseRow } from '@/api/projectCases'
-import { listRunDevices, isExecutable, type RunDevice } from '@/api/run'
-import { listTestingTasks } from '@/api/caseRunner'
-import { unwrapList } from '@/lib/unwrap'
+import { queryOptions, useQuery } from '@tanstack/react-query'
+import { useSession } from '@/lib/session'
+import { getCaseModules, getCasePage, getProjectCase, getProjectCases, type CasePageParams, type CaseRow } from '@/api/projectCases'
+import { listRunDevices, type RunDevice, type RunDeviceContext } from '@/api/run'
+import { getCaseLastResults } from '@/api/caseRunner'
+import { unwrapList, unwrapOne } from '@/lib/unwrap'
 
 export const caseKeys = {
-  list: (projectId: string) => ['cases', projectId] as const,
+  list: (projectId: string) => ['cases', projectId, useSession.getState().user?.user_id || ''] as const,
   devices: ['run', 'devices'] as const,
-  lastResults: (appId: string) => ['cases', 'lastResults', appId] as const,
+  lastResults: (appId: string) => ['cases', 'lastResults', appId, useSession.getState().user?.user_id || ''] as const,
 }
 
-export const useProjectCases = (projectId: string) =>
-  useQuery({
+export const projectCasesOptions = (projectId: string) => queryOptions({
     queryKey: caseKeys.list(projectId),
     enabled: !!projectId,
     queryFn: async (): Promise<CaseRow[]> =>
@@ -23,18 +23,47 @@ export const useProjectCases = (projectId: string) =>
       }),
   })
 
-/** 在线且真能跑的设备。没有它就不能下发，所以 30 秒刷一次。 */
-export const useRunDevices = () =>
+export const useProjectCases = (projectId: string, enabled = true) => useQuery({ ...projectCasesOptions(projectId), enabled: enabled && !!projectId })
+
+export const casePageOptions = (projectId: string, params: CasePageParams) => queryOptions({
+  queryKey: [...caseKeys.list(projectId), 'page', params.appId, params.search, params.module, params.result, params.page, params.size],
+  enabled: !!projectId && !!params.appId,
+  queryFn: async () => {
+    const response = await getCasePage(projectId, params)
+    return { items: unwrapList<CaseRow>(response, { keys: ['cases'], label: 'GET /project/:id/cases' }), total: Number(response.data?.total || 0) }
+  },
+})
+
+export const useCasePage = (projectId: string, params: CasePageParams) => useQuery(casePageOptions(projectId, params))
+
+export const useCaseModules = (projectId: string) => useQuery({
+  queryKey: [...caseKeys.list(projectId), 'modules'], enabled: !!projectId,
+  queryFn: async () => unwrapOne<{ items: { name: string; count: number }[]; total: number }>(await getCaseModules(projectId))!,
+})
+
+export const useProjectCase = (projectId: string, caseId: string) => useQuery({
+  queryKey: [...caseKeys.list(projectId), 'detail', caseId], enabled: !!projectId && !!caseId,
+  queryFn: async () => {
+    const response = await getProjectCase(projectId, caseId)
+    const row = response.data?.case
+    if (!row) throw new Error('用例详情未返回')
+    return { ...row, title: row.title || String(row.name || row.case_id) }
+  },
+})
+
+/** 账号内的全部设备及服务端可执行判定，每 30 秒刷新任务上下文。 */
+export const useRunDevices = (enabled = true, context: RunDeviceContext = {}) =>
   useQuery({
-    queryKey: caseKeys.devices,
+    queryKey: [...caseKeys.devices, useSession.getState().user?.user_id || '', context],
+    enabled,
     refetchInterval: 30_000,
     retry: false,
     queryFn: async (): Promise<RunDevice[]> => {
-      const items = unwrapList<RunDevice>(await listRunDevices(true), {
+      const items = unwrapList<RunDevice>(await listRunDevices(false, context), {
         keys: ['devices'],
         label: 'GET /case-runner/devices',
       })
-      return items.filter(isExecutable)
+      return items
     },
   })
 
@@ -45,41 +74,19 @@ export interface LastResult {
   at?: string
 }
 
-/**
- * 用例的「上次结果」。
- *
- * 注意：/project/:id/cases 的行上**没有**这个字段，只能从最近的执行批次里反推
- * （批次的 cases 数组带每条用例的状态）。这是选择用例时的真实依据
- * ——「哪些一直在挂」——所以值得多一个查询。
- */
-export const useLastResults = (appId: string) =>
+export const useLastResults = (appId: string, caseIds: string[]) =>
   useQuery({
-    queryKey: caseKeys.lastResults(appId),
-    enabled: !!appId,
+    queryKey: [...caseKeys.lastResults(appId), [...caseIds].sort()],
+    enabled: !!appId && !!caseIds.length,
     retry: false,
     queryFn: async (): Promise<Record<string, LastResult>> => {
-      const tasks = unwrapList<any>(await listTestingTasks({ appId, limit: 20 }), {
-        keys: ['tasks'],
-        label: 'GET /case-runner/tasks',
-      })
+      const response = await getCaseLastResults(appId, caseIds)
+      const items = response.data?.items
+      if (!items) throw new Error('上次结果未返回')
       const out: Record<string, LastResult> = {}
-      // 任务按时间倒序，先到的就是最近的，已有的不覆盖
-      for (const task of tasks) {
-        for (const c of task?.cases || []) {
-          const id = String(c?.case_id || c?.caseId || '')
-          if (!id || out[id]) continue
-          const s = String(c?.status || c?.overall_status || '').toLowerCase()
-          const status: LastStatus = /pass|success|done/.test(s)
-            ? 'pass'
-            : /fail|error|exception/.test(s)
-              ? 'fail'
-              : 'other'
-          out[id] = {
-            status,
-            reason: c?.fail_reason || c?.failure || c?.message || '',
-            at: task?.finished_at || task?.started_at || '',
-          }
-        }
+      for (const [id, result] of Object.entries(items)) {
+        const value = String(result.status || '').toLowerCase()
+        out[id] = { ...result, status: /pass|success|done/.test(value) ? 'pass' : /fail|error|exception/.test(value) ? 'fail' : 'other' }
       }
       return out
     },

@@ -1,60 +1,63 @@
-import { Bot, TriangleAlert } from 'lucide-react'
-import { Skeleton, StatusPill } from '@/ui'
-import type { AssistantStatus } from '@/api/assistant'
+import { Link } from 'react-router-dom'
+import { Bot } from 'lucide-react'
+import { Skeleton, StatusPill, Switch, errText, useFeedback } from '@/ui'
+import { imConnectionLabel } from '@/lib/imStatus'
 import { channelLabel, fmtAgo } from './format'
-import { useAssistantStatus } from './queries'
+import { useAssistantMutations, useAssistantStatus } from './queries'
 import { QueryProblem } from './AssistantNotReady'
 
-/** 顶部状态条：助手在不在线、谁持有、各渠道连没连。离线时直接说该找谁。 */
 export function StatusBar() {
   const q = useAssistantStatus()
+  const { saveProfile } = useAssistantMutations()
+  const feedback = useFeedback()
   if (q.isLoading) return <Skeleton active paragraph={{ rows: 1 }} title={false} />
   if (q.isError) {
     return <div className="w-surface-card"><QueryProblem error={q.error} what="助手状态" onRetry={() => void q.refetch()} /></div>
   }
-  const s = q.data as AssistantStatus
+  const s = q.data!
   const nodes = s.im_nodes ?? []
-  const holders = nodes.map((n) => n.name || n.node_id)
-
-  let tone: 'pass' | 'warn' | 'fail' = 'pass'
-  let headline = '助手在线'
-  let detail = ''
-  if (!s.enabled) {
-    tone = 'warn'; headline = '助手已停用'; detail = '在「接入与默认值」里打开「启用助手」后，IM 和 MCP 才会响应。'
-  } else if (!s.online) {
-    tone = 'fail'; headline = '助手离线，请联系节点管理员'
-    detail = holders.length ? `持有对话渠道的节点：${holders.join('、')}。` : '当前没有任何节点持有对话渠道。'
-  } else if (!nodes.length) {
-    tone = 'warn'; detail = '还没有节点持有对话渠道，IM 暂不可用（MCP 不受影响）。管理员可在「Scout 节点 → 接入 → 对话」配置。'
-  }
-
-  const color = tone === 'pass' ? 'var(--w-pass)' : tone === 'warn' ? 'var(--w-warn)' : 'var(--w-fail)'
-  const bg = tone === 'pass' ? 'var(--w-pass-bg)' : tone === 'warn' ? 'var(--w-warn-bg)' : 'var(--w-fail-bg)'
-  const Icon = tone === 'pass' ? Bot : TriangleAlert
-
   return (
-    <section role="status" style={{ border: '1px solid var(--w-border)', borderRadius: 'var(--w-radius-lg)', background: 'var(--w-surface)', overflow: 'hidden' }}>
-      <div className="flex items-center gap-3" style={{ padding: '10px 14px', background: bg, color }}>
-        <Icon size={18} />
-        <strong style={{ fontSize: 'var(--w-font-title)' }}>{headline}</strong>
-        {detail ? <span style={{ fontSize: 'var(--w-font-sm)', fontWeight: 600 }}>{detail}</span> : null}
+    <section className="w-surface-card" role="status" style={{ padding: 14 }}>
+      <div className="flex flex-wrap items-center gap-3">
+        <Bot size={18} />
+        <strong>{!s.enabled ? '助手已停用' : s.online ? 'IM 助手在线' : 'IM 尚未就绪'}</strong>
+        <span style={{ flex: 1 }} />
+        <span>启用助手</span>
+        <Switch aria-label="启用助手" checked={s.enabled} loading={saveProfile.isPending} onChange={(enabled) => {
+          saveProfile.mutate({ enabled }, {
+            onSuccess: () => feedback.ok(enabled ? '助手已启用' : '助手已停用'),
+            onError: (failure) => feedback.fail(errText(failure, '保存失败')),
+          })
+        }} />
       </div>
-      {nodes.length ? (
-        <div className="flex flex-col" style={{ padding: '8px 14px', gap: 6 }}>
-          {nodes.map((n) => (
-            <div key={n.node_id} className="flex flex-wrap items-center gap-3" style={{ fontSize: 'var(--w-font-sm)' }}>
-              <span style={{ fontWeight: 650, minWidth: 120 }}>{n.name || n.node_id}</span>
-              <StatusPill status={n.alive ? 'pass' : 'fail'}>{n.alive ? '节点在线' : '节点离线'}</StatusPill>
-              {(n.channels ?? []).length ? n.channels.map((c) => (
-                <span key={c.channel} className="inline-flex items-center gap-1.5">
-                  <StatusPill status={c.connected ? 'pass' : 'warn'}>{channelLabel(c.channel)}{c.connected ? ' 已连接' : ' 未连接'}</StatusPill>
-                  <span style={{ color: 'var(--w-text-quaternary)' }}>最后消息 {fmtAgo(c.last_message_at)}</span>
-                </span>
-              )) : <span style={{ color: 'var(--w-text-quaternary)' }}>没有对话渠道</span>}
+      <div className="flex flex-col" style={{ marginTop: 12, gap: 10 }}>
+        {nodes.flatMap((node) => node.channels.map((channel) => {
+          const connection = imConnectionLabel(channel, node.alive)
+          return (
+            <div key={`${node.node_id}:${channel.channel}`} style={{ borderTop: '1px solid var(--w-border)', paddingTop: 8 }}>
+              <div className="flex flex-wrap items-center gap-3">
+                <strong>{channelLabel(channel.channel)} · {node.name || node.node_id}</strong>
+                <StatusPill status={connection.kind}>{connection.text}</StatusPill>
+                <StatusPill status={channel.bound ? 'pass' : 'warn'}>{channel.bound ? '我的账号已绑定' : '待绑定账号'}</StatusPill>
+                {!channel.bound ? <Link to="/assistant?tab=setup">绑定</Link> : null}
+                <Link to="/settings/runtime">查看节点</Link>
+              </div>
+              <div style={{ marginTop: 4, fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
+                {channel.installed === true ? '已安装' : channel.installed === false ? '未安装' : '安装状态未上报'}
+                {' · '}{!node.alive ? '节点离线' : channel.running === true ? '进程运行' : channel.running === false ? '进程未运行' : '进程状态未上报'}
+                {channel.last_message_at ? ` · 最后消息 ${fmtAgo(channel.last_message_at)}` : ''}
+                {channel.error ? <span style={{ color: 'var(--w-fail)' }}> · {channel.error}</span> : null}
+              </div>
             </div>
-          ))}
+          )
+        }))}
+        {!nodes.length ? <span style={{ color: 'var(--w-text-tertiary)' }}>当前可访问节点尚未上报对话渠道。请在 Scout 节点页配置。</span> : null}
+        <div className="flex items-center gap-3" style={{ borderTop: '1px solid var(--w-border)', paddingTop: 8 }}>
+          <strong>MCP</strong>
+          <StatusPill status={s.mcp_available ? 'pass' : 'muted'}>{s.mcp_available ? '可用' : '已停用'}</StatusPill>
+          <Link to="/assistant?tab=mcp">接入说明</Link>
         </div>
-      ) : null}
+      </div>
     </section>
   )
 }

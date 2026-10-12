@@ -8,6 +8,7 @@ import { Planned } from '@/ui/Planned'
 
 /** 页面级懒加载。新增真实页面一律走这里，不要直接 import。 */
 const LoginPage = lazy(() => import('@/domains/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
+const RegisterPage = lazy(() => import('@/domains/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })))
 const HealthPage = lazy(() => import('@/domains/admin/health/HealthPage').then((m) => ({ default: m.HealthPage })))
 const AuditPage = lazy(() => import('@/domains/admin/audit/AuditPage').then((m) => ({ default: m.AuditPage })))
 const AppListPage = lazy(() => import('@/domains/testing/apps/AppListPage').then((m) => ({ default: m.AppListPage })))
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <GuestOnly>{lazyPage(<LoginPage />)}</GuestOnly>,
+  },
+  {
+    path: '/register',
+    element: <GuestOnly>{lazyPage(<RegisterPage />)}</GuestOnly>,
   },
 
   // ---------- Studio 测试工作台：登录即可 ----------

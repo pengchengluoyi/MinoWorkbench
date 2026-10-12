@@ -49,7 +49,7 @@ export const CHANNEL_KINDS = [
 export const APP_PLATFORMS = [
   { id: 'android', label: '安卓', field: 'package', placeholder: 'com.example.app' },
   { id: 'ios', label: 'iOS', field: 'bundle', placeholder: 'com.example.app' },
-  { id: 'pc', label: 'PC', field: 'path', placeholder: '安装路径或启动命令' },
+  { id: 'pc', label: 'PC', field: 'path', placeholder: '完整 EXE 路径或 AUMID' },
   { id: 'mac', label: 'Mac', field: 'bundle', placeholder: 'com.example.desktop' },
 ]
 
@@ -57,7 +57,7 @@ const PRESETS: EnvChannel[] = [
   { id: 'android', kind: 'app', platform: 'android', alias: '', app_identifier: '', third_party: false, label: '安卓', field: 'package', placeholder: 'com.example.app' },
   { id: 'ios', kind: 'app', platform: 'ios', alias: '', app_identifier: '', third_party: false, label: 'iOS', field: 'bundle', placeholder: 'com.example.app' },
   { id: 'web', kind: 'web', platform: 'web', alias: '', app_identifier: '', third_party: false, label: 'Web', field: 'base_url', placeholder: 'https://test.example.com' },
-  { id: 'pc', kind: 'app', platform: 'pc', alias: '', app_identifier: '', third_party: false, label: 'PC', field: 'path', placeholder: '安装路径或启动命令' },
+  { id: 'pc', kind: 'app', platform: 'pc', alias: '', app_identifier: '', third_party: false, label: 'PC', field: 'path', placeholder: '完整 EXE 路径或 AUMID' },
   { id: 'mac', kind: 'app', platform: 'mac', alias: '', app_identifier: '', third_party: false, label: 'Mac', field: 'bundle', placeholder: 'com.example.desktop' },
   { id: 'server', kind: 'server', platform: 'server', alias: '', app_identifier: '', third_party: false, label: 'Server', field: 'base_url', placeholder: 'https://api.example.com' },
 ]

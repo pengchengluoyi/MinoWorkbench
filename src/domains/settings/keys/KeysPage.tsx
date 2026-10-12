@@ -6,10 +6,12 @@ import {
 } from '@/ui'
 import {
   PRESET_PROVIDER_IDS, apiTypeLabel, deleteAIProvider, listAIProviders, roundRatio, saveAIProvider, saveAIUsage,
-  type AIProvider, type ProviderForm,
+  validateAIProvider, type AIProvider, type ProviderForm,
 } from '@/api/ai'
 
-const keys = { all: ['ai', 'providers'] as const }
+import { useSession } from '@/lib/session'
+
+const keys = { get all() { return ['account', useSession.getState().user?.user_id || '', 'ai', 'providers'] as const } }
 
 const toForm = (p: AIProvider, defaultId: string): ProviderForm => {
   const options = [...(p.model_options || [])]
@@ -27,6 +29,7 @@ const toForm = (p: AIProvider, defaultId: string): ProviderForm => {
     plan_compress_ratio: roundRatio(p.plan_compress_ratio ?? 3, 3),
     web_compress_ratio: roundRatio(p.web_compress_ratio ?? 2, 2),
     android_compress_ratio: roundRatio(p.android_compress_ratio ?? 1, 1),
+    pc_compress_ratio: roundRatio(p.pc_compress_ratio ?? 1, 1),
     clear_key: false,
     set_default: defaultId === p.id,
   }
@@ -83,6 +86,7 @@ export function KeysPage() {
         plan_compress_ratio: roundRatio(form.plan_compress_ratio, 3),
         web_compress_ratio: roundRatio(form.web_compress_ratio, 2),
         android_compress_ratio: roundRatio(form.android_compress_ratio, 1),
+        pc_compress_ratio: roundRatio(form.pc_compress_ratio, 1),
       })
     },
     onSuccess: async () => {
@@ -102,6 +106,12 @@ export function KeysPage() {
       await refresh()
     },
     onError: (e) => feedback.fail(errText(e, '保存失败')),
+  })
+
+  const validate = useMutation({
+    mutationFn: validateAIProvider,
+    onSuccess: () => feedback.ok('连接验证成功'),
+    onError: (e) => feedback.fail(errText(e, '连接验证失败')),
   })
 
   const remove = useMutation({
@@ -250,9 +260,11 @@ export function KeysPage() {
                 <Ratio label="Plan 压缩" value={selectedForm.plan_compress_ratio} onChange={(v) => patchForm(selected.id, { plan_compress_ratio: v })} />
                 <Ratio label="Web 压缩" value={selectedForm.web_compress_ratio} onChange={(v) => patchForm(selected.id, { web_compress_ratio: v })} />
                 <Ratio label="安卓压缩" value={selectedForm.android_compress_ratio} onChange={(v) => patchForm(selected.id, { android_compress_ratio: v })} />
+                <Ratio label="PC 压缩" value={selectedForm.pc_compress_ratio} onChange={(v) => patchForm(selected.id, { pc_compress_ratio: v })} />
               </div>
               <div className="flex gap-2" style={{ marginTop: 16 }}>
                 <Button type="primary" loading={save.isPending} onClick={() => save.mutate({ id: selected.id, form: selectedForm })}>保存配置</Button>
+                {selected.configured && <Button loading={validate.isPending} onClick={() => validate.mutate(selected.id)}>验证连接</Button>}
                 {selected.configured && (
                   <Button
                     loading={save.isPending}

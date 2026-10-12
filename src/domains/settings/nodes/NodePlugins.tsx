@@ -15,6 +15,8 @@ import {
 import { unwrapOne } from '@/lib/unwrap'
 import { fmtAgo } from '@/lib/timeText'
 import { nodeKeys } from './queries'
+import { assistantKeys } from '@/domains/assistant/queries'
+import { imConnectionLabel } from '@/lib/imStatus'
 
 interface FieldDef {
   key: string
@@ -103,12 +105,14 @@ function channelFilled(st: NodePluginStatus | undefined, fields: FieldDef[] | un
   ))
 }
 
-function channelState(st: NodePluginStatus | undefined, item: ItemDef) {
+function channelState(st: NodePluginStatus | undefined, item: ItemDef, node: ScoutNode) {
   if (!item.groupId) return ''
+  const channel = node.im_channels?.find((row) => row.channel === `langbot:${item.groupId}`)
+  if (channel || !nodeIsOnline(node)) return imConnectionLabel(channel, nodeIsOnline(node)).text
   const filled = channelFilled(st, item.fields)
   const flag = (item.fields || []).find((field) => field.type === 'bool' && field.key.endsWith('.enabled'))
   const on = flag ? st?.values?.[flag.key] === '1' : filled
-  if (filled && on) return '已启用'
+  if (filled && on) return '状态未上报'
   if (filled) return '已填写'
   return '待填写'
 }
@@ -187,7 +191,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
   const fb = useFeedback()
   const qc = useQueryClient()
   const online = nodeIsOnline(node)
-  const known = Array.isArray(node.plugins)
+  const known = Array.isArray(node.plugins) && node.plugins.length > 0
   const job = node.plugin_job
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
   const [busy, setBusy] = useState('')
@@ -213,7 +217,11 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
     setDrafts((prev) => ({ ...prev, [bag]: { ...(prev[bag] || {}), [key]: value } }))
   }
 
-  const refresh = () => qc.invalidateQueries({ queryKey: nodeKeys.all })
+  const refresh = () => Promise.all([
+    qc.invalidateQueries({ queryKey: nodeKeys.all }),
+    qc.invalidateQueries({ queryKey: assistantKeys.status }),
+    qc.invalidateQueries({ queryKey: assistantKeys.identities }),
+  ])
 
   const save = async (kind: string, item: ItemDef) => {
     const bag = `${kind}:${item.id}`
@@ -360,14 +368,6 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
     return undefined
   }
 
-  useEffect(() => {
-    if (!online || !known || wechatAsked.current === node.node_id) return
-    wechatAsked.current = node.node_id
-    void wechatAct('status')
-    // 只在进入这台节点时问一次登录态，避免刷新把二维码清掉
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.node_id, online, known])
-
   const submitEditItem = async (kind: PluginPane, item: ItemDef) => {
     kind = kindOf(kind, item) as PluginPane
     const st = statusOf(kind, item.id)
@@ -400,14 +400,25 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
   const selectedTest = lastTest[selected.item.id]
   const selectedPluginId = pluginIdOf(selected.item)
   const selectedBag = `${selectedKind}:${selectedPluginId}`
-  const selectedChannel = channelState(selectedSt, selected.item)
+  const selectedChannel = channelState(selectedSt, selected.item, node)
   const selectedPlatform = selected.item.groupId ? selectedSt?.platforms?.[selected.item.groupId] : undefined
+  const wechatReported = !!(node.plugins || []).find((row) => row.id === 'wechat' && (row.class === 'im' || row.class === 'bot'))
+
+  useEffect(() => {
+    if (!selected.item.wechat || !wechatReported || !online || !known || wechatAsked.current === node.node_id) return
+    wechatAsked.current = node.node_id
+    void wechatAct('status')
+    // 仅进入已上报的微信插件时读取一次，其他分类不触发微信操作。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.node_id, online, known, selected.item.wechat, wechatReported])
 
   return (
     <div className="flex h-full min-h-0">
       <nav className="shrink-0 overflow-y-auto" aria-label="接入项" style={{ width: 'clamp(180px, 22%, 280px)', borderRight: '1px solid var(--w-border)' }}>
         {online && !known ? (
-          <div style={{ padding: '10px 12px', fontSize: 'var(--w-font-meta)', color: 'var(--w-warn)' }}>先升级，才能保存</div>
+          <div style={{ padding: '10px 12px', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-secondary)' }}>
+            节点尚未上报可用插件状态。请稍后刷新；持续无状态时检查 Scout 的版本与账号归属。
+          </div>
         ) : null}
         {groups.map((group) => (
           <div key={group.id}>
@@ -419,7 +430,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
               const missing = !!item.needsInstall && !st?.installed && !item.wechat
               const installing = jobMatches(job, kindOf(group.id, item), item.id)
               const on = navKey(group.id, item) === navKey(selected.group.id, selected.item)
-              const channel = channelState(st, item)
+              const channel = channelState(st, item, node)
               const label = item.groupId
                 ? (missing ? '未安装' : installing ? '安装中' : channel)
                 : item.conn && st?.status?.connected ? '已连接' : item.wechat ? (logged ? '已登录' : '未登录') : missing ? '未安装' : installing ? '安装中' : ready ? '已配置' : '待填写'
@@ -693,4 +704,3 @@ function JobBar({ job }: { job: NodePluginJob | undefined }) {
     </div>
   )
 }
-

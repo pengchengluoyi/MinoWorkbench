@@ -1,3 +1,4 @@
+import { useSession } from '@/lib/session'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createBindCode, createMcpToken, deleteIdentity, deleteSubscription, getAssistantProfile, getAssistantStatus,
@@ -5,22 +6,18 @@ import {
   putAssistantProfile, revokeMcpToken, listAssistantTools,
   type ProfilePatch,
 } from '@/api/assistant'
-import { listDevices } from '@/api/device'
-import { getProjects } from '@/api/project'
-import { unwrapList } from '@/lib/unwrap'
-import type { ProjectRow } from '@/types/project'
 
 export const assistantKeys = {
-  all: ['assistant'] as const,
-  status: ['assistant', 'status'] as const,
-  profile: ['assistant', 'profile'] as const,
-  identities: ['assistant', 'identities'] as const,
-  tools: ['assistant', 'tools'] as const,
-  turns: (page: number, size: number, surface: string) => ['assistant', 'turns', page, size, surface] as const,
-  turn: (id: string) => ['assistant', 'turn', id] as const,
-  messages: (id: string) => ['assistant', 'turn', id, 'messages'] as const,
-  tokens: ['assistant', 'mcp-tokens'] as const,
-  subs: ['assistant', 'subscriptions'] as const,
+  get all() { return ['account', useSession.getState().user?.user_id || '', 'assistant'] as const },
+  get status() { return ['account', useSession.getState().user?.user_id || '', 'assistant', 'status'] as const },
+  get profile() { return ['account', useSession.getState().user?.user_id || '', 'assistant', 'profile'] as const },
+  get identities() { return ['account', useSession.getState().user?.user_id || '', 'assistant', 'identities'] as const },
+  get tools() { return ['account', useSession.getState().user?.user_id || '', 'assistant', 'tools'] as const },
+  turns: (page: number, size: number, surface: string) => ['account', useSession.getState().user?.user_id || '', 'assistant', 'turns', page, size, surface] as const,
+  turn: (id: string) => ['account', useSession.getState().user?.user_id || '', 'assistant', 'turn', id] as const,
+  messages: (id: string) => ['account', useSession.getState().user?.user_id || '', 'assistant', 'turn', id, 'messages'] as const,
+  get tokens() { return ['account', useSession.getState().user?.user_id || '', 'assistant', 'mcp-tokens'] as const },
+  get subs() { return ['account', useSession.getState().user?.user_id || '', 'assistant', 'subscriptions'] as const },
 }
 
 /** 后端没就绪（404 等）不重试，让页面马上给出降级提示。 */
@@ -33,7 +30,7 @@ export const useAssistantProfile = () =>
   useQuery({ queryKey: assistantKeys.profile, queryFn: getAssistantProfile, retry: retryUnlessNotReady })
 
 export const useIdentities = () =>
-  useQuery({ queryKey: assistantKeys.identities, queryFn: async () => (await listIdentities())?.items ?? [], retry: retryUnlessNotReady })
+  useQuery({ queryKey: assistantKeys.identities, queryFn: async () => (await listIdentities())?.items ?? [], refetchInterval: 20_000, retry: retryUnlessNotReady })
 
 export const useAssistantTools = () =>
   useQuery({ queryKey: assistantKeys.tools, queryFn: async () => (await listAssistantTools())?.items ?? [], retry: retryUnlessNotReady })
@@ -60,29 +57,6 @@ export const useMcpTokens = () =>
 export const useSubscriptions = () =>
   useQuery({ queryKey: assistantKeys.subs, queryFn: async () => (await listSubscriptions())?.items ?? [], retry: retryUnlessNotReady })
 
-/** 默认应用候选：沿用落地页的 /project/list，把项目下的应用摊平。 */
-export const useAppOptions = () =>
-  useQuery({
-    queryKey: ['assistant', 'app-options'],
-    queryFn: async () => {
-      const projects = unwrapList<ProjectRow>(await getProjects(), { keys: ['projects'], label: 'GET /project/list' })
-      return projects.flatMap((p) => (p.apps || []).map((a) => ({
-        value: a.id,
-        label: p.name ? `${a.name || a.id}（${p.name}）` : a.name || a.id,
-      })))
-    },
-  })
-
-export const useDeviceOptions = () =>
-  useQuery({
-    queryKey: ['assistant', 'device-options'],
-    queryFn: async () => (await listDevices()).map((d) => ({
-      value: d.sn,
-      online: String(d.status || '').toLowerCase() === 'online',
-      label: `${d.model || d.type || '设备'} · ${d.sn}`,
-    })),
-  })
-
 export function useAssistantMutations() {
   const qc = useQueryClient()
   const inv = (key: readonly unknown[]) => () => qc.invalidateQueries({ queryKey: key })
@@ -95,7 +69,10 @@ export function useAssistantMutations() {
       },
     }),
     bindCode: useMutation({ mutationFn: createBindCode }),
-    unbind: useMutation({ mutationFn: deleteIdentity, onSuccess: inv(assistantKeys.identities) }),
+    unbind: useMutation({ mutationFn: deleteIdentity, onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: assistantKeys.identities })
+      void qc.invalidateQueries({ queryKey: assistantKeys.status })
+    } }),
     createToken: useMutation({ mutationFn: createMcpToken, onSuccess: inv(assistantKeys.tokens) }),
     revokeToken: useMutation({ mutationFn: revokeMcpToken, onSuccess: inv(assistantKeys.tokens) }),
     cancelSub: useMutation({ mutationFn: deleteSubscription, onSuccess: inv(assistantKeys.subs) }),

@@ -8,6 +8,7 @@ import { useAppTaskStats, useProjects } from './queries'
 import { CreateDialog, type CreateKind } from './CreateDialog'
 import { AppRow } from './AppRow'
 import { markAppOpened, recentAppIds } from './recent'
+import { beginListNavigation } from '../workbench/performance'
 
 interface Flat {
   app: App
@@ -88,6 +89,7 @@ export function AppListPage() {
   }
 
   const open = useCallback((row: Flat) => {
+    beginListNavigation(row.app.id, 'cases')
     markAppOpened(row.app.id)
     navigate(hrefOf(row))
   }, [navigate])

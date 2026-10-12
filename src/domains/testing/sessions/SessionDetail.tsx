@@ -6,6 +6,7 @@ import {
   type LlmCall, type SessionEvent, type SessionTurn,
 } from '@/api/sessions'
 import { useSessionDetail } from './queries'
+import { DesktopEvidence } from './DesktopEvidence'
 
 const EVENT_LABEL: Record<string, string> = {
   'resource/transition': '资源转移',
@@ -279,6 +280,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
                 <div style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)', margin: '4px 0 8px' }}>
                   回合 {picked.turn ?? '—'} · {picked.phase || '—'}
                 </div>
+                <DesktopEvidence event={picked} events={events} />
                 <pre className="w-mono" style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 'var(--w-font-meta)' }}>
                   {clip(picked.payload, 4000)}
                 </pre>

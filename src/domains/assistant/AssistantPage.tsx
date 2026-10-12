@@ -7,7 +7,6 @@ import { assistantKeys, useAssistantStatus } from './queries'
 import { QueryProblem } from './AssistantNotReady'
 import { StatusBar } from './StatusBar'
 import { BindSection } from './BindSection'
-import { DefaultsSection } from './DefaultsSection'
 import { TurnsSection } from './TurnsSection'
 import { SubscriptionsSection } from './SubscriptionsSection'
 import { McpSection } from './McpSection'
@@ -24,7 +23,7 @@ export function AssistantPage() {
     <div className="h-full overflow-y-auto" style={{ paddingRight: 4 }}>
       <PageHeader
         title="我的助手"
-        subtitle="这里管你自己：认领 IM 账号、默认设备和 MCP token。飞书 CLI、邮箱和机器人登录仍在 Scout 节点页，按节点配置。"
+        subtitle="这里管理你的 IM 账号绑定和 MCP token。机器人安装、登录与渠道配置在 Scout 节点页管理。"
         extra={<Button size="small" icon={<RefreshCw size={13} />} onClick={() => void qc.invalidateQueries({ queryKey: assistantKeys.all })}>刷新</Button>}
       />
       {status.isError && isAssistantNotReady(status.error) ? (
@@ -38,7 +37,7 @@ export function AssistantPage() {
         onChange={(k) => setTab(k as (typeof TABS)[number])}
         style={{ marginTop: 'var(--w-space-3)' }}
         items={[
-          { key: 'setup', label: '接入与默认值', children: <div className="flex flex-col" style={{ gap: 'var(--w-space-3)' }}><BindSection /><DefaultsSection /></div> },
+          { key: 'setup', label: '接入', children: <BindSection /> },
           { key: 'turns', label: '会话与轨迹', children: <TurnsSection /> },
           { key: 'subs', label: '订阅', children: <SubscriptionsSection /> },
           { key: 'mcp', label: 'MCP', children: <McpSection /> },

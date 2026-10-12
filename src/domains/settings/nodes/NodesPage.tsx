@@ -1,13 +1,15 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Cpu, PanelLeftClose, PanelLeftOpen, Power, RefreshCw, RotateCw, TriangleAlert, Upload } from 'lucide-react'
+import { Cpu, PanelLeftClose, PanelLeftOpen, Plus, Power, RefreshCw, RotateCw, TriangleAlert, Upload } from 'lucide-react'
 import { Button, EmptyState, Skeleton, Tooltip, errText, useFeedback } from '@/ui'
 import { usePersistedFlag } from '@/hooks/usePersistedFlag'
-import { compareVersion, executableDevices, heldChannels, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
+import { connectedNodeDevices, compareVersion, executableDevices, heldChannels, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
-import { useNodeCommand, useNodes, useScoutRelease } from './queries'
+import { useNodeCommand, useNodes, useScoutRelease, useClaimLegacyNode } from './queries'
+import { useSession } from '@/lib/session'
 import { NodeLogs } from './NodeLogs'
 import { NodePlugins, PLUGIN_PANES, type PluginPane } from './NodePlugins'
+import { AddNodeModal } from './AddNodeModal'
 
 type Pane = 'overview' | 'connect' | 'logs'
 
@@ -29,6 +31,7 @@ const PANES: { id: Pane; label: string }[] = [
  */
 export function NodesPage() {
   const nodes = useNodes()
+  const [addingNode, setAddingNode] = useState(false)
   const [params, setParams] = useSearchParams()
   const [listCollapsed, setListCollapsed] = usePersistedFlag('mino.nodes.rail', false)
   const picked = params.get('node') || ''
@@ -57,10 +60,8 @@ export function NodesPage() {
     return { online, devices, holders }
   }, [list])
 
-  if (nodes.isLoading) return <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
-
-  if (nodes.isError) {
-    return (
+  const emptyContent = nodes.isLoading ? <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
+    : nodes.isError ? (
       <Card>
         <EmptyState
           icon={<TriangleAlert size={28} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
@@ -69,20 +70,16 @@ export function NodesPage() {
           action={<Button size="small" onClick={() => void nodes.refetch()}>重试</Button>}
         />
       </Card>
-    )
-  }
-
-  if (!list.length) {
-    return (
+    ) : !list.length ? (
       <Card>
         <EmptyState
           icon={<Cpu size={28} strokeWidth={1.5} />}
           title="还没有节点接入"
-          hint="在要跑用例的设备机上安装并启动 Scout，它会自己拨号到 Nexus 并出现在这里。前端不负责安装 Scout。"
+          hint="点击添加节点，将安装命令复制到目标电脑执行。Scout 接入后会出现在这里。"
+          action={<Button onClick={() => setAddingNode(true)}>添加节点</Button>}
         />
       </Card>
-    )
-  }
+    ) : null
 
   const selectNode = (id: string) => {
     const next = new URLSearchParams(params)
@@ -108,7 +105,8 @@ export function NodesPage() {
           ) : null}
         </span>
         <span style={{ flex: 1 }} />
-        {active ? (
+        <Button icon={<Plus size={14} />} onClick={() => setAddingNode(true)}>添加节点</Button>
+        {active?.owner_user_id ? (
           <NodeToolbar
             node={active}
             pane={paneOf(params.get('pane'))}
@@ -125,9 +123,10 @@ export function NodesPage() {
         </Tooltip>
       </div>
 
+      {emptyContent ? emptyContent : <>
       {active && !nodeIsOnline(active) ? (
         <div role="status" style={{ padding: '8px 12px', borderRadius: 'var(--w-radius-sm)', background: 'var(--w-warn-bg)', color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>
-          节点离线。列表还在，但不能安装、保存或下发。
+          当前节点离线，无法配置插件或下发指令。仍可添加其他电脑的节点。
         </div>
       ) : null}
 
@@ -140,8 +139,10 @@ export function NodesPage() {
           onSelect={selectNode}
         />
 
-        {active ? <NodeDetail node={active} pane={paneOf(params.get('pane'))} pluginPane={pluginPaneOf(params.get('pane'))} /> : null}
+        {active ? <NodeDetail node={active} pane={active.owner_user_id ? paneOf(params.get('pane')) : 'overview'} pluginPane={pluginPaneOf(params.get('pane'))} /> : null}
       </div>
+      </>}
+      <AddNodeModal open={addingNode} onClose={() => setAddingNode(false)} />
     </div>
   )
 }
@@ -261,6 +262,10 @@ function NodeRow({ node, active, onSelect }: { node: ScoutNode; active: boolean;
   const asleep = nodeIsAsleep(node)
   const label = asleep ? '已休眠' : on ? '在线' : '离线'
   const held = heldChannels(node)
+  const platform = String(node.platform || '').toLowerCase()
+  const system = /darwin|mac/.test(platform) ? 'macOS' : /win/.test(platform) ? 'Windows' : /linux/.test(platform) ? 'Linux' : node.platform || '未知系统'
+  const heartbeat = node.last_heartbeat ? new Date(node.last_heartbeat) : undefined
+  const lastHeartbeat = heartbeat && !Number.isNaN(heartbeat.getTime()) ? heartbeat.toLocaleString() : '暂无心跳'
   return (
     <button
       type="button"
@@ -268,7 +273,8 @@ function NodeRow({ node, active, onSelect }: { node: ScoutNode; active: boolean;
       data-active={active ? 'true' : 'false'}
       className="w-scout-row w-hit"
     >
-      <span className="min-w-0 flex items-baseline gap-2">
+      <span className="min-w-0 flex flex-col gap-1">
+        <span className="min-w-0 flex items-baseline gap-2">
         <strong className="truncate" style={{ fontSize: 'var(--w-font-base)', fontWeight: 650, color: active ? 'var(--w-primary)' : 'var(--w-text)' }}>
           {node.hostname || node.node_id.slice(0, 10)}
         </strong>
@@ -280,6 +286,10 @@ function NodeRow({ node, active, onSelect }: { node: ScoutNode; active: boolean;
             <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-primary)' }}>对话</span>
           </Tooltip>
         ) : null}
+        </span>
+        <span className="truncate" title={`最后心跳：${lastHeartbeat}`} style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-tertiary)' }}>
+          {system} · 心跳 {lastHeartbeat}
+        </span>
       </span>
       <span style={{ textAlign: 'right', fontSize: 'var(--w-font-sm)', fontWeight: 700, color: asleep ? 'var(--w-warn)' : on ? 'var(--w-pass)' : 'var(--w-text-tertiary)' }}>
         {label}
@@ -400,14 +410,18 @@ function NodeToolbar({ node, pane, onPane }: { node: ScoutNode; pane: Pane; onPa
 
 function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; pluginPane?: PluginPane }) {
   const release = useScoutRelease(node)
-  const devices = node.devices || []
+  const role = useSession((state) => state.role)
+  const claim = useClaimLegacyNode()
+  const fb = useFeedback()
+  const [permissionsOpen, setPermissionsOpen] = useState(false)
+  const devices = connectedNodeDevices(node)
 
   const current = String(node.scout_version || '')
   const latest = String(release.data?.version || '')
   const behind = !!current && !!latest && compareVersion(current, latest) < 0
   const versionText = !current ? '版本未知' : behind && latest ? `v${current}，可升到 v${latest}` : `v${current} 已是最新`
   const beat = node.last_seen_ago_sec != null ? `心跳 ${Math.round(node.last_seen_ago_sec)} 秒前` : ''
-  const runnable = devices.filter((d) => String(d.status || '').toLowerCase() === 'online').length
+  const runnable = devices.filter((d) => d.executable === true).length
   const batteryPct = node.host?.battery_percent
   const batteryLow = batteryPct != null && batteryPct < 20
   const stale = node.last_seen_ago_sec != null && node.last_seen_ago_sec > 60
@@ -428,32 +442,48 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
               {runnable} 台可执行
             </div>
             <div style={{ marginTop: 4, fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
-              {nodeIsOnline(node) ? '节点在线，可以下发' : '节点离线，不能下发'}
+              {nodeIsOnline(node) ? '节点在线，执行取决于设备状态' : '节点离线，不能下发'}
               {batteryPct != null ? ` · 电量 ${batteryPct}%${batteryLow ? '，偏低' : ''}` : ''}
               {beat ? ` · ${beat}${stale ? '，心跳偏旧' : ''}` : ''}
               {behind ? ` · ${versionText}` : ''}
             </div>
           </div>
-          <div className="w-band" data-tone="quiet">执行器 · {execText}</div>
+          <div style={{ padding: 14, borderBottom: '1px solid var(--w-border)' }}>
+            <strong>宿主电脑 · {({ darwin: 'macOS', macos: 'macOS', windows: 'Windows', linux: 'Linux' } as Record<string, string>)[node.host?.os || node.platform || ''] || '系统未知'}</strong>
+            <p style={{ margin: '6px 0', color: 'var(--w-text-tertiary)' }}>{node.hostname || '主机名未上报'} · {node.arch || node.host?.arch || '架构未上报'}</p>
+            <span role="status">{nodeIsOnline(node) ? '节点在线' : '节点离线'}</span>
+            {!node.owner_user_id && role === 'admin' ? <div style={{ marginTop: 8 }}><Button size="small" loading={claim.isPending} onClick={() => claim.mutate(node.node_id, { onError: (error) => fb.fail(errText(error, '认领失败')) })}>认领历史节点到当前账号</Button></div> : null}
+          </div>
+          <div className="w-band" data-tone="quiet">当前节点设备 · {devices.length} 台 · 执行器 · {execText}</div>
           {!devices.length ? (
             <div style={{ padding: 14, fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
-              这个节点下没有设备。Android 设备需要 adb 可见，Web 执行器会自带一台虚拟设备。
+              {nodeIsOnline(node)
+                ? '这台 Scout 暂未上报已连接设备。请将设备连接到这台电脑；其他节点和已断开的历史设备不会显示在这里。'
+                : '节点离线，暂无实时设备。恢复 Scout 连接后，这里会显示该节点当前连接的设备。'}
             </div>
           ) : devices.map((d) => {
-            const on = String(d.status || '').toLowerCase() === 'online'
+            const on = d.executable === true
             return (
-              <Link key={d.sn} to={`/settings/runtime/device/${encodeURIComponent(d.sn)}`} className="w-scout-row w-hit">
+              <Fragment key={d.sn}>
+              <Link to={`/settings/runtime/device/${encodeURIComponent(d.sn)}`} className="w-scout-row w-hit">
                 <span className="min-w-0 flex items-baseline gap-2">
                   <strong className="truncate" style={{ fontSize: 'var(--w-font-base)', fontWeight: 650 }}>{d.model || d.type || '设备'}</strong>
                   <span className="w-mono truncate" style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>{d.sn}</span>
                 </span>
                 <span style={{ textAlign: 'right', fontSize: 'var(--w-font-sm)', fontWeight: 700, color: on ? 'var(--w-pass)' : 'var(--w-text-tertiary)' }}>
-                  {on ? '在线' : '离线'}
+                  {on ? '就绪' : d.blocked_reason || '离线'}
                 </span>
                 <span className="w-scout-go" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>
-                  {d.platform || d.type || ''}
+                  {d.platform === 'desktop' ? `PC 桌面 · ${d.os || '系统未知'}` : d.platform === 'web' ? 'Web 浏览器' : d.platform || d.type || ''}
                 </span>
               </Link>
+              {d.platform === 'desktop' && node.host?.desktop?.state === 'permission_required' ? (
+                <div style={{ padding: '4px 14px 10px' }}>
+                  <Button size="small" type="link" onClick={() => setPermissionsOpen((value) => !value)}>处理权限</Button>
+                  {permissionsOpen ? <p>macOS：打开系统设置 → 隐私与安全性，为运行 Scout 的程序授予屏幕录制和辅助功能权限；按系统提示重启该程序，心跳会自动更新状态。</p> : null}
+                </div>
+              ) : null}
+              </Fragment>
             )
           })}
         </>

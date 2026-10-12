@@ -10,12 +10,17 @@ export const getCaseRunnerRun = (runId: string) =>
   request<RunRow>({ url: `/case-runner/runs/${runId}`, method: 'get' })
 
 export const listTestingTasks = (
-  { appId, status, limit = 50, offset = 0 }: { appId?: string; status?: string; limit?: number; offset?: number } = {},
+  { appId, status, limit = 50, offset = 0, summary = false }: { appId?: string; status?: string; limit?: number; offset?: number; summary?: boolean } = {},
 ) =>
   request<unknown>({
     url: '/case-runner/tasks',
     method: 'get',
-    params: { app_id: appId || undefined, status: status || undefined, limit, offset },
+    params: { app_id: appId || undefined, status: status || undefined, limit, offset, summary },
+  })
+
+export const getCaseLastResults = (appId: string, caseIds: string[]) =>
+  request<{ items: Record<string, { status: string; reason?: string; at?: string }> }>({
+    url: '/case-runner/case-results', method: 'post', data: { app_id: appId, case_ids: caseIds },
   })
 
 export const getTestingTask = (taskId: string) =>

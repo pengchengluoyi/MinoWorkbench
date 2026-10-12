@@ -14,6 +14,7 @@ export interface AIProvider {
   plan_compress_ratio?: number
   web_compress_ratio?: number
   android_compress_ratio?: number
+  pc_compress_ratio?: number
 }
 
 export interface AIProvidersDoc {
@@ -37,6 +38,7 @@ export interface ProviderForm {
   plan_compress_ratio: number
   web_compress_ratio: number
   android_compress_ratio: number
+  pc_compress_ratio: number
   clear_key: boolean
   set_default: boolean
 }
@@ -50,6 +52,9 @@ export const listAIProviders = () =>
 
 export const saveAIProvider = (providerId: string, data: ProviderForm) =>
   request({ url: `/settings/ai/providers/${encodeURIComponent(providerId)}`, method: 'put', data })
+
+export const validateAIProvider = (providerId: string) =>
+  request({ url: `/settings/ai/providers/${encodeURIComponent(providerId)}/validate`, method: 'post' })
 
 export const deleteAIProvider = (providerId: string) =>
   request({ url: `/settings/ai/providers/${encodeURIComponent(providerId)}`, method: 'delete' })

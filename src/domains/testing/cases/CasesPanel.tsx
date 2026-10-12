@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePersistedFlag } from '@/hooks/usePersistedFlag'
 import { useSearchParams } from 'react-router-dom'
@@ -13,11 +13,13 @@ import { ScriptField } from './ScriptField'
 import { RunBar, type DispatchedRun } from './RunBar'
 import { CaseImportDialog } from './CaseImportDialog'
 import { CasePreview } from './CasePreview'
-import { caseKeys, useLastResults, useProjectCases, useRunDevices, type LastResult } from './queries'
+import { caseKeys, useCaseModules, useCasePage, useLastResults, useProjectCase, type LastResult } from './queries'
+import { beginListNavigation, useListPerformance } from '../workbench/performance'
 
 type ResultFilter = 'all' | 'failed' | 'never'
 
 const EMPTY_RESULTS: Record<string, LastResult> = {}
+const EMPTY_CASES: CaseRow[] = []
 
 /**
  * 用例面板 —— 产品的主动作入口。
@@ -27,20 +29,44 @@ const EMPTY_RESULTS: Record<string, LastResult> = {}
  * 2. 模块树降级为筛选器，不当导航
  * 3. 下发后**不跳页**，就地出现执行条
  */
-export function CasesPanel({ appId }: { appId: string }) {
+export function CasesPanel({ appId, projectId }: { appId: string; projectId: string }) {
   const fb = useFeedback()
   const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
-  const projectId = params.get('projectId') || ''
 
-  const cases = useProjectCases(projectId)
-  const devices = useRunDevices()
-  const lastResults = useLastResults(appId)
+  const moduleKey = params.get('caseModule') || ''
+  const kw = params.get('caseSearch') || ''
+  const resultValue = params.get('caseResult') || 'all'
+  const resultFilter: ResultFilter = resultValue === 'failed' || resultValue === 'never' ? resultValue : 'all'
+  const pageValue = Number(params.get('casePage'))
+  const page = Number.isFinite(pageValue) ? Math.max(1, Math.trunc(pageValue) || 1) : 1
+  const sizeValue = Number(params.get('caseSize'))
+  const size = [20, 50, 100, 200].includes(sizeValue) ? sizeValue : 50
+  const cases = useCasePage(projectId, { appId, page, size, search: kw, module: moduleKey, result: resultFilter })
+  const modules = useCaseModules(projectId)
+  const rows = cases.data?.items ?? EMPTY_CASES
+  useListPerformance(appId, 'cases', cases.isSuccess && !params.get('case'), cases.isError, !!cases.data,
+    JSON.stringify([page, size, kw, moduleKey, resultFilter]))
+  const lastResults = useLastResults(appId, rows.map((row) => row.case_id))
 
-  const [moduleKey, setModuleKey] = useState('')
   const [filterCollapsed, setFilterCollapsed] = usePersistedFlag('mino.cases.modules', false)
-  const [kw, setKw] = useState('')
-  const [resultFilter, setResultFilter] = useState<ResultFilter>('all')
+  const updateFilters = (patch: Record<string, string>, resetPage = true) => {
+    beginListNavigation(appId, 'cases')
+    const next = new URLSearchParams(params)
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) next.set(key, value)
+      else next.delete(key)
+    }
+    if (resetPage) next.delete('casePage')
+    setParams(next, { replace: true })
+  }
+  useEffect(() => {
+    if (cases.isSuccess && page > 1 && !rows.length && cases.data.total > 0) {
+      const next = new URLSearchParams(params)
+      next.set('casePage', String(Math.ceil(cases.data.total / size)))
+      setParams(next, { replace: true })
+    }
+  }, [cases.isSuccess, cases.data, page, rows.length, size, params, setParams])
   const [selected, setSelected] = useState<React.Key[]>([])
   const remove = useMutation({
     mutationFn: (ids: string[]) => deleteProjectCases(projectId, ids),
@@ -65,33 +91,11 @@ export function CasesPanel({ appId }: { appId: string }) {
   const [dispatched, setDispatched] = useState<DispatchedRun | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const previewId = params.get('case') || ''
-  const previewRow = (cases.data || []).find((row) => row.case_id === previewId)
+  const preview = useProjectCase(projectId, previewId)
 
   // 每次渲染都写 `data || {}` 会造出新对象，下面三个 useMemo 的依赖就永远在变，
   // 缓存等于没做。用一个模块级常量兜底。
   const results = lastResults.data ?? EMPTY_RESULTS
-
-  const rows = useMemo(() => {
-    const kwLower = kw.trim().toLowerCase()
-    return (cases.data || []).filter((c) => {
-      if (moduleKey) {
-        const m = String(c.module || '').trim() || '未分组'
-        if (m !== moduleKey) return false
-      }
-      if (resultFilter === 'failed' && results[c.case_id]?.status !== 'fail') return false
-      if (resultFilter === 'never' && results[c.case_id]) return false
-      if (kwLower) {
-        const hay = `${c.case_id} ${c.title || ''} ${c.module || ''} ${c.precondition || ''}`.toLowerCase()
-        if (!hay.includes(kwLower)) return false
-      }
-      return true
-    })
-  }, [cases.data, moduleKey, resultFilter, results, kw])
-
-  const failedCount = useMemo(
-    () => (cases.data || []).filter((c) => results[c.case_id]?.status === 'fail').length,
-    [cases.data, results],
-  )
 
   const columns = useMemo<DataColumn<CaseRow>[]>(() => [
     {
@@ -143,6 +147,8 @@ export function CasesPanel({ appId }: { appId: string }) {
       width: 110,
       render: (_: unknown, row) => {
         const last = results[row.case_id] as LastResult | undefined
+        if (lastResults.isError) return <span style={{ color: 'var(--w-text-tertiary)' }}>暂不可用</span>
+        if (!lastResults.isSuccess) return <span style={{ color: 'var(--w-text-tertiary)' }}>读取中</span>
         if (!last) return <span style={{ color: 'var(--w-text-quaternary)' }}>未跑过</span>
         if (last.status === 'pass') return <StatusPill status="pass">通过</StatusPill>
         if (last.status === 'fail') return <StatusPill status="fail">失败</StatusPill>
@@ -170,7 +176,7 @@ export function CasesPanel({ appId }: { appId: string }) {
       render: (_: unknown, row) => <ScriptField kind="ex" value={row.expected ?? row.expected_raw} compiled={row.expected_parsed ?? []} max={3} />,
       onCell: () => ({ style: scriptCell }),
     },
-  ], [results])
+  ], [results, lastResults.isError, lastResults.isSuccess])
 
   if (!projectId) {
     return (
@@ -199,7 +205,24 @@ export function CasesPanel({ appId }: { appId: string }) {
     )
   }
 
-  if (!(cases.data || []).length) {
+  if (previewId) {
+    if (preview.isPending) return <Skeleton active paragraph={{ rows: 8 }} />
+    if (preview.isError) return <Card><EmptyState title="用例详情读取失败" hint={errText(preview.error)} action={<>
+      <Button onClick={() => void preview.refetch()}>重试</Button>
+      <Button onClick={() => {
+        const next = new URLSearchParams(params)
+        next.delete('case')
+        setParams(next, { replace: true })
+      }}>返回列表</Button>
+    </>} /></Card>
+    return <CasePreview row={preview.data!} onBack={() => {
+      const next = new URLSearchParams(params)
+      next.delete('case')
+      setParams(next, { replace: true })
+    }} />
+  }
+
+  if (!cases.data?.total && !kw && !moduleKey && resultFilter === 'all') {
     return (
       <>
         <Card>
@@ -212,19 +235,6 @@ export function CasesPanel({ appId }: { appId: string }) {
         </Card>
         <CaseImportDialog projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
       </>
-    )
-  }
-
-  if (previewRow) {
-    return (
-      <CasePreview
-        row={previewRow}
-        onBack={() => {
-          const next = new URLSearchParams(params)
-          next.delete('case')
-          setParams(next, { replace: true })
-        }}
-      />
     )
   }
 
@@ -263,9 +273,10 @@ export function CasesPanel({ appId }: { appId: string }) {
 
       <div className="flex flex-1 min-h-0" style={{ gap: 'var(--w-space-3)' }}>
         <ModuleFilter
-          cases={cases.data || []}
+          modules={modules.data?.items || []}
+          total={modules.data?.total ?? cases.data?.total ?? 0}
           value={moduleKey}
-          onChange={setModuleKey}
+          onChange={(value) => updateFilters({ caseModule: value })}
           collapsed={filterCollapsed}
           onToggle={() => setFilterCollapsed((v) => !v)}
         />
@@ -277,6 +288,8 @@ export function CasesPanel({ appId }: { appId: string }) {
             dataSource={rows}
             rowKey="case_id"
             loading={cases.isFetching && !cases.data}
+            pagination={{ page, pageSize: size, total: cases.data?.total || 0,
+              onChange: (next, nextSize) => updateFilters({ casePage: String(next), caseSize: String(nextSize) }, false) }}
             fill
             toolbar={
               <>
@@ -286,21 +299,21 @@ export function CasesPanel({ appId }: { appId: string }) {
                   prefix={<Search size={13} style={{ color: 'var(--w-text-quaternary)' }} />}
                   placeholder="搜索用例"
                   value={kw}
-                  onChange={(e) => setKw(e.target.value)}
+                  onChange={(e) => updateFilters({ caseSearch: e.target.value })}
                   style={{ width: 200 }}
                 />
                 <Segmented
                   size="small"
                   value={resultFilter}
-                  onChange={(v) => setResultFilter(v as ResultFilter)}
+                  onChange={(value) => updateFilters({ caseResult: String(value) })}
                   options={[
                     { value: 'all', label: '全部' },
-                    { value: 'failed', label: failedCount ? `上次失败 ${failedCount}` : '上次失败' },
+                    { value: 'failed', label: '上次失败' },
                     { value: 'never', label: '未跑过' },
                   ]}
                 />
                 <span style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
-                  {rows.length} / {(cases.data || []).length}
+                  {rows.length} / {cases.data?.total || 0}
                 </span>
                 <Button size="small" icon={<Upload size={13} />} onClick={() => setImportOpen(true)}>导入</Button>
               </>
@@ -318,13 +331,13 @@ export function CasesPanel({ appId }: { appId: string }) {
               setParams(next, { replace: true })
             }}
           />
+          {lastResults.isError ? <span role="alert" style={{ color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)' }}>上次结果读取失败。<Button size="small" type="text" onClick={() => void lastResults.refetch()}>重试</Button></span> : null}
+          {modules.isError ? <span role="alert" style={{ color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)' }}>模块统计读取失败。<Button size="small" type="text" onClick={() => void modules.refetch()}>重试</Button></span> : null}
 
           <RunBar
             appId={appId}
             projectId={projectId}
             selected={selected.map(String)}
-            devices={devices.data || []}
-            devicesLoading={devices.isLoading}
             onClear={() => setSelected([])}
             deleting={remove.isPending}
             onDelete={() => void removeSelected()}

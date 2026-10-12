@@ -16,3 +16,10 @@ export const loginAccount = (account: string, password: string) => {
 }
 
 export const logoutAccount = () => request({ url: '/auth/logout', method: 'post' })
+
+export const registerAccount = (email: string, password: string) =>
+  request<AuthStatus>({
+    url: '/auth/register',
+    method: 'post',
+    data: { email: email.trim().toLowerCase(), password },
+  })

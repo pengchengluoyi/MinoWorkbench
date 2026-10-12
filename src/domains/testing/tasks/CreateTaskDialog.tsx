@@ -3,15 +3,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Checkbox, Input, Modal, errText, useFeedback } from '@/ui'
 import { getProjectEnv } from '@/api/projectEnv'
 import type { CaseRow } from '@/api/projectCases'
-import { runCaseRunner, type RunDevice } from '@/api/run'
+import { runCaseRunner, isExecutable } from '@/api/run'
 import { unwrapOne } from '@/lib/unwrap'
 import { useProjectCases, useRunDevices } from '../cases/queries'
 import { channelKindText, channelTitle, normalizeEnvDoc, type EnvChannel, type EnvDocument } from '../config/envModel'
 import { taskKeys } from './queries'
+import { DeviceSelect } from '../cases/DeviceSelect'
 
 /**
  * 从任务页直接开跑。
- * 网址跟运行环境走，不写在应用卡片上。设备只列出已经连上的，没有「暂不指定」。
+ * 网址跟运行环境走，不写在应用卡片上。设备保留不可用目标并展示原因，由用户明确选择执行目标。
  */
 export function CreateTaskDialog({
   open, appId, projectId, onClose, onStarted,
@@ -24,8 +25,7 @@ export function CreateTaskDialog({
 }) {
   const fb = useFeedback()
   const qc = useQueryClient()
-  const cases = useProjectCases(projectId)
-  const devices = useRunDevices()
+  const cases = useProjectCases(projectId, open)
   const env = useQuery({
     queryKey: ['project', projectId, 'env'],
     enabled: open && !!projectId,
@@ -39,6 +39,7 @@ export function CreateTaskDialog({
   const [scheme, setScheme] = useState<'visual' | 'dom'>('visual')
   const [picked, setPicked] = useState<string[]>([])
   const [kw, setKw] = useState('')
+  const devices = useRunDevices(open, { app_id: appId, env_surface: surface, env_profile: profile, action_scheme: scheme })
 
   useEffect(() => {
     if (!open) return
@@ -51,10 +52,6 @@ export function CreateTaskDialog({
     setSurface((cur) => cur || doc.channels[0]?.id || '')
     setProfile((cur) => cur || doc.default_profile || doc.environments[0]?.key || '')
   }, [open, doc])
-  useEffect(() => {
-    if (!open) return
-    setSn((cur) => cur || devices.data?.[0]?.sn || '')
-  }, [open, devices.data])
 
   const groups = useMemo(() => {
     const q = kw.trim().toLowerCase()
@@ -78,16 +75,14 @@ export function CreateTaskDialog({
   }, [cases.data, kw])
 
   const device = (devices.data || []).find((item) => item.sn === sn)
-  const block = devices.isLoading
-    ? '正在查可用设备'
-    : !(devices.data || []).length
-      ? '没有在线设备'
-      : !picked.length
-        ? '先勾选用例'
-        : ''
+  const block = devices.isLoading ? '正在查询设备'
+    : devices.isError ? errText(devices.error, '设备信息读取失败')
+      : !device || !isExecutable(device) ? device?.blocked_reason || '请选择兼容且就绪的执行设备'
+        : !picked.length ? '先勾选用例' : ''
 
   const start = useMutation({
     mutationFn: async () => {
+      if (block) throw new Error(block)
       const res = await runCaseRunner({
         app_id: appId,
         case_ids: picked,
@@ -135,7 +130,7 @@ export function CreateTaskDialog({
               ))}
             </div>
           ) : (
-            <p style={hint}>这个项目还没有配置被测应用。启动仍会落到当前应用。</p>
+            <p style={hint}>请先配置被测应用渠道；Desktop 任务需要明确目标系统与启动标识。</p>
           )}
         </Section>
 
@@ -158,16 +153,11 @@ export function CreateTaskDialog({
           </div>
         </Section>
 
-        <Section n="3" title="设备（浏览器）">
-          {(devices.data || []).length ? (
-            <div style={grid((devices.data || []).length > 1 ? 2 : 1)}>
-              {(devices.data || []).map((item) => (
-                <Choice key={item.sn} pressed={sn === item.sn} onClick={() => setSn(item.sn)} title={deviceTitle(item)} hint={deviceHint(item)} />
-              ))}
-            </div>
-          ) : (
-            <p style={hint}>{devices.isLoading ? '正在查可用设备…' : '没有在线设备。请先在设备上启动 Scout 并确认它已连上。'}</p>
-          )}
+        <Section n="3" title="执行设备">
+          <DeviceSelect devices={devices.data || []} value={sn} onChange={setSn} loading={devices.isLoading}
+            refreshing={devices.isFetching} onRefresh={() => void devices.refetch()} />
+          {devices.isError ? <p role="alert" style={hint}>{errText(devices.error, '设备读取失败')} <Button size="small" onClick={() => void devices.refetch()}>重试</Button></p> : null}
+          {!devices.isLoading && !devices.data?.length ? <p style={hint}>没有设备，请在 Scout 节点页添加节点并查看桌面状态。</p> : null}
         </Section>
 
         <Section n="4" title="执行方案">
@@ -210,17 +200,6 @@ function toggleCase(row: CaseRow, on: boolean, setPicked: Dispatch<SetStateActio
 
 function launchUrl(doc: EnvDocument, envKey: string, channel: EnvChannel) {
   return String(doc.profiles[envKey]?.[channel.id]?.[channel.field] || '').trim()
-}
-
-function deviceTitle(device: RunDevice) {
-  return `${device.model || device.type || '设备'} · ${device.platform || device.type || '浏览器'}`
-}
-
-function deviceHint(device: RunDevice) {
-  const max = Number(device.web_parallel_max || 0)
-  const used = Number(device.active_run_count || 0)
-  const lanes = max ? ` · ${used}/${max} 路` : ''
-  return `${device.sn}${lanes}`
 }
 
 function Section({ n, title, children }: { n: string; title: string; children: ReactNode }) {

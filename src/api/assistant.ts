@@ -1,15 +1,11 @@
 import { request } from '@/lib/request'
+import type { ImChannelStatus } from '@/types/im'
+export type { ImChannelStatus } from '@/types/im'
 
 /**
  * 助手（我的助手 / 助手工具）。契约见 docs/contracts/assistant.md。
  * 字段名与 Nexus 一致，不在前端改名。
  */
-
-export interface ImChannelStatus {
-  channel: string
-  connected: boolean
-  last_message_at: number
-}
 
 export interface ImNodeStatus {
   node_id: string
@@ -21,6 +17,7 @@ export interface ImNodeStatus {
 export interface AssistantStatus {
   enabled: boolean
   online: boolean
+  mcp_available: boolean
   mcp_url: string
   im_nodes: ImNodeStatus[]
 }
@@ -28,16 +25,10 @@ export interface AssistantStatus {
 export interface AssistantProfile {
   user_id: string
   persona: string
-  default_app_id: string
-  default_app_name: string
-  default_sn: string
-  default_device_name: string
   enabled: boolean
 }
 
 export interface ProfilePatch {
-  default_app_id?: string
-  default_sn?: string
   persona?: string
   enabled?: boolean
 }

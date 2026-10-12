@@ -1,10 +1,13 @@
 import { useCallback, useState } from 'react'
+import { useSession } from '@/lib/session'
 import { NavLink, Outlet, useMatch, useSearchParams } from 'react-router-dom'
 import { Bot, ChevronRight, Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Button, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
 import { CommandPalette } from './CommandPalette'
 import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab, type Tab } from '@/domains/testing/workbench/nav'
 import { useAppDetail } from '@/domains/testing/workbench/queries'
+import { preloadAppPanel } from '@/domains/testing/workbench/listPrefetch'
+import { beginListNavigation } from '@/domains/testing/workbench/performance'
 
 const COLLAPSE_KEY = 'mino.workshell.rail'
 const readCollapsed = () => {
@@ -24,6 +27,7 @@ const GLOBAL_NAV = [
  * 屏幕上出现两条左导航。现在应用内导航嵌进这一条里，整条可折叠。
  */
 export function WorkShell() {
+  const uid = useSession((state) => state.user?.user_id || '')
   const appMatch = useMatch('/testing/:appId')
   const appId = appMatch?.params.appId || ''
   const [collapsed, setCollapsed] = useState(readCollapsed)
@@ -115,13 +119,13 @@ export function WorkShell() {
         {/* 外观入口已并入左下角 UserMenu，顶部那条 48px 的 header 就没必要留了 */}
         <main className="flex flex-1 min-h-0 overflow-hidden" style={{ padding: 'var(--w-space-4)' }}>
           <div className="flex min-h-0 flex-1 flex-col">
-            <ErrorBoundary label="页面">
+            <ErrorBoundary key={uid} label="页面">
               <Outlet />
             </ErrorBoundary>
           </div>
         </main>
       </div>
-      <CommandPalette />
+      <CommandPalette key={uid} />
     </div>
   )
 
@@ -130,8 +134,17 @@ export function WorkShell() {
     const detail = useAppDetail(id)
     const tab = resolveTab(params.get('tab'))
     const appName = detail.data?.name || params.get('appName') || '应用'
+    const warm = (next: Tab) => {
+      const result = params.get('caseResult')
+      void preloadAppPanel(id, next, Number(params.get('taskPage')) || 1, {
+        appId: id, page: Number(params.get('casePage')) || 1, size: Number(params.get('caseSize')) || 50,
+        search: params.get('caseSearch') || '', module: params.get('caseModule') || '',
+        result: result === 'failed' || result === 'never' ? result : 'all',
+      }, Number(params.get('taskSize')) || 50).catch(() => {})
+    }
 
     const go = (next: Tab, sub?: { key: string; value: string }) => {
+      if (next !== tab && (next === 'cases' || next === 'tasks')) beginListNavigation(id, next)
       const p = new URLSearchParams(params)
       p.set('tab', next)
       if (sub) p.set(sub.key, sub.value)
@@ -170,6 +183,8 @@ export function WorkShell() {
             <button
               type="button"
               onClick={() => go(item.id)}
+              onMouseEnter={() => warm(item.id)}
+              onFocus={() => warm(item.id)}
               aria-label={item.label}
               data-active={active ? 'true' : 'false'}
               aria-expanded={item.children?.length ? active : undefined}

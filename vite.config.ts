@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
     server: {
+      host: '0.0.0.0',
       port: 5273,
       strictPort: true,
       // Nexus 的接口散在 27 个顶层前缀下（没有统一的 /api 前缀）。
@@ -68,6 +69,9 @@ export default defineConfig(({ mode }) => {
           }
         : undefined,
     },
+    preview: {
+      host: '0.0.0.0',
+    },
     build: {
       outDir: 'dist',
       sourcemap: mode !== 'production',
@@ -79,7 +83,6 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             if (!id.includes('node_modules')) return undefined
             if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) return 'react'
-            if (/[\\/]node_modules[\\/](antd|@ant-design|rc-[^\\/]+)[\\/]/.test(id)) return 'antd'
             if (/[\\/]node_modules[\\/]@tanstack[\\/]/.test(id)) return 'query'
             return 'vendor'
           },
