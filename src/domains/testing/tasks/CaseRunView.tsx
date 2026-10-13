@@ -1,19 +1,22 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Segmented, Skeleton, StatusPill, toStatusKind, useFeedback } from '@/ui'
 import { SessionDetail } from '../sessions/SessionDetail'
 import { getCaseRunnerTraceDetail, getSessionTrajectory } from '@/api/caseRunner'
 import { unwrapOne } from '@/lib/unwrap'
+import { expandPlatforms, type PlatformInput } from '@/constants/appPlatforms'
 import { conditionPair, splitNumbered } from '../cases/caseText'
 import { caseId, failReason, verdictOf, type TaskCase } from './types'
 import { mergeTraceSteps, parseTrace, type TraceStep } from './trace'
+import { parseInteraction, type TraceInteraction } from './interaction'
+import { ScreenshotOverlay } from './ScreenshotOverlay'
 
 /**
  * 单条用例的执行页。
  * 三栏读原文句子，轨迹读执行记录，同一时间只显示一个。
- * 画面始终在下面：左边截图，右边是当前这一点的参数。
+ * 布局按应用平台固定，截图与当前事件同步更新。
  */
-export function CaseRunView({ row, taskId, onBack }: { row: TaskCase; taskId: string; onBack: () => void }) {
+export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase; taskId: string; platforms: PlatformInput; onBack: () => void }) {
   const fb = useFeedback()
   const id = caseId(row)
   const sessionId = String(row.session_id || (String(row.report_run_id || '').includes('::') ? '' : row.report_run_id) || '')
@@ -53,6 +56,12 @@ export function CaseRunView({ row, taskId, onBack }: { row: TaskCase; taskId: st
 
   const currentTrace = linked.byClause.get(activeId) || steps.find((step) => `tr-${step.step}` === activeId)
   const currentScript = findClause({ op: opEvents, ex: exEvents }, activeId)
+  const firstScreenshot = steps.find((step) => step.thumb)
+  const screenshotSrc = currentTrace?.thumb || firstScreenshot?.thumb || ''
+  const isPortrait = expandPlatforms(platforms).some((platform) => /^(android|ios|mobile)$/i.test(platform))
+  const splitView = isPortrait || pane === 'trace'
+  const interaction = currentTrace?.interaction || (currentTrace ? parseInteraction(currentTrace.event, { attrs: currentTrace.attrs, param: currentTrace.param }) : undefined)
+  const screenshot = <StepScreenshot key={runId} src={screenshotSrc} fallbackStep={!currentTrace?.thumb ? firstScreenshot?.step : undefined} interaction={interaction} />
 
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ gap: 10 }}>
@@ -79,87 +88,125 @@ export function CaseRunView({ row, taskId, onBack }: { row: TaskCase; taskId: st
         sessionId ? <div className="min-h-0 flex-1 overflow-auto"><SessionDetail sessionId={sessionId} /></div>
           : <Empty>这次执行没有 session。</Empty>
       ) : trace.isLoading ? <Skeleton active paragraph={{ rows: 8 }} title={false} /> : (
-        <>
-          {pane === 'script' ? (
-            <div className="grid shrink-0" style={{ gridTemplateColumns: 'minmax(180px, 0.8fr) minmax(220px, 1.1fr) minmax(240px, 1.2fr)', gap: 10 }}>
-              <Card title="前置条件">
-                {script.pre.length ? script.pre.map((line) => {
-                  const pair = conditionPair(line.text)
-                  return (
-                    <div key={line.num} style={lineRow}>
-                      <span style={num}>{line.num}</span>
-                      <span style={chip}>
-                        {pair.label ? <span style={verb}>{pair.label}</span> : null}
-                        <b>{pair.value}</b>
-                      </span>
-                    </div>
-                  )
-                }) : <Empty>没有写前置条件</Empty>}
-              </Card>
-              <Card title="操作步骤">
-                <ScriptColumn events={opEvents} activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写操作步骤" />
-              </Card>
-              <Card title="预期结果">
-                <ScriptColumn events={exEvents} activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写预期结果" />
-              </Card>
-            </div>
+        <div className="flex min-h-0 flex-1 gap-2.5" style={{ flexDirection: splitView ? 'row' : 'column' }}>
+          {splitView ? (
+            <div style={{ ...shot, flex: `0 0 ${isPortrait ? '35%' : '52%'}`, maxWidth: isPortrait ? '35%' : '52%', borderRadius: 'var(--w-radius-lg)' }}>{screenshot}</div>
           ) : null}
+          <div className="min-h-0 min-w-0 flex-1" style={{ display: pane === 'trace' ? 'grid' : 'flex', flexDirection: 'column', gridTemplateRows: pane === 'trace' ? 'minmax(0, 1fr) minmax(0, 3fr)' : undefined, gap: 10, overflow: isPortrait && pane !== 'trace' ? 'auto' : undefined }}>
+            {pane === 'script' ? (
+              <div className="grid shrink-0" style={{ gridTemplateColumns: isPortrait ? 'minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.2fr)' : 'minmax(180px, 0.8fr) minmax(220px, 1.1fr) minmax(240px, 1.2fr)', gap: 10 }}>
+                <Card title="前置条件">
+                  {script.pre.length ? script.pre.map((line) => {
+                    const pair = conditionPair(line.text)
+                    return (
+                      <div key={line.num} style={lineRow}>
+                        <span style={num}>{line.num}</span>
+                        <span style={chip}>
+                          {pair.label ? <span style={verb}>{pair.label}</span> : null}
+                          <b>{pair.value}</b>
+                        </span>
+                      </div>
+                    )
+                  }) : <Empty>没有写前置条件</Empty>}
+                </Card>
+                <Card title="操作步骤">
+                  <ScriptColumn events={opEvents} activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写操作步骤" />
+                </Card>
+                <Card title="预期结果">
+                  <ScriptColumn events={exEvents} activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写预期结果" />
+                </Card>
+              </div>
+            ) : null}
 
-          <section style={stage}>
-            <div style={shot}>
-              {currentTrace?.thumb ? (
-                <img src={currentTrace.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-              ) : (
-                <p style={{ margin: 0, color: '#94a3b8' }}>这一步没有截图。</p>
-              )}
-            </div>
-            <div style={params}>
-              <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{currentTrace?.event || currentScript?.clause.param || '当前步骤'}</h3>
-              <dl style={grid}>
-                <Param k="事件" v={currentTrace?.event || currentScript?.clause.param || '无'} />
-                <Param k="参数" v={currentTrace?.param || currentScript?.clause.param || '无'} bold />
-                <Param k="属性" v={currentTrace?.attrs || '无'} />
-                <Param k="步骤" v={currentTrace?.stepRef || currentScript?.stepRef || '无'} />
-                <Param k="状态" v={currentTrace ? statusLabel(currentTrace.status) : currentScript?.clause.blocked ? '无法执行' : '无'} />
-                <Param k="时间" v={currentTrace?.seconds ? `${currentTrace.seconds} s` : '无'} />
-              </dl>
-            </div>
-          </section>
+            <section style={{ ...stage, minHeight: pane === 'trace' ? 0 : 240, gridTemplateColumns: splitView ? 'minmax(0, 1fr)' : stage.gridTemplateColumns }}>
+              {!splitView ? <div style={shot}>{screenshot}</div> : null}
+              <div style={{ ...params, padding: pane === 'trace' ? 12 : 16, borderLeft: splitView ? 0 : params.borderLeft }}>
+                <h3 style={{ margin: pane === 'trace' ? '0 0 8px' : '0 0 12px', fontSize: 15 }}>{currentTrace?.event || currentScript?.clause.param || '当前步骤'}</h3>
+                <dl style={{ ...grid, gridTemplateColumns: pane === 'trace' ? '52px minmax(0, 1fr) 52px minmax(0, 1fr)' : grid.gridTemplateColumns, gap: pane === 'trace' ? '8px 12px' : grid.gap }}>
+                  <Param k="事件" v={currentTrace?.event || currentScript?.clause.param || '无'} />
+                  <Param k="参数" v={currentTrace?.param || currentScript?.clause.param || '无'} bold />
+                  <Param k="属性" v={currentTrace?.attrs || '无'} />
+                  <Param k="步骤" v={currentTrace?.stepRef || currentScript?.stepRef || '无'} />
+                  <Param k="状态" v={currentTrace ? statusLabel(currentTrace.status) : currentScript?.clause.blocked ? '无法执行' : '无'} />
+                  <Param k="时间" v={currentTrace?.seconds ? `${currentTrace.seconds} s` : '无'} />
+                </dl>
+              </div>
+            </section>
 
-          {pane === 'trace' ? (
-            <div className="min-h-0 shrink-0 overflow-auto" style={{ ...panel, maxHeight: '42%', padding: 0 }}>
-              {steps.length ? (
-                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
-                  <thead>
-                    <tr>
-                      {['编号', '事件', '属性', '步骤', '状态', '时间戳 (s)'].map((title) => (
-                        <th key={title} style={th}>{title}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {steps.map((step, index) => {
-                      const rowId = linked.byStep.get(step.step) || `tr-${step.step}`
-                      const on = rowId === activeId
-                      return (
-                        <tr key={step.step} onClick={() => setPicked(rowId)} style={{ cursor: 'pointer', ...rowTone(step), outline: on ? '2px solid var(--w-primary)' : undefined }}>
-                          <td style={td}>{index + 1}</td>
-                          <td style={td}>{step.event}</td>
-                          <td style={td}>{step.attrs || step.summary || '无'}</td>
-                          <td style={td}>{step.stepRef ? <span style={refPill}>{step.stepRef}</span> : '无'}</td>
-                          <td style={td}><StatusPill status={toStatusKind(step.status)}>{statusLabel(step.status)}</StatusPill></td>
-                          <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--w-font-mono)' }}>{step.seconds || '无'}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              ) : <Empty>这条用例没有回传轨迹。</Empty>}
-            </div>
-          ) : null}
-        </>
+            {pane === 'trace' ? (
+              <div className="min-h-0 overflow-auto" style={{ ...panel, padding: 0 }}>
+                {steps.length ? (
+                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        {['编号', '事件', '属性', '步骤', '状态', '时间戳 (s)'].map((title) => (
+                          <th key={title} style={th}>{title}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {steps.map((step, index) => {
+                        const rowId = linked.byStep.get(step.step) || `tr-${step.step}`
+                        const on = rowId === activeId
+                        return (
+                          <tr key={step.step} onClick={() => setPicked(rowId)} style={{ cursor: 'pointer', ...rowTone(step), outline: on ? '2px solid var(--w-primary)' : undefined }}>
+                            <td style={td}>{index + 1}</td>
+                            <td style={td}>{step.event}</td>
+                            <td style={td}>{step.attrs || step.summary || '无'}</td>
+                            <td style={td}>{step.stepRef ? <span style={refPill}>{step.stepRef}</span> : '无'}</td>
+                            <td style={td}><StatusPill status={toStatusKind(step.status)}>{statusLabel(step.status)}</StatusPill></td>
+                            <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--w-font-mono)' }}>{step.seconds || '无'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                ) : <Empty>这条用例没有回传轨迹。</Empty>}
+              </div>
+            ) : null}
+          </div>
+        </div>
       )}
     </div>
+  )
+}
+
+function StepScreenshot({ src, fallbackStep, interaction }: { src: string; fallbackStep?: number; interaction?: TraceInteraction }) {
+  const [displayed, setDisplayed] = useState({ src: '', width: 0, height: 0 })
+  const displayedSrc = displayed.src
+  const [failedSrc, setFailedSrc] = useState('')
+
+  useEffect(() => {
+    if (!src || src === displayedSrc) return
+    let active = true
+    const image = new Image()
+    image.src = src
+    image.decode().then(() => {
+      if (!active) return
+      setDisplayed({ src, width: image.naturalWidth, height: image.naturalHeight })
+      setFailedSrc('')
+    }).catch(() => {
+      if (active) setFailedSrc(src)
+    })
+    return () => { active = false }
+  }, [src, displayedSrc])
+
+  const failed = !!src && failedSrc === src
+  const loading = !!src && src !== displayedSrc && !failed
+  const notice = failed ? '截图加载失败，保留上一张截图。'
+    : loading ? '正在切换截图…'
+    : fallbackStep != null ? `补位截图 · 第 ${fallbackStep} 步` : ''
+
+  return (
+    <>
+      {src && displayedSrc ? (
+        <img src={displayedSrc} alt="当前步骤截图" style={{ position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
+      ) : <p style={{ margin: 0, color: '#94a3b8' }}>{!src ? '本次执行没有截图。' : failed ? '截图加载失败。' : '截图加载中…'}</p>}
+      {src && src === displayedSrc && !failed && interaction ? <ScreenshotOverlay interaction={interaction} imageWidth={displayed.width} imageHeight={displayed.height} /> : null}
+      {src && displayedSrc && notice ? (
+        <span role={loading || failed ? 'status' : undefined} style={{ position: 'absolute', bottom: 12, left: 12, right: 12, width: 'fit-content', maxWidth: 'calc(100% - 24px)', padding: '4px 8px', borderRadius: 6, background: 'rgba(16, 20, 28, 0.8)', color: '#e2e8f0', fontSize: 12, zIndex: 2 }}>{notice}</span>
+      ) : null}
+    </>
   )
 }
 
@@ -379,11 +426,11 @@ const badge: CSSProperties = {
   borderRadius: 4, color: '#fff', fontSize: 10, fontWeight: 800, fontStyle: 'normal', verticalAlign: '1px',
 }
 const stage: CSSProperties = {
-  flex: 1, minHeight: 240, display: 'grid', gridTemplateColumns: 'minmax(280px, 1.2fr) minmax(220px, 0.8fr)',
+  flex: 1, minWidth: 0, minHeight: 240, display: 'grid', gridTemplateColumns: 'minmax(280px, 1.2fr) minmax(220px, 0.8fr)', gridTemplateRows: 'minmax(0, 1fr)',
   background: 'var(--w-surface)', border: '1px solid var(--w-border)', borderRadius: 'var(--w-radius-lg)', overflow: 'hidden',
 }
-const shot: CSSProperties = { minHeight: 240, background: '#10141c', display: 'grid', placeItems: 'center', color: '#94a3b8' }
-const params: CSSProperties = { padding: 16, borderLeft: '1px solid var(--w-border)', overflow: 'auto' }
+const shot: CSSProperties = { position: 'relative', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#10141c', display: 'grid', placeItems: 'center', color: '#94a3b8' }
+const params: CSSProperties = { minWidth: 0, minHeight: 0, padding: 16, borderLeft: '1px solid var(--w-border)', overflow: 'auto' }
 const grid: CSSProperties = { display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr)', gap: '10px 12px', margin: 0 }
 const th: CSSProperties = { position: 'sticky', top: 0, textAlign: 'left', background: 'var(--w-fill)', color: 'var(--w-text-tertiary)', fontSize: 11, fontWeight: 750, padding: '7px 10px', borderBottom: '1px solid var(--w-border)' }
 const td: CSSProperties = { padding: '7px 10px', borderBottom: '1px solid var(--w-border)', verticalAlign: 'middle' }

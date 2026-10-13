@@ -1,6 +1,13 @@
 import { useState, type CSSProperties } from 'react'
 import { conditionPair, scriptSource, splitNumbered } from './caseText'
 
+export interface AutomationDetail {
+  step: number
+  text: string
+  coverable: boolean
+  reason: string
+}
+
 /**
  * 用例的一格：前置、操作或预期。
  * 原文和预览各有自己的开关，只切换这一格。
@@ -10,12 +17,14 @@ export function ScriptField({
   kind,
   max = 4,
   compiled,
+  automation,
 }: {
   value: unknown
   kind: 'pre' | 'op' | 'ex'
   max?: number
   /** 编译器产出的步骤文案。传入后，预览只画这些，不再按逗号拆原文。 */
   compiled?: unknown
+  automation?: AutomationDetail[]
 }) {
   const [mode, setMode] = useState<'raw' | 'preview'>('preview')
   const [open, setOpen] = useState(false)
@@ -31,7 +40,20 @@ export function ScriptField({
         <ModeButton pressed={mode === 'raw'} onClick={() => setMode('raw')}>查看原文</ModeButton>
         <ModeButton pressed={mode === 'preview'} onClick={() => setMode('preview')}>预览</ModeButton>
       </div>
-      {!shown.length ? <span style={{ color: 'var(--w-text-quaternary)' }}>无</span> : (
+      {mode === 'preview' && automation ? (
+        automation.length ? automation.map((item, index) => (
+          <div key={`${item.step}-${index}`} style={row}>
+            <span style={num}>{item.step}</span>
+            <div style={{ minWidth: 0, padding: '5px 7px', borderRadius: 6, background: item.coverable ? 'var(--w-primary-soft)' : 'var(--w-warn-bg)', overflowWrap: 'anywhere' }}>
+              <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: item.coverable ? 'var(--w-primary)' : 'var(--w-warn)' }}>
+                {item.coverable ? kind === 'pre' ? '可自动准备' : kind === 'ex' ? '可自动校验' : '可自动执行' : kind === 'pre' ? '需人工准备' : '不能自动化'}
+              </span>
+              <span style={{ ...plain, display: 'block', color: 'var(--w-text)' }}>{item.text}</span>
+              <span style={{ ...plain, display: 'block', marginTop: 3 }}>{item.reason}</span>
+            </div>
+          </div>
+        )) : <span style={plain}>{kind === 'pre' ? '无额外准备要求' : '未解析出可执行内容，请查看原文'}</span>
+      ) : !shown.length ? <span style={{ color: 'var(--w-text-quaternary)' }}>无</span> : (
         <>
           {visible.map((item) => (
             <div key={item.num} style={row}>
@@ -39,12 +61,12 @@ export function ScriptField({
               {mode === 'raw' ? (
                 <span style={plain}>{item.line?.text || '无'}</span>
               ) : item.items ? (
-                <>
+                <div style={{ minWidth: 0 }}>
                   {uncoveredMarks(item.items).length ? (
                     <PaintedText text={item.line?.text || ''} marks={uncoveredMarks(item.items)} />
                   ) : null}
                   {recognizedItems(item.items).length ? <CompiledLine items={recognizedItems(item.items)} /> : uncoveredMarks(item.items).length ? null : <CompiledLine items={[]} />}
-                </>
+                </div>
               ) : kind === 'pre' ? (
                 <PreLine text={item.line?.text || ''} />
               ) : (

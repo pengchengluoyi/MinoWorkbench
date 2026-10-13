@@ -10,7 +10,7 @@ import { caseKeys } from './queries'
 import {
   FIELD_OPTS, FLAG_LABELS, detectHeaderRow, headerRowLooksValid, suggestColumnMap, suggestSkipRows,
 } from './caseImportTable'
-import { ScriptField } from './ScriptField'
+import { ScriptField, type AutomationDetail } from './ScriptField'
 
 type Step = 'file' | 'map' | 'preview'
 
@@ -28,6 +28,15 @@ function remarkOf(row: ImportPreviewRow) {
   if (remark) return remark
   const flags = Array.isArray(row.flags) ? row.flags.map(String).filter((flag) => flag !== 'ui_not_coverable') : []
   return flags.map((flag) => FLAG_LABELS[flag] || flag).join(' · ')
+}
+
+function automationOf(row: ImportPreviewRow, kind: 'pre' | 'op' | 'ex'): AutomationDetail[] | undefined {
+  const details = row.automation_details as Record<string, AutomationDetail[]> | undefined
+  return details?.[kind]
+}
+
+function selectable(row: ImportPreviewRow) {
+  return row.parse_status === 'done'
 }
 
 /**
@@ -52,6 +61,8 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   const [error, setError] = useState('')
   const [onlyIssues, setOnlyIssues] = useState(false)
   const [progress, setProgress] = useState({ parsed: 0, total: 0, done: true })
+  const [pollError, setPollError] = useState('')
+  const [pollVersion, setPollVersion] = useState(0)
 
   const requirements = useQuery({
     queryKey: ['project', projectId, 'import-requirements'],
@@ -81,8 +92,9 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   const mapped = new Set(Object.values(columnMap))
   const colCount = Math.max(0, ...table.map((row) => row.length))
   const conflicts = rows.filter((row) => row.conflict)
-  const issueCount = rows.filter((row) => row.conflict || remarkOf(row)).length
-  const shown = onlyIssues ? rows.filter((row) => row.conflict || remarkOf(row)) : rows
+  const needsAttention = (row: ImportPreviewRow) => row.conflict || remarkOf(row) || row.parse_status === 'error' || (row.ui_automation as { coverable?: boolean } | undefined)?.coverable === false
+  const issueCount = rows.filter(needsAttention).length
+  const shown = onlyIssues ? rows.filter(needsAttention) : rows
 
   const reset = () => {
     setStep('file')
@@ -95,6 +107,8 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
     setToken('')
     setError('')
     setOnlyIssues(false)
+    setPollError('')
+    setProgress({ parsed: 0, total: 0, done: true })
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -146,6 +160,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
     if (columnMap.platform == null && platforms.length && !platform) return fb.warn('没有映射「端」列，先选一个默认端')
     setBusy(true)
     setError('')
+    setPollError('')
     try {
       const res = await previewCaseImport(projectId, {
         requirement_id: requirementId,
@@ -164,7 +179,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
         on_conflict: row.conflict ? 'skip' : 'skip',
       })))
       setStep('preview')
-      fb.ok(`开始解析 ${data.total || data.rows?.length || 0} 条，每 5 条一批`)
+      fb.ok(`开始解析 ${data.total || data.rows?.length || 0} 条，完成的用例会逐条显示`)
     } catch (e) {
       const message = errText(e, '解析失败')
       setError(message)
@@ -177,28 +192,56 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   useEffect(() => {
     if (step !== 'preview' || !token || progress.done) return
     let stop = false
-    const timer = window.setInterval(() => {
-      void getImportPreview(projectId, token).then((res) => {
+    let failures = 0
+    let timer: number | undefined
+    const poll = async () => {
+      try {
+        const res = await getImportPreview(projectId, token)
         if (stop) return
         const data = res.data || {}
+        failures = 0
+        setPollError('')
         setProgress({ parsed: data.parsed || 0, total: data.total || 0, done: Boolean(data.done) })
         if (data.rows) {
           setRows((prev) => (data.rows || []).map((row) => {
             const old = prev.find((item) => item.row_index === row.row_index)
             return {
               ...row,
-              selected: row.parse_status === 'incomplete' ? false : (old?.selected !== false),
+              selected: ['incomplete', 'error', 'cancelled'].includes(row.parse_status || '') ? false : (old?.selected !== false),
               on_conflict: old?.on_conflict || 'skip',
             }
           }))
         }
-      }).catch(() => {})
-    }, 1000)
-    return () => { stop = true; window.clearInterval(timer) }
-  }, [step, token, progress.done, projectId])
+        if (!data.done) timer = window.setTimeout(() => void poll(), 1000)
+      } catch (exception) {
+        if (stop) return
+        failures += 1
+        if (failures >= 3) setPollError(errText(exception, '读取解析进度失败，请重新读取'))
+        else timer = window.setTimeout(() => void poll(), 2000)
+      }
+    }
+    void poll()
+    return () => { stop = true; window.clearTimeout(timer) }
+  }, [step, token, progress.done, projectId, pollVersion])
+
+  const retryRow = async (rowIndex: number) => {
+    try {
+      const res = await retryImportPreviewRow(projectId, token, rowIndex)
+      const data = res.data || {}
+      setRows((previous) => (data.rows || []).map((row) => {
+        const old = previous.find((item) => item.row_index === row.row_index)
+        return { ...row, selected: row.row_index === rowIndex || old?.selected !== false, on_conflict: old?.on_conflict || 'skip' }
+      }))
+      setProgress({ parsed: data.parsed || 0, total: data.total || 0, done: Boolean(data.done) })
+      setPollError('')
+      setPollVersion((value) => value + 1)
+    } catch (exception) {
+      fb.fail(errText(exception, '重试失败'))
+    }
+  }
 
   const commit = async () => {
-    const picked = rows.filter((row) => row.selected !== false)
+    const picked = rows.filter((row) => row.selected !== false && selectable(row))
     if (!token || !picked.length) return fb.warn('至少留下一条')
     setBusy(true)
     try {
@@ -209,7 +252,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
         default_platform: platform,
         rows: rows.map((row) => ({
           row_index: row.row_index,
-          selected: row.selected !== false,
+          selected: row.selected !== false && selectable(row),
           on_conflict: String(row.on_conflict || 'skip'),
         })),
       })
@@ -230,7 +273,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
       title="导入用例"
       open={open}
       onCancel={() => { if (token) void cancelImportPreview(projectId, token); reset(); onClose() }}
-      width={step === 'file' ? 560 : 'min(1440px, calc(100vw - 32px))'}
+      width={step === 'file' ? 560 : 'min(1800px, calc(100vw - 32px))'}
       footer={null}
       destroyOnHidden
     >
@@ -354,6 +397,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
 
       {step === 'preview' && (
         <div className="flex flex-col" style={{ gap: 12 }}>
+          {pollError ? <div role="alert" style={{ color: 'var(--w-fail)' }}>{pollError} <Button size="small" onClick={() => { setPollError(''); setPollVersion((value) => value + 1) }}>重新读取进度</Button></div> : null}
           <div className="flex flex-wrap items-center gap-2">
             <span style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>
               已解析 {progress.parsed}/{progress.total || rows.length}{progress.done ? '' : '，解析中'}{issueCount ? `，${issueCount} 条需要看` : ''}{conflicts.length ? `，冲突 ${conflicts.length} 条` : ''}
@@ -364,17 +408,21 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
             </Button>
           </div>
           <div className="overflow-auto" style={{ maxHeight: '52vh', border: '1px solid var(--w-border)', borderRadius: 'var(--w-radius-lg)' }}>
-            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--w-font-sm)', minWidth: '100%' }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--w-font-sm)', width: '100%', minWidth: 1500, tableLayout: 'fixed' }}>
+              <colgroup>
+                {[48, 104, 136, 260, 88].map((width, index) => <col key={index} style={{ width }} />)}
+                <col /><col /><col />
+              </colgroup>
               <thead>
                 <tr>
-                  {['导入', '结果', '编号', '名称', '端', '前置条件', '步骤摘要', '预期摘要', '备注'].map((title) => <th key={title} style={th}>{title}</th>)}
+                  {['导入', '结果', '编号', '名称', '端', '前置条件', '操作步骤', '预期结果'].map((title) => <th key={title} style={th}>{title}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {shown.map((row) => {
                   const incomplete = row.parse_status === 'incomplete'
                   const remark = remarkOf(row)
-                  const tone = incomplete ? undefined : row.conflict ? 'fail' : remark ? 'warn' : undefined
+                  const tone = incomplete ? undefined : row.conflict ? 'fail' : needsAttention(row) ? 'warn' : undefined
                   const paint = (extra?: CSSProperties): CSSProperties => ({
                     ...td,
                     ...toneCell(tone),
@@ -384,23 +432,22 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
                   return (
                     <tr key={row.row_index}>
                       <td style={paint({ boxShadow: tone === 'fail' ? 'inset 3px 0 0 var(--w-fail)' : tone === 'warn' ? 'inset 3px 0 0 var(--w-warn)' : undefined })}>
-                        <input type="checkbox" disabled={incomplete || row.parse_status === 'pending'} checked={!incomplete && row.selected !== false} onChange={(e) => setRows((prev) => prev.map((item) => item.row_index === row.row_index ? { ...item, selected: e.target.checked } : item))} />
+                        <input aria-label={`导入${row.name || '用例'}`} type="checkbox" disabled={!selectable(row)} checked={selectable(row) && row.selected !== false} onChange={(e) => setRows((prev) => prev.map((item) => item.row_index === row.row_index ? { ...item, selected: e.target.checked } : item))} />
                       </td>
                       <td style={paint()}>
                         <StatusPill status={incomplete ? 'muted' : row.parse_status === 'pending' ? 'running' : tone === 'fail' ? 'fail' : tone === 'warn' ? 'warn' : 'pass'}>
                           {incomplete ? '缺列' : row.parse_status === 'pending' ? '解析中' : row.parse_status === 'error' ? '失败' : tone === 'fail' ? '冲突' : tone === 'warn' ? '需处理' : '可导入'}
                         </StatusPill>
+                        {incomplete ? <div style={{ marginTop: 5, color: 'var(--w-text-tertiary)' }}>{remark || '缺少名称、操作或预期，不能解析'}</div> : null}
+                        {row.parse_status === 'error' ? <><div style={{ marginTop: 5, color: 'var(--w-fail)', overflowWrap: 'anywhere' }}>{remark}</div><Button size="small" onClick={() => void retryRow(Number(row.row_index))}>重试</Button></> : null}
+                        {row.conflict ? <Select size="small" value={String(row.on_conflict || 'skip')} options={[{ value: 'skip', label: '跳过' }, { value: 'overwrite', label: '覆盖' }]} onChange={(value) => setRows((previous) => previous.map((item) => item.row_index === row.row_index ? { ...item, on_conflict: value } : item))} /> : null}
                       </td>
                       <td style={paint({ whiteSpace: 'nowrap' })}>{String(row.case_id || '（系统生成）')}</td>
-                      <td style={paint({ fontWeight: 650 })}>{String(row.name || '')}</td>
+                      <td style={paint({ fontWeight: 650, lineHeight: 1.65, overflowWrap: 'anywhere', whiteSpace: 'normal' })}>{String(row.name || '')}</td>
                       <td style={paint()}>{String(row.platform || platform || '—')}</td>
-                      <td style={paint({ width: '18%' })}><ScriptField kind="pre" value={row.precondition_preview || row.precondition} /></td>
-                      <td style={paint({ width: '24%' })}><ScriptField kind="op" value={row.steps_preview || row.steps} compiled={row.steps_parsed ?? []} /></td>
-                      <td style={paint({ width: '24%' })}><ScriptField kind="ex" value={row.expected_preview || row.expected} compiled={row.expected_parsed ?? []} /></td>
-                      <td style={paint({ width: '12%' })}>
-                        {flagLine(row) || '—'}
-                        {row.parse_status === 'error' ? <Button size="small" onClick={() => void retryImportPreviewRow(projectId, token, Number(row.row_index))}>重试</Button> : null}
-                      </td>
+                      <td style={paint()}><ScriptField kind="pre" value={row.precondition_preview || (row.payload as Record<string, unknown> | undefined)?.precondition} automation={automationOf(row, 'pre')} /></td>
+                      <td style={paint()}><ScriptField kind="op" value={row.steps_preview || row.steps} compiled={row.steps_parsed ?? []} automation={automationOf(row, 'op')} /></td>
+                      <td style={paint()}><ScriptField kind="ex" value={row.expected_preview || row.expected} compiled={row.expected_parsed ?? []} automation={automationOf(row, 'ex')} /></td>
                     </tr>
                   )
                 })}
@@ -409,7 +456,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
           </div>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setStep('map')}>上一步</Button>
-            <Button type="primary" loading={busy} disabled={!progress.done} onClick={() => void commit()}>确认导入</Button>
+            <Button type="primary" loading={busy} disabled={!progress.done || !rows.some((row) => selectable(row) && row.selected !== false)} onClick={() => void commit()}>确认导入</Button>
           </div>
         </div>
       )}
@@ -422,12 +469,6 @@ function colShare(selected: boolean, count: number, selectedCount: number) {
   const weight = selected ? 1.3 : 1
   const total = (count - selectedCount) + selectedCount * 1.3
   return total ? (weight / total) * 93 : 0
-}
-
-function flagLine(row: ImportPreviewRow) {
-  const flags = Array.isArray(row.flags) ? row.flags.map(String) : []
-  const text = flags.map((flag) => FLAG_LABELS[flag]).filter(Boolean).join(' · ')
-  return text || (row.conflict ? '与库中已有用例冲突' : '')
 }
 
 function sheetCell(header: boolean, skip: boolean): CSSProperties {

@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, TriangleAlert } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { Button, EmptyState, ErrorBoundary, Planned, Skeleton, errText } from '@/ui'
-import { getPlatformIcon } from '@/constants/appPlatforms'
+import { getPlatformIcon, type PlatformInput } from '@/constants/appPlatforms'
 import { DEFAULT_TAB, isRetiredTab, resolveTab, type Tab } from './nav'
 import { useAppDetail } from './queries'
 import { loadCasesPanel, loadTasksPanel } from './listPrefetch'
@@ -123,7 +123,7 @@ export function AppWorkbench() {
         {/* 主工作区 */}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ErrorBoundary label="面板">
-            <Panel key={appId} tab={tab} appId={appId} projectId={projectId} contextLoading={detail.isPending} />
+            <Panel key={appId} tab={tab} appId={appId} projectId={projectId} platforms={app?.platforms} contextLoading={detail.isPending} />
           </ErrorBoundary>
         </main>
       </div>
@@ -132,13 +132,14 @@ export function AppWorkbench() {
 }
 
 /** 面板分发。各面板按阶段陆续替换掉占位。 */
-function Panel({ tab, appId, projectId, contextLoading }: { tab: Tab; appId: string; projectId: string; contextLoading: boolean }) {
+function Panel({ tab, appId, projectId, platforms, contextLoading }: { tab: Tab; appId: string; projectId: string; platforms: PlatformInput; contextLoading: boolean }) {
   switch (tab) {
     case 'cases':
       if (!projectId) return contextLoading ? <Skeleton active paragraph={{ rows: 8 }} /> : <EmptyState title="应用未关联项目" hint="请检查应用的项目信息。" />
       return lazyPanel(<CasesPanel appId={appId} projectId={projectId} />)
     case 'tasks':
-      return lazyPanel(<TasksPanel appId={appId} projectId={projectId} />)
+      if (contextLoading) return <Skeleton active paragraph={{ rows: 8 }} />
+      return lazyPanel(<TasksPanel appId={appId} projectId={projectId} platforms={platforms} />)
     case 'session-log':
       return lazyPanel(<SessionLogPanel appId={appId} />)
     case 'navigation':

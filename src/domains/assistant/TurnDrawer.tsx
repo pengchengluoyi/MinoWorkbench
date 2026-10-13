@@ -43,7 +43,7 @@ function Messages({ turnId }: { turnId: string }) {
     <div className="flex flex-col" style={{ gap: 8 }}>
       {d.messages.map((m, i) => (
         <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%' }}>
-          <div style={{ padding: '6px 10px', borderRadius: 'var(--w-radius-sm)', background: m.role === 'user' ? 'var(--w-primary-soft)' : 'var(--w-fill)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 'var(--w-font-base)' }}>{m.text}</div>
+          <div style={{ padding: '6px 10px', borderRadius: 'var(--w-radius-sm)', background: m.role === 'user' ? 'var(--w-primary-soft)' : 'var(--w-fill)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 'var(--w-font-base)' }}>{m.card ? <MinoCardView card={m.card} /> : m.text}</div>
           <div style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)', textAlign: m.role === 'user' ? 'right' : 'left' }}>
             {m.role === 'user' ? '用户' : '助手'} · {fmtTime(m.ts)}
           </div>
@@ -72,7 +72,7 @@ export function TurnDrawer({ turnId, onClose }: { turnId: string; onClose: () =>
             {t.chat_id_masked ? <span className="w-mono">{t.chat_id_masked}</span> : null}
             <span>{fmtTime(t.created_at)}</span>
             <span>耗时 {fmtMs(t.elapsed_ms)}</span>
-            <span>token {t.prompt_tokens ?? 0}/{t.completion_tokens ?? 0}</span>
+            <span>{t.detail?.usage_status === 'missing' ? 'token 用量：服务商未报告' : `token ${t.prompt_tokens ?? 0}/${t.completion_tokens ?? 0}`}</span>
           </div>
 
           <Title>意图</Title>
@@ -88,12 +88,10 @@ export function TurnDrawer({ turnId, onClose }: { turnId: string; onClose: () =>
             <div className="w-mono" style={{ marginTop: 10, fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>关联任务 {taskId}（缺少应用信息，无法跳转）</div>
           ) : null}
 
-          <Title>调用步骤</Title>
-          <TraceList steps={t.steps ?? []} />
-
-          <Title>卡片预览</Title>
+          <Title>本次回复</Title>
           {t.card ? <MinoCardView card={t.card} /> : <span style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-quaternary)' }}>这一轮没有生成卡片</span>}
 
+          <details style={{ marginTop: 16 }}><summary style={{ cursor: 'pointer', fontSize: 13 }}>处理过程</summary><TraceList steps={t.steps ?? []} /></details>
           <Title>对话正文</Title>
           <Messages turnId={t.turn_id} />
 

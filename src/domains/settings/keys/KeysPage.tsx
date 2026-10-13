@@ -2,14 +2,16 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
 import {
-  Button, EmptyState, Input, InputNumber, Select, Skeleton, StatusPill, Switch, errText, useFeedback,
+  Button, EmptyState, Input, InputNumber, Modal, Select, Skeleton, StatusPill, Switch, errText, useFeedback,
 } from '@/ui'
 import {
   PRESET_PROVIDER_IDS, apiTypeLabel, deleteAIProvider, listAIProviders, roundRatio, saveAIProvider, saveAIUsage,
-  validateAIProvider, type AIProvider, type ProviderForm,
+  validateAIProvider, sdkProviderLabel, type AIProvider, type ProviderForm,
 } from '@/api/ai'
 
 import { useSession } from '@/lib/session'
+import { ModelCosts } from './ModelCosts'
+import { ModelConfig } from './ModelConfig'
 
 const keys = { get all() { return ['account', useSession.getState().user?.user_id || '', 'ai', 'providers'] as const } }
 
@@ -24,6 +26,11 @@ const toForm = (p: AIProvider, defaultId: string): ProviderForm => {
     base_url: p.base_url || '',
     model,
     model_options: options,
+    sdk_provider: p.sdk_provider || 'openai',
+    embedding_model: p.embedding_model || '',
+    model_parameters: p.model_parameters || {},
+    pricing: p.pricing || {},
+    embedding_pricing: p.embedding_pricing || {},
     enabled: p.configured ? p.enabled !== false : false,
     case_execution_use: Boolean(p.configured && p.enabled !== false && p.case_execution_use),
     plan_compress_ratio: roundRatio(p.plan_compress_ratio ?? 3, 3),
@@ -40,6 +47,10 @@ const toForm = (p: AIProvider, defaultId: string): ProviderForm => {
  * 发信和知识沉淀不在这个页面里（知识 tab 已砍，发信也不在当前导航）。
  */
 export function KeysPage() {
+  const [tab, setTab] = useState<'keys' | 'costs'>('keys')
+  const [addOpen, setAddOpen] = useState(false)
+  const [newId, setNewId] = useState('')
+  const [newSdkProvider, setNewSdkProvider] = useState('openai')
   const feedback = useFeedback()
   const qc = useQueryClient()
   const [openId, setOpenId] = useState('')
@@ -50,12 +61,23 @@ export function KeysPage() {
     queryFn: async () => {
       const res = await listAIProviders()
       const data = res.data || {}
-      const providers = data.providers || []
+      const savedProviders = data.providers || []
+      const sdkProviders = data.sdk_providers || [...new Set(savedProviders.map((p) => p.sdk_provider || 'openai'))]
+      const existing = new Set(savedProviders.map((p) => p.sdk_provider || 'openai'))
+      const providers: AIProvider[] = [
+        ...savedProviders,
+        ...sdkProviders.filter((native) => !existing.has(native) && !savedProviders.some((p) => p.id === native)).map((native) => ({
+          id: native, name: sdkProviderLabel(native), sdk_provider: native,
+          api_type: native === 'anthropic' || native === 'gemini' ? native : 'openai',
+        })),
+      ]
       const defaultId = data.default_provider || 'openai'
       const next: Record<string, ProviderForm> = {}
       for (const p of providers) next[p.id] = toForm(p, data.usage?.case_execution_provider_id || defaultId)
       return {
         providers,
+        sdkProviders,
+        savedIds: savedProviders.map((p) => p.id),
         usageEnabled: Boolean(data.usage?.case_execution_enabled),
         forms: next,
       }
@@ -91,6 +113,7 @@ export function KeysPage() {
     },
     onSuccess: async () => {
       feedback.ok('已保存')
+      setAddOpen(false)
       await refresh()
     },
     onError: (e) => feedback.fail(errText(e, '保存失败')),
@@ -110,8 +133,8 @@ export function KeysPage() {
 
   const validate = useMutation({
     mutationFn: validateAIProvider,
-    onSuccess: () => feedback.ok('连接验证成功'),
-    onError: (e) => feedback.fail(errText(e, '连接验证失败')),
+    onSuccess: async () => { feedback.ok('连接验证成功'); await refresh() },
+    onError: async (e) => { feedback.fail(errText(e, '连接验证失败')); await refresh() },
   })
 
   const remove = useMutation({
@@ -136,7 +159,7 @@ export function KeysPage() {
     return (
       <EmptyState
         icon={<TriangleAlert size={28} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
-        title="读不到模型供应商"
+        title="读不到模型接入配置"
         hint={errText(query.error)}
         action={<Button size="small" onClick={() => void query.refetch()}>重试</Button>}
       />
@@ -173,6 +196,9 @@ export function KeysPage() {
   const selectedId = openId || ordered[0]?.id || ''
   const selected = ordered.find((p) => p.id === selectedId)
   const selectedForm = selected ? liveForms[selected.id] : undefined
+  const validationDirty = Boolean(selected && selectedForm && (selectedForm.model !== selected.model || selectedForm.base_url !== selected.base_url || selectedForm.sdk_provider !== selected.sdk_provider || selectedForm.api_key || selectedForm.clear_key || JSON.stringify(selectedForm.model_parameters) !== JSON.stringify(selected.model_parameters || {})))
+
+  if (tab === 'costs') return <div className="flex h-full min-h-0 flex-col"><Button onClick={() => setTab('keys')}>返回模型配置</Button><ModelCosts /></div>
 
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ gap: 12 }}>
@@ -180,20 +206,34 @@ export function KeysPage() {
         <div className="min-w-0 flex-1">
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em' }}>模型密钥</h1>
           <p style={{ margin: '4px 0 0', color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>
-            已配置 {ordered.filter((p) => p.configured).length} / {ordered.length}。Key 只在这里改，列表不展开表单。
+            从左侧选择接入方式，再配置对应的模型、Key 和地址。已配置 {ordered.filter((p) => p.configured).length} 项。
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button onClick={() => setTab('costs')}>模型用量与费用</Button>
+          <Button onClick={() => setAddOpen(true)}>添加模型接入</Button>
           <span style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-secondary)' }}>用例执行使用大模型</span>
           <Switch checked={query.data?.usageEnabled} loading={usage.isPending} onChange={(v) => usage.mutate(v)} />
         </div>
       </header>
 
-      {!ordered.length && <EmptyState title="还没有供应商" hint="Nexus 没有返回任何模型配置。" />}
+      <Modal open={addOpen} title="添加模型接入" onCancel={() => setAddOpen(false)} confirmLoading={save.isPending}
+        onOk={() => {
+          const id = newId.trim().toLowerCase()
+          if (!/^[a-z0-9][a-z0-9_-]{0,127}$/.test(id) || ordered.some((p) => p.id === id)) { feedback.warn('请输入未使用的英文接入 ID'); return }
+          setOpenId(id)
+          save.mutate({ id, form: toForm({ id, name: id, sdk_provider: newSdkProvider }, '') })
+        }}>
+        <p>为当前账号添加独立配置。相同接入方式可使用不同的 Key、地址与模型 ID。</p>
+        <label>接入方式<Select aria-label="新接入方式" value={newSdkProvider} options={(query.data?.sdkProviders || []).map((native) => ({ value: native, label: sdkProviderLabel(native) }))} onChange={setNewSdkProvider} style={{ width: '100%', marginBottom: 12 }} /></label>
+        <Input aria-label="新接入 ID" value={newId} placeholder="英文 ID，例如 my-provider" onChange={(e) => setNewId(e.target.value)} />
+      </Modal>
+      {!ordered.length && <EmptyState title="还没有接入方式" hint="Nexus 没有返回任何模型配置。" />}
 
       {!!ordered.length && (
         <div className="flex min-h-0 flex-1" style={{ gap: 12 }}>
           <aside className="min-h-0 overflow-y-auto" style={{ flex: '0 0 clamp(200px, 22%, 320px)', background: 'var(--w-surface)', border: '1px solid var(--w-border)', borderRadius: 'var(--w-radius-lg)' }}>
+            <div style={{ padding: '12px', fontWeight: 700, borderBottom: '1px solid var(--w-border)' }}>接入方式</div>
             {ordered.map((p) => {
               const form = liveForms[p.id]
               const on = p.id === selectedId
@@ -207,7 +247,8 @@ export function KeysPage() {
                   style={{ border: 'none', borderBottom: '1px solid var(--w-border)', cursor: 'pointer', textAlign: 'left', padding: '10px 12px' }}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate" style={{ fontWeight: 700 }}>{p.name || p.id}</span>
+                    <span className="block truncate" style={{ fontWeight: 700 }}>{sdkProviderLabel(form?.sdk_provider || p.sdk_provider || 'openai')}</span>
+                    {!(PRESET_PROVIDER_IDS as readonly string[]).includes(p.id) && p.id !== p.sdk_provider && <span className="block truncate" style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-secondary)' }}>{p.name || p.id}</span>}
                     <span className="block truncate" style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)', fontFamily: 'var(--w-font-mono)' }}>
                       {p.configured ? (p.api_key_masked || '已保存') : '还没有 Key'}
                     </span>
@@ -221,7 +262,7 @@ export function KeysPage() {
           {selected && selectedForm && (
             <section className="min-h-0 flex-1 overflow-y-auto" style={{ ...card, paddingBottom: 28 }}>
               <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 16 }}>
-                <strong style={{ fontSize: 18 }}>{selected.name || selected.id}</strong>
+                <strong style={{ fontSize: 18 }}>{sdkProviderLabel(selectedForm.sdk_provider)}</strong>
                 <StatusPill status="muted">{apiTypeLabel(selected)}</StatusPill>
                 <span style={{ flex: 1 }} />
                 <span style={{ fontSize: 'var(--w-font-sm)' }}>启用</span>
@@ -233,6 +274,7 @@ export function KeysPage() {
                   </>
                 )}
               </div>
+              <ModelConfig provider={selected} form={selectedForm} patch={(patch) => patchForm(selected.id, patch)} />
               <div className="grid" style={{ gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))' }}>
                 <Field label="API Key">
                   {selected.configured && selected.api_key_masked ? (
@@ -248,15 +290,6 @@ export function KeysPage() {
                 <Field label="Base URL">
                   <Input value={selectedForm.base_url} onChange={(e) => patchForm(selected.id, { base_url: e.target.value })} />
                 </Field>
-                <Field label={selected.id === 'volcengine' ? '默认模型 / 接入点' : '默认模型'}>
-                  <Select
-                    showSearch
-                    value={selectedForm.model || undefined}
-                    options={selectedForm.model_options.map((m) => ({ value: m, label: m }))}
-                    onChange={(v) => patchForm(selected.id, { model: v })}
-                    style={{ width: '100%' }}
-                  />
-                </Field>
                 <Ratio label="Plan 压缩" value={selectedForm.plan_compress_ratio} onChange={(v) => patchForm(selected.id, { plan_compress_ratio: v })} />
                 <Ratio label="Web 压缩" value={selectedForm.web_compress_ratio} onChange={(v) => patchForm(selected.id, { web_compress_ratio: v })} />
                 <Ratio label="安卓压缩" value={selectedForm.android_compress_ratio} onChange={(v) => patchForm(selected.id, { android_compress_ratio: v })} />
@@ -264,7 +297,7 @@ export function KeysPage() {
               </div>
               <div className="flex gap-2" style={{ marginTop: 16 }}>
                 <Button type="primary" loading={save.isPending} onClick={() => save.mutate({ id: selected.id, form: selectedForm })}>保存配置</Button>
-                {selected.configured && <Button loading={validate.isPending} onClick={() => validate.mutate(selected.id)}>验证连接</Button>}
+                {selected.configured && <Button disabled={validationDirty} loading={validate.isPending} onClick={() => validate.mutate(selected.id)}>验证已保存配置（产生少量用量）</Button>}
                 {selected.configured && (
                   <Button
                     loading={save.isPending}
@@ -276,7 +309,7 @@ export function KeysPage() {
                     清除 Key
                   </Button>
                 )}
-                {!(PRESET_PROVIDER_IDS as readonly string[]).includes(selected.id) && (
+                {!(PRESET_PROVIDER_IDS as readonly string[]).includes(selected.id) && query.data?.savedIds.includes(selected.id) && (
                   <Button
                     danger
                     loading={remove.isPending}

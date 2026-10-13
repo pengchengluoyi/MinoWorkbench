@@ -15,7 +15,10 @@ const STATUS: Record<CardStatus, { kind: StatusKind; text: string }> = {
   running: { kind: 'running', text: '进行中' },
   done: { kind: 'pass', text: '已完成' },
   failed: { kind: 'fail', text: '失败' },
-  need_input: { kind: 'warn', text: '需要补充信息' },
+  need_input: { kind: 'warn', text: '等待补充' },
+  submitted: { kind: 'running', text: '已提交' },
+  blocked: { kind: 'warn', text: '尚未执行' },
+  uncertain: { kind: 'warn', text: '结果待确认' },
 }
 
 const sectionLabel: CSSProperties = { fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-text-quaternary)', marginBottom: 4 }
@@ -28,16 +31,19 @@ const isDirectImage = (ref: string) => /^(https?:\/\/|data:image\/|\/)/.test(ref
  * 因为动作 id 由 IM 渠道回调处理，Workbench 不代发。
  */
 export function MinoCardView({ card }: { card: MinoCard }) {
+  if (card.body_redacted) return <div style={{ padding: 12, color: 'var(--w-text-tertiary)', fontSize: 13 }}>正文保存在 Scout 节点；下方对话正文可查看实际卡片。</div>
   const tone = TONE[card.header?.tone] || TONE.info
-  const st = STATUS[card.status] || { kind: 'muted' as StatusKind, text: card.status }
+  const st = card.card_type === 'notification' && card.status === 'blocked'
+    ? { kind: 'warn' as StatusKind, text: '未能执行' }
+    : STATUS[card.status] || { kind: 'muted' as StatusKind, text: card.status }
   return (
     <div style={{ border: '1px solid var(--w-border-strong)', borderRadius: 'var(--w-radius-lg)', overflow: 'hidden', background: 'var(--w-surface)' }}>
       <div className="flex items-center justify-between gap-2" style={{ padding: '10px 12px', background: tone.bg, color: tone.fg }}>
-        <strong style={{ fontSize: 'var(--w-font-title)' }}>{card.header?.title || '助手卡片'}</strong>
+        <strong style={{ fontSize: 'var(--w-font-title)' }}>{card.header?.title || '助手卡片'} <small style={{ fontWeight: 400, fontSize: 12 }}>· {({ clarification: '追问', notification: '通知', dialogue: '对话' })[card.card_type || 'notification']}</small></strong>
         <StatusPill status={st.kind}>{st.text}</StatusPill>
       </div>
       <div className="flex flex-col" style={{ padding: 12, gap: 12 }}>
-        {(card.blocks || []).map((b, i) => <Block key={i} block={b} />)}
+        {[...(card.blocks || [])].sort((left, right) => (left.type === 'trace' ? 2 : left.type === 'summary' ? -1 : 0) - (right.type === 'trace' ? 2 : right.type === 'summary' ? -1 : 0)).map((b, i) => <Block key={i} block={b} />)}
         {!(card.blocks || []).length ? <span style={{ color: 'var(--w-text-quaternary)', fontSize: 'var(--w-font-sm)' }}>卡片没有内容块</span> : null}
       </div>
       {(card.actions || []).length ? (
@@ -74,12 +80,29 @@ function Block({ block }: { block: CardBlock }) {
       return <Section label="我理解成了"><div style={{ fontSize: 'var(--w-font-base)' }}>{block.text}</div></Section>
     case 'summary':
       return <Section label="结果"><div style={{ fontSize: 'var(--w-font-base)', whiteSpace: 'pre-wrap' }}>{block.text}</div></Section>
+    case 'problem':
+      return <Section label="问题"><div style={{ whiteSpace: 'pre-wrap', color: 'var(--w-warn)' }}>{block.text}</div></Section>
+    case 'next_steps':
+      return <Section label="接下来"><ol style={{ margin: 0, paddingLeft: 20 }}>{block.items.map((text, index) => <li key={index} style={{ marginBottom: 6 }}>{text}</li>)}</ol></Section>
+    case 'choices':
+      return <Section label="可选项"><ol style={{ margin: 0, paddingLeft: 20 }}>{block.items.map((item) => <li key={item.value}>{item.label}</li>)}</ol></Section>
+    case 'case_results':
+      return <div className="flex flex-col gap-2">{block.items.map((item, index) => {
+        const passed = item.status === 'pass'
+        const skipped = item.status === 'skip' || item.status === 'skipped'
+        const quiet = passed || skipped
+        return <div key={`${item.case_id}:${index}`} style={{ padding: quiet ? '6px 0' : 12,
+          borderRadius: 'var(--w-radius-sm)', background: quiet ? 'transparent' : item.status === 'fail' ? 'var(--w-fail-bg)' : 'var(--w-warn-bg)' }}>
+          <div className="flex items-start justify-between gap-2">
+            <span style={{ fontWeight: quiet ? 500 : 700, overflowWrap: 'anywhere' }}>{item.number ? `${item.number}. ` : ''}{item.name}</span>
+            <StatusPill status={passed ? 'pass' : skipped ? 'muted' : item.status === 'fail' ? 'fail' : 'warn'}>{item.status_label}</StatusPill>
+          </div>
+          {item.summary ? <p style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.summary}</p> : null}
+          {item.advice ? <p style={{ margin: '8px 0 0', color: 'var(--w-text-secondary)', fontSize: 13 }}>建议：{item.advice}</p> : null}
+        </div>
+      })}</div>
     case 'trace':
-      return (
-        <Section label="我做了什么">
-          <TraceList steps={block.steps || []} />
-        </Section>
-      )
+      return <details><summary style={{ cursor: 'pointer', color: 'var(--w-text-tertiary)', fontSize: 12 }}>查看处理过程（{block.steps.length} 项）</summary><div style={{ paddingTop: 8 }}><TraceList steps={block.steps || []} /></div></details>
     case 'kv':
       return (
         <div className="grid" style={{ gridTemplateColumns: 'max-content 1fr', columnGap: 12, rowGap: 4, fontSize: 'var(--w-font-sm)' }}>

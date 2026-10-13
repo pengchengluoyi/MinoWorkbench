@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Filter, RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
 import { Button, DataTable, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
 import { onRealtimeState, realtimeState, type RealtimeState } from '@/lib/realtime'
+import type { PlatformInput } from '@/constants/appPlatforms'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
 import { CreateTaskDialog } from './CreateTaskDialog'
 import { useTaskDetail, useTaskList } from './queries'
@@ -17,7 +18,7 @@ const CaseRunView = lazy(() => import('./CaseRunView').then((module) => ({ defau
  * 批次列表回答「哪一次跑挂了」；批次页回答「哪些用例要看」；
  * 用例页回答「这一条卡在哪一步」。点进去才换页，不在同一屏里再开一栏。
  */
-export function TasksPanel({ appId, projectId }: { appId: string; projectId: string }) {
+export function TasksPanel({ appId, projectId, platforms }: { appId: string; projectId: string; platforms: PlatformInput }) {
   const fb = useFeedback()
   const [params, setParams] = useSearchParams()
   const pageValue = Number(params.get('taskPage'))
@@ -138,7 +139,7 @@ export function TasksPanel({ appId, projectId }: { appId: string; projectId: str
   const current = allCases.find((row) => caseId(row) === tcase)
   if (task && task.app_id !== appId) return <Card><EmptyState title="任务不属于当前应用" action={<Button onClick={() => setQuery({ run: null, tcase: null })}>返回列表</Button>} /></Card>
   if (tcase && current) {
-    return <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}><CaseRunView row={current} taskId={urlRun} onBack={() => setQuery({ tcase: null })} /></Suspense>
+    return <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}><CaseRunView row={current} taskId={urlRun} platforms={typeof task?.platform === 'string' && task.platform ? task.platform : platforms} onBack={() => setQuery({ tcase: null })} /></Suspense>
   }
 
   const total = Number(task?.total ?? allCases.length) || allCases.length

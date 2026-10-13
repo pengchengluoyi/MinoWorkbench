@@ -39,6 +39,10 @@ export interface BindCode {
 }
 
 export interface AssistantIdentity {
+  instance_id: string
+  node_id: string
+  node_name?: string
+  status?: string
   id: number
   channel: string
   sender_id_masked: string
@@ -58,13 +62,13 @@ export interface AssistantTool {
 }
 
 export type CardTone = 'info' | 'success' | 'warn' | 'danger'
-export type CardStatus = 'running' | 'done' | 'failed' | 'need_input'
+export type CardStatus = 'running' | 'done' | 'failed' | 'need_input' | 'submitted' | 'blocked' | 'uncertain'
 
 export interface TraceStep {
   tool: string
   label: string
   /** MCP 面写 error，IM 面（assistant_agent）写 fail，两种都要认。 */
-  status: 'ok' | 'error' | 'fail'
+  status: 'ok' | 'error' | 'fail' | 'ask'
   ms: number
   args_brief?: string
 }
@@ -77,6 +81,10 @@ export type CardBlock =
   | { type: 'progress'; done: number; total: number }
   | { type: 'summary'; text: string }
   | { type: 'image'; ref: string }
+  | { type: 'problem'; text: string }
+  | { type: 'next_steps'; items: string[] }
+  | { type: 'choices'; items: RequestChoice[] }
+  | { type: 'case_results'; items: { number: number | string; case_id: string; name: string; status: string; status_label: string; summary: string; advice: string }[] }
 
 export interface CardAction {
   id: string
@@ -88,7 +96,10 @@ export interface MinoCard {
   // Nexus 实际不下发 card_id / turn_id（build_card 只有 status/header/blocks/actions）
   card_id?: string
   turn_id?: string
+  card_type?: 'clarification' | 'notification' | 'dialogue'
+  body_redacted?: boolean
   status: CardStatus
+  request?: { id: string; revision: number; state: string; expires_at: number; question: { field?: string; candidates?: RequestChoice[] } }
   header: { title: string; tone: CardTone }
   blocks: CardBlock[]
   actions: CardAction[]
@@ -100,7 +111,7 @@ export interface AssistantTurn {
   channel: string
   chat_id_masked: string
   /** MCP 面 ok/error；IM 面是卡片状态 done/failed/need_input/running。 */
-  status: 'ok' | 'error' | 'need_input' | 'done' | 'failed' | 'running'
+  status: 'ok' | 'error' | CardStatus
   intent: string
   steps: TraceStep[]
   card: MinoCard | null
@@ -114,7 +125,7 @@ export interface AssistantTurn {
 export interface TurnMessages {
   available: boolean
   reason: string
-  messages: { role: 'user' | 'assistant'; text: string; ts: number }[]
+  messages: { role: 'user' | 'assistant'; text: string; ts: number; card?: MinoCard }[]
 }
 
 export interface McpToken {
@@ -144,7 +155,15 @@ export interface AssistantSubscription {
 
 /** 解开 `{code:200, ok:true, data}` 信封；业务失败（ok=false / code!=200）抛错。 */
 async function call<T>(config: Parameters<typeof request>[0]): Promise<T> {
-  const res = (await request<T>(config)) as { ok?: boolean; code?: number; message?: string; data?: T }
+  let response: unknown
+  try {
+    response = await request<T>(config)
+  } catch (error) {
+    const failure = error as { message?: string; response?: { data?: { detail?: unknown } } }
+    if (typeof failure.response?.data?.detail === 'string') failure.message = failure.response.data.detail
+    throw error
+  }
+  const res = response as { ok?: boolean; code?: number; message?: string; data?: T }
   if (res?.ok === false || (typeof res?.code === 'number' && res.code !== 200)) {
     throw new Error(res?.message || '请求失败')
   }
@@ -160,6 +179,9 @@ export const isAssistantNotReady = (e: unknown): boolean => {
 }
 
 export const getAssistantStatus = () => call<AssistantStatus>({ url: '/assistant/status', method: 'get' })
+export interface ReportSettings { workbench_url: string; effective_url: string; source: 'configured' | 'environment' | 'lan_default'; available: boolean }
+export const getReportSettings = () => call<ReportSettings>({ url: '/assistant/report-settings', method: 'get' })
+export const saveReportSettings = (workbench_url: string) => call<ReportSettings>({ url: '/assistant/report-settings', method: 'put', data: { workbench_url } })
 export const getAssistantProfile = () => call<AssistantProfile>({ url: '/assistant/profile', method: 'get' })
 export const putAssistantProfile = (body: ProfilePatch) =>
   call<AssistantProfile>({ url: '/assistant/profile', method: 'put', data: body })
@@ -190,3 +212,78 @@ export const listSubscriptions = () =>
   call<{ items: AssistantSubscription[] }>({ url: '/assistant/subscriptions', method: 'get' })
 export const deleteSubscription = (id: number) =>
   call<unknown>({ url: `/assistant/subscriptions/${id}`, method: 'delete' })
+
+export type AssistantRequestState = 'need_input' | 'resolving' | 'submitted' | 'cancelled' | 'expired' | 'failed' | 'uncertain' | 'done'
+export interface RequestChoice { label: string; value: string }
+export interface PendingAssistantRequest {
+  id: string
+  lane: string
+  tool_id: string
+  args: Record<string, unknown>
+  target: Record<string, unknown>
+  question: { field?: string; candidates?: RequestChoice[] }
+  result?: { problem?: string; next_steps?: string[] }
+  state: AssistantRequestState
+  revision: number
+  task_id: string
+  task_status?: string
+  display?: { app?: string; channel?: string }
+  origin: { channel: string; chat_id_masked: string }
+  created_at: number
+  updated_at: number
+  expires_at: number
+}
+export interface AssistantRequests {
+  items: PendingAssistantRequest[]
+  focuses: { lane: string; request_id: string; task_id: string }[]
+}
+export interface AssistantCapabilities {
+  node_id: string
+  node_name: string
+  channel: string
+  instance_id: string
+  capabilities: { markdown: boolean; cards: boolean; buttons: boolean; streaming: boolean; threads: boolean; max_characters: number; attachment_types: string[] }
+}
+export interface AssistantGroupPolicy {
+  id?: number
+  channel: string
+  instance_id: string
+  tenant: string
+  chat_id: string
+  enabled: boolean
+  allow_execute: boolean
+  disclose_results: boolean
+  project_ids: string[]
+}
+export const getAssistantRequests = () => call<AssistantRequests>({ url: '/assistant/requests', method: 'get' })
+export const respondAssistantRequest = (id: string, revision: number, values: Record<string, unknown>) =>
+  call<{ card: MinoCard }>({ url: `/assistant/requests/${encodeURIComponent(id)}/respond`, method: 'post', data: { revision, values } })
+export const cancelAssistantRequest = (id: string, revision: number) =>
+  call<{ cancelled: boolean }>({ url: `/assistant/requests/${encodeURIComponent(id)}/cancel`, method: 'post', data: { revision } })
+export const getAssistantPreferences = () => call<Record<string, string>>({ url: '/assistant/preferences', method: 'get' })
+export const setAssistantPreference = (key: string, value: string | null) =>
+  call<Record<string, string>>({ url: `/assistant/preferences/${encodeURIComponent(key)}`, method: 'put', data: { value } })
+export const getAssistantCapabilities = () => call<{ items: AssistantCapabilities[] }>({ url: '/assistant/capabilities', method: 'get' })
+export const getAssistantGroupPolicies = () => call<{ items: AssistantGroupPolicy[] }>({ url: '/assistant/group-policies', method: 'get' })
+export const putAssistantGroupPolicy = (data: AssistantGroupPolicy) => {
+  const body = { ...data }
+  delete body.id
+  return call<{ id: number }>({ url: '/assistant/group-policies', method: 'put', data: body })
+}
+
+export interface AssistantMediaSettings {
+  asr_provider_id: string
+  asr_model: string
+  providers: { id: string; name: string; configured: boolean }[]
+}
+export const getAssistantMediaSettings = () => call<AssistantMediaSettings>({ url: '/assistant/media-settings', method: 'get' })
+export const putAssistantMediaSettings = (data: Pick<AssistantMediaSettings, 'asr_provider_id' | 'asr_model'>) =>
+  call<Pick<AssistantMediaSettings, 'asr_provider_id' | 'asr_model'>>({ url: '/assistant/media-settings', method: 'put', data })
+
+export const getAssistantRequestModules = (id: string) =>
+  call<{ items: { name: string; count: number }[] }>({ url: `/assistant/requests/${encodeURIComponent(id)}/modules`, method: 'get' })
+export const reviseAssistantRequestScope = (id: string, revision: number, modules: string[]) =>
+  call<{ card: MinoCard }>({ url: `/assistant/requests/${encodeURIComponent(id)}/scope`, method: 'post', data: { revision, modules } })
+
+export const focusAssistantRequest = (id: string) =>
+  call<{ task_id: string }>({ url: `/assistant/requests/${encodeURIComponent(id)}/focus`, method: 'post' })

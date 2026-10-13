@@ -74,3 +74,46 @@
 助手恢复 Scout 本地同 sender、实例和租户且晚于本次绑定的最近上下文；不读旧未分域正文，不把其他群成员的对话加入上下文。模型每轮与工具每步执行前复核随机 binding_key，解绑再绑定也使旧执行失效。已提交的后台任务继续使用固化 owner，不随当前浏览器账号或新绑定变化。通知记录实际 sender 并在发送前复核绑定；解绑后旧订阅取消或失效。会话正文也复核当前绑定，失效时返回可见原因。
 
 最终独立 HTTP、实际 WebSocket 和生产 Chromium 已验证 A/B/管理员隔离、迟到响应、旧连接、绑定码、重复回调与通知失效；真实社交平台及设备执行仍需部署联调。
+
+
+## 2026-10-13 IM 对话优化增量
+
+唯一维护的前端为 MinoWorkbench。`/assistant` 默认进入“请求与任务”，可查看独立请求、当前焦点和关联任务；补充参数通过 POST `/assistant/requests/{id}/respond`（revision + values），撤销仅作用于待执行请求，已提交任务跳转任务页管理。
+
+卡片增加 card_type：clarification / notification / dialogue；状态增加 submitted / blocked / uncertain。先展示结果，再问题与下一步，trace 折叠放在最后。redacted 审计卡片不伪造正文，实际卡片通过 Scout-local messages 获取。
+
+对话设置使用 `/assistant/preferences`、`/assistant/capabilities`、`/assistant/group-policies`、`/assistant/media-settings`。偏好可撤销且不保存默认执行设备；群策略需已验证绑定和明确项目范围，@ 不构成授权；语音模型使用账号已有服务，不接收密钥。未实现的原生按钮显示编号/名称降级。经当前节点验证的飞书实例可以声明卡片、线程与草稿更新能力；实际平台显示与回执需要部署联调，不能由能力字段代替验收。
+
+所有查询/突变缓存继续绑定 user_id，账号切换沿用全局取消请求、清缓存和重挂敏感界面的流程。错误和 409 必须可见并刷新请求版本，不能用旧候选重发。
+
+### 范围、焦点与结果持久化
+
+| 操作 | API 与语义 |
+| --- | --- |
+| 加载待执行请求/任务 | GET `/assistant/requests`：items、focuses；args 为已保存的规范参数，task_status 来自真实任务 |
+| 补充候选 | POST `/assistant/requests/{id}/respond`：revision + values，只消费保存候选一次 |
+| 撤销请求 | POST `/assistant/requests/{id}/cancel`：revision；不停止已提交任务 |
+| 查项目模块 | GET `/assistant/requests/{id}/modules`：items、selected；应用共享项目用例库 |
+| 调整模块并继续 | POST `/assistant/requests/{id}/scope`：revision + modules，并集去重、冻结完整 case_ids 与内容版本，使旧候选失效 |
+| 切换关注任务 | POST `/assistant/requests/{id}/focus`：验证任务归属，只改变 lane 的 task 焦点，保留待执行请求，不取消任务 |
+
+ordinal 在首次解析后转成稳定 case_ids；设备追问续接不会第二次应用“第几条”。空范围、删除或内容变化均返回明确阻塞，不扩大成全部。请求失败保存人话 problem/next_steps，刷新后仍可查看，不保存原始聊天正文为新的长期真源。
+
+界面使用“当前请求 / 等待补充 / 全部记录”，单独显示“会话当前请求”和“会话当前任务”。已关注按钮禁用；任务结果链接继续使用 `/testing/:appId?tab=tasks&run=:taskId`。卡片结果、问题、接下来分行，过程按偏好显示并可折叠。群策略项目选择兼容项目接口的裸数组返回，不因错误解包显示空选项。
+
+### 流式和运行结束说明
+
+流式内容由 Nexus 的真实模型 SSE observer 产生，经 Scout 更新一条消息；工具参数不流出，草稿清楚标注尚未执行。usage 未报告时明确不可得，不显示虚构的零用量。最终回复依据正式工具结果。
+
+助手移除固定 4/12 轮工具上限，按路由总处理时间与重复无进展控制。时间预算仅约束新一轮模型/工具/任务提交，不是测试任务执行时长。失败与追问优先保留；超时或无进展显示实际原因及已查询结果，不回复“步骤太多”，不推断现有任务已经停止。
+
+2026-10-13 最新生产构建、相关 eslint 和隔离后端配合的 Chromium HTTP 验收通过：66 份实际资源响应、零远程请求、零页面错误，追问/撤销/多模块/双任务焦点/偏好撤销/群策略/所有助手页签/390px 窄屏均已操作。未使用真实 IM、设备或模型账号做正向联调。
+
+
+## 2026-10-13 用例结果通知与报告入口
+
+通知支持 `case_results` 块：每项包含 number、case_id、name、status、status_label、summary、advice。通过/跳过项简短显示，未通过项突出具体摘要；建议只在非空时出现。URL actions 提供“查看测试报告”。
+
+单条结果通知将用例结果作为首个块；多条先显示统计并列出各条结果，未通过超过5条时限量摘要与完整报告入口。详情链接使用 `/testing/:appId?tab=tasks&run=:taskId`，单条再带 `tcase=:caseId`，沿用登录门禁与归属校验。
+
+“我的助手 → 对话设置 → 测试报告链接”读写 `/assistant/report-settings`，保存 workbench_url，展示 effective_url/source/available。使用 Workbench 内网IP和实际端口，不使用 localhost 或 Nexus API 入口；同机默认IP/5273，分机/反代显式配置。此设置与AI模型服务地址独立。

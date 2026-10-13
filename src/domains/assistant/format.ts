@@ -29,5 +29,8 @@ export const turnStatus = (s: string): { kind: StatusKind; text: string } =>
   // Nexus 真实值：MCP 面是 ok/error，IM 面取卡片状态 done/failed/need_input/running。
   s === 'ok' || s === 'done' ? { kind: 'pass', text: '成功' }
     : s === 'error' || s === 'failed' ? { kind: 'fail', text: '出错' }
+    : s === 'submitted' ? { kind: 'running', text: '已提交' }
+    : s === 'blocked' ? { kind: 'warn', text: '尚未执行' }
+    : s === 'uncertain' ? { kind: 'warn', text: '结果待确认' }
     : s === 'running' ? { kind: 'running', text: '进行中' }
     : { kind: 'warn', text: '待补充' }

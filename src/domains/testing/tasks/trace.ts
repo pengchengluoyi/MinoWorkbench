@@ -1,3 +1,5 @@
+import { parseInteraction, type TraceInteraction } from './interaction'
+
 export interface TraceStep {
   step: number
   title: string
@@ -16,6 +18,7 @@ export interface TraceStep {
   thumb: string
   expected: string
   actual: string
+  interaction?: TraceInteraction
 }
 
 export interface TraceView {
@@ -186,6 +189,7 @@ export function parseTrace(raw: Record<string, unknown> | null | undefined, fall
       thumb: thumb || prev?.thumb || '',
       expected: compared.expected || prev?.expected || '',
       actual: compared.actual || prev?.actual || '',
+      interaction: parseInteraction(eventLabel(rawTitle, event), bag) || prev?.interaction,
     })
   })
   const report = data.report_payload && typeof data.report_payload === 'object'
@@ -218,6 +222,7 @@ export function mergeTraceSteps(left: TraceStep[], right: TraceStep[]) {
       thumb: step.thumb || prev.thumb,
       expected: step.expected || prev.expected,
       actual: step.actual || prev.actual,
+      interaction: step.interaction || prev.interaction,
     })
   }
   return [...byStep.values()].sort((a, b) => a.step - b.step)
