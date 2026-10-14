@@ -2,12 +2,12 @@
 
 export const HEADER_ALIASES: Record<string, string[]> = {
   case_id: ['用例编号', '编号', 'id', 'case_id'],
-  name: ['用例名称', '用例名', '名称', '标题'],
-  module: ['模块', '路径'],
-  platform: ['端', '平台'],
-  precondition: ['前置', '前置条件'],
-  steps: ['步骤', '测试步骤', '操作步骤', '执行步骤'],
-  expected: ['预期', '预期效果', '预期结果', '期望结果'],
+  name: ['用例名称', '用例名', '名称', '标题', 'name', 'title'],
+  module: ['模块', '路径', 'module'],
+  platform: ['端', '平台', 'platform'],
+  precondition: ['前置', '前置条件', 'precondition'],
+  steps: ['步骤', '测试步骤', '操作步骤', '执行步骤', 'steps', 'steps_raw'],
+  expected: ['预期', '预期效果', '预期结果', '期望结果', 'expected', 'expected_raw'],
 }
 
 export const FIELD_OPTS = [

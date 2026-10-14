@@ -1,7 +1,13 @@
+import { bagOf as recordOf, integerOf, stepRefsOf, turnOf } from '../sessions/executionLinks'
 import { parseInteraction, type TraceInteraction } from './interaction'
 
 export interface TraceStep {
   step: number
+  id?: string
+  turn?: number
+  sessionId?: string
+  eventSeq?: number
+  source?: 'session' | 'trace'
   title: string
   /** 给人看的事件名，例如「点击」。 */
   event: string
@@ -121,14 +127,6 @@ const eventLabel = (raw: string, row: Record<string, unknown>) => {
   return EVENT_LABEL[raw] || raw
 }
 
-const stepRefOf = (row: Record<string, unknown>) => {
-  const kind = String(row.script_kind || row.kind || row.column || '')
-  const step = row.script_step ?? row.case_step ?? row.item_no
-  const point = row.script_point ?? row.clause
-  if (step == null || point == null || step === '' || point === '') return ''
-  const expect = /expect|预期|assert/.test(kind)
-  return `${expect ? '预期' : '操作'} ${step}-${point}`
-}
 
 const epochMs = (raw: unknown) => {
   if (typeof raw === 'number' && Number.isFinite(raw)) {
@@ -150,7 +148,7 @@ const secondsLabel = (ms: number | null, origin: number | null) => {
 }
 
 /** 把轨迹事件收成「这一步做了什么、截图、预期和实际」。 */
-export function parseTrace(raw: Record<string, unknown> | null | undefined, fallback = ''): TraceView {
+export function parseTrace(raw: Record<string, unknown> | null | undefined, fallback = '', context: { source?: 'session' | 'trace'; sessionId?: string } = {}): TraceView {
   const data = raw || {}
   const events = (Array.isArray(data.event_results) ? data.event_results : Array.isArray(data.events) ? data.events : []) as Record<string, unknown>[]
   const origin = events.reduce<number | null>((earliest, event) => {
@@ -178,11 +176,16 @@ export function parseTrace(raw: Record<string, unknown> | null | undefined, fall
     const seconds = fromClock || (elapsed != null && elapsed !== '' ? (Number(elapsed) / 1000).toFixed(1) : prev?.seconds || '')
     byStep.set(step, {
       step,
+      id: `${context.source || 'legacy'}:${context.sessionId || ''}:${step}`,
+      source: context.source,
+      sessionId: String(event.session_id || recordOf(event.payload).session_id || context.sessionId || ''),
+      turn: turnOf(event) ?? prev?.turn,
+      eventSeq: integerOf(event.event_seq ?? recordOf(event.payload).event_seq) ?? prev?.eventSeq,
       title: rawTitle || `步骤 ${step}`,
       event: eventLabel(rawTitle, event) || prev?.event || `步骤 ${step}`,
       param,
       attrs,
-      stepRef: stepRefOf(bag) || prev?.stepRef || '',
+      stepRef: stepRefsOf(event)[0] || prev?.stepRef || '',
       seconds,
       status: String(event.result_status || event.status || prev?.status || ''),
       summary: String(event.summary || event.error || (rawTitle === 'think' ? event.thought : '') || prev?.summary || ''),
@@ -202,16 +205,21 @@ export function parseTrace(raw: Record<string, unknown> | null | undefined, fall
 }
 
 /** 两条轨迹按步骤号合并，截图留在有图的那一条上。 */
+export const traceKey = (step: TraceStep) => step.id || `${step.source || 'legacy'}:${step.sessionId || ''}:${step.step}`
+
 export function mergeTraceSteps(left: TraceStep[], right: TraceStep[]) {
-  const byStep = new Map<number, TraceStep>()
+  const merged = new Map<string, TraceStep>()
   for (const step of [...left, ...right]) {
-    const prev = byStep.get(step.step)
-    if (!prev) {
-      byStep.set(step.step, step)
-      continue
-    }
-    byStep.set(step.step, {
+    const key = step.eventSeq != null && step.sessionId ? `event:${step.sessionId}:${step.eventSeq}` : traceKey(step)
+    const prev = merged.get(key)
+    if (!prev) { merged.set(key, step); continue }
+    const compatible = (prev.turn == null || step.turn == null || prev.turn === step.turn)
+      && (!prev.stepRef || !step.stepRef || prev.stepRef === step.stepRef)
+    if (!compatible) { merged.set(`${key}:${traceKey(step)}`, step); continue }
+    merged.set(key, {
       ...prev,
+      turn: step.turn ?? prev.turn,
+      eventSeq: step.eventSeq ?? prev.eventSeq,
       event: step.event || prev.event,
       param: step.param || prev.param,
       attrs: step.attrs || prev.attrs,
@@ -225,5 +233,5 @@ export function mergeTraceSteps(left: TraceStep[], right: TraceStep[]) {
       interaction: step.interaction || prev.interaction,
     })
   }
-  return [...byStep.values()].sort((a, b) => a.step - b.step)
+  return [...merged.values()].sort((a, b) => a.step - b.step)
 }

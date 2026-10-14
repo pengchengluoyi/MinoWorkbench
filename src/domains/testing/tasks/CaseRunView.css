@@ -1,0 +1,56 @@
+.case-trace-table tbody tr {
+  cursor: pointer;
+  color: var(--w-text-secondary);
+  outline: none;
+}
+
+.case-trace-table tbody td {
+  background: var(--w-surface);
+  transition: background-color 120ms ease;
+}
+
+.case-trace-table tbody tr[data-status="fail"] td {
+  background: var(--w-fail-bg);
+}
+
+.case-trace-table tbody tr:is([data-status="blocked"], [data-status="retry"]) td {
+  background: var(--w-warn-bg);
+}
+
+.case-trace-table tbody tr:hover td {
+  background: var(--w-surface-hover);
+}
+
+.case-trace-table tbody tr:is([aria-selected="true"], :focus-visible) td {
+  background: var(--w-primary-soft);
+  color: var(--w-text);
+}
+
+.case-trace-table tbody tr:is([aria-selected="true"], :focus-visible) td:first-child {
+  box-shadow: inset 3px 0 0 var(--w-primary);
+}
+
+.case-trace-table tbody tr[aria-selected="true"] td:nth-child(2) {
+  font-weight: 650;
+}
+
+.case-trace-index {
+  color: var(--w-text-tertiary);
+  font-family: var(--w-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.case-trace-table tr[aria-selected="true"] .case-trace-index {
+  color: var(--w-primary);
+  font-weight: 700;
+}
+
+.case-content-pane { flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.case-step-context { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--w-border); color: var(--w-text-tertiary); font-size: var(--w-font-meta); }
+.case-script-chip { border: 0; border-radius: var(--w-radius-sm); padding: 3px 6px; font: inherit; cursor: pointer; background: var(--w-fill); color: var(--w-text); }
+.case-script-chip[aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--w-primary); }
+.case-script-chip:focus-visible, .case-step-inspect:focus-visible, .case-turn-link:focus-visible { outline: 2px solid var(--w-primary); outline-offset: 2px; }
+.case-step-inspect, .case-turn-link { border: 0; padding: 2px 5px; border-radius: var(--w-radius-sm); color: var(--w-primary); background: var(--w-primary-soft); font: inherit; font-size: var(--w-font-meta); white-space: nowrap; cursor: pointer; }
+.case-step-inspect { margin-left: 5px; }
+.case-step-inspect:hover, .case-turn-link:hover { text-decoration: underline; }
+.case-unlinked { color: var(--w-text-quaternary); font-size: var(--w-font-meta); white-space: nowrap; }

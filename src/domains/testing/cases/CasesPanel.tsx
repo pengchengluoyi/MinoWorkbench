@@ -9,7 +9,7 @@ import {
 } from '@/ui'
 import { deleteProjectCases, type CaseRow } from '@/api/projectCases'
 import { ModuleFilter } from './ModuleFilter'
-import { ScriptField } from './ScriptField'
+import { SavedScriptField } from './SavedScriptField'
 import { RunBar, type DispatchedRun } from './RunBar'
 import { CaseImportDialog } from './CaseImportDialog'
 import { CasePreview } from './CasePreview'
@@ -99,84 +99,35 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
 
   const columns = useMemo<DataColumn<CaseRow>[]>(() => [
     {
-      key: 'title',
-      title: '用例',
-      alwaysVisible: true,
+      key: 'title', title: '用例信息', width: '16%', alwaysVisible: true,
       render: (_: unknown, row) => {
         const last = results[row.case_id] as LastResult | undefined
-        return (
-          <div
-            className="min-w-0"
-            style={{
-              /* 上次失败的用例左侧加红条：选哪些用例跑，依据就是"哪些在挂" */
-              borderLeft: last?.status === 'fail' ? '2px solid var(--w-fail)' : '2px solid transparent',
-              paddingLeft: 8,
-            }}
-          >
-            <div className="truncate" style={{ fontWeight: 650, color: 'var(--w-text)' }} title={row.title}>
-              {row.title || row.case_id}
-            </div>
-            <div className="flex items-center gap-2" style={{ marginTop: 2 }}>
-              <span className="w-mono" style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
-                {row.case_id}
-              </span>
-              {last?.status === 'fail' && last.reason && (
-                <span
-                  className="truncate"
-                  style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-fail)' }}
-                  title={last.reason}
-                >
-                  {last.reason}
-                </span>
-              )}
-            </div>
-          </div>
-        )
+        const result = lastResults.isError ? '暂不可用' : !lastResults.isSuccess ? '读取中' : !last ? '未跑过' : null
+        return <div className={`case-identity${last?.status === 'fail' ? ' is-failed' : ''}`}>
+          <div className="case-identity-title">{row.title || row.case_id}</div>
+          <div className="case-identity-id w-mono">{row.case_id}</div>
+          <div className="case-identity-meta"><span>{row.module || '未分组'}</span>{row.platform ? <span>{row.platform}</span> : null}</div>
+          <div className="case-identity-result">{result || <StatusPill status={last?.status === 'pass' ? 'pass' : last?.status === 'fail' ? 'fail' : 'muted'}>{last?.status === 'pass' ? '通过' : last?.status === 'fail' ? '失败' : '其他'}</StatusPill>}</div>
+          {last?.status === 'fail' && last.reason ? <div className="case-identity-reason">{last.reason}</div> : null}
+        </div>
       },
     },
     {
-      key: 'module',
-      title: '模块',
-      dataIndex: 'module',
-      width: 140,
-      render: (v: string) => v || '未分组',
-    },
-    {
-      key: 'last',
-      title: '上次结果',
-      width: 110,
-      render: (_: unknown, row) => {
-        const last = results[row.case_id] as LastResult | undefined
-        if (lastResults.isError) return <span style={{ color: 'var(--w-text-tertiary)' }}>暂不可用</span>
-        if (!lastResults.isSuccess) return <span style={{ color: 'var(--w-text-tertiary)' }}>读取中</span>
-        if (!last) return <span style={{ color: 'var(--w-text-quaternary)' }}>未跑过</span>
-        if (last.status === 'pass') return <StatusPill status="pass">通过</StatusPill>
-        if (last.status === 'fail') return <StatusPill status="fail">失败</StatusPill>
-        return <StatusPill status="muted">其他</StatusPill>
-      },
-    },
-    {
-      key: 'precondition',
-      title: '前置条件',
-      width: 240,
-      render: (_: unknown, row) => <ScriptField kind="pre" value={row.precondition} max={3} />,
+      key: 'precondition', title: '前置条件', width: '22%',
+      render: (_: unknown, row) => <SavedScriptField projectId={projectId} row={row} kind="pre" />,
       onCell: () => ({ style: scriptCell }),
     },
     {
-      key: 'steps',
-      title: '操作步骤',
-      width: 360,
-      render: (_: unknown, row) => <ScriptField kind="op" value={row.steps ?? row.steps_raw} compiled={row.steps_parsed ?? []} max={3} />,
+      key: 'steps', title: '操作步骤', width: '31%',
+      render: (_: unknown, row) => <SavedScriptField projectId={projectId} row={row} kind="op" />,
       onCell: () => ({ style: scriptCell }),
     },
     {
-      key: 'expected',
-      title: '预期结果',
-      width: 360,
-      render: (_: unknown, row) => <ScriptField kind="ex" value={row.expected ?? row.expected_raw} compiled={row.expected_parsed ?? []} max={3} />,
+      key: 'expected', title: '预期结果', width: '31%',
+      render: (_: unknown, row) => <SavedScriptField projectId={projectId} row={row} kind="ex" />,
       onCell: () => ({ style: scriptCell }),
     },
-  ], [results, lastResults.isError, lastResults.isSuccess])
+  ], [projectId, results, lastResults.isError, lastResults.isSuccess])
 
   if (!projectId) {
     return (
@@ -215,7 +166,7 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
         setParams(next, { replace: true })
       }}>返回列表</Button>
     </>} /></Card>
-    return <CasePreview row={preview.data!} onBack={() => {
+    return <CasePreview row={preview.data!} projectId={projectId} onBack={() => {
       const next = new URLSearchParams(params)
       next.delete('case')
       setParams(next, { replace: true })
@@ -233,13 +184,13 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
             action={<Button size="small" icon={<Upload size={13} />} onClick={() => setImportOpen(true)}>导入用例</Button>}
           />
         </Card>
-        <CaseImportDialog projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
+        <CaseImportDialog key={projectId} projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
       </>
     )
   }
 
   return (
-    <div className="flex flex-col" style={{ minHeight: 0, height: '100%' }}>
+    <div className="case-library flex flex-col" style={{ minHeight: 0, height: '100%' }}>
       {/* 下发后就地展示，不跳页 —— 用户不丢上下文 */}
       {dispatched && (
         <div
@@ -345,15 +296,14 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
           />
         </div>
       </div>
-      <CaseImportDialog projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
+      <CaseImportDialog key={projectId} projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   )
 }
 
 const scriptCell: CSSProperties = {
   verticalAlign: 'top',
-  overflow: 'hidden',
-  maxWidth: 360,
+  minWidth: 0,
 }
 
 function Card({ children }: { children: React.ReactNode }) {

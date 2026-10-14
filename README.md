@@ -1,5 +1,7 @@
 # MinoWorkbench
 
+
+> **唯一前端**：MinoWorkbench。MinoConsole 与 MinoStudio 已取消，所有管理和测试功能均在本项目实现。
 ## 本地与内网访问
 
 运行 `npm run dev`，可通过 `http://localhost:5273` 或 `http://<本机内网IP>:5273` 访问。同一局域网的其他设备使用后者；启动日志中的 Network 会显示可用地址。修改配置后需重启已有服务。

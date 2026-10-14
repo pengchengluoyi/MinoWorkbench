@@ -72,7 +72,7 @@ export function SessionLogPanel({ appId }: { appId: string }) {
         <div className="shrink-0">
           <Button size="small" onClick={() => setQuery({ session: '' })}>返回列表</Button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-hidden">
           <SessionDetail sessionId={sessionId} />
         </div>
       </div>

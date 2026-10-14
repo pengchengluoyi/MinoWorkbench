@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Segmented, Skeleton, StatusPill, toStatusKind, useFeedback } from '@/ui'
+import { useSessionDetail } from '../sessions/queries'
+import { belongsToSession, linkedTurns, stepIdOf, type ExecutionEntry, type ExecutionScope } from '../sessions/executionLinks'
 import { SessionDetail } from '../sessions/SessionDetail'
 import { getCaseRunnerTraceDetail, getSessionTrajectory } from '@/api/caseRunner'
 import { unwrapOne } from '@/lib/unwrap'
 import { expandPlatforms, type PlatformInput } from '@/constants/appPlatforms'
 import { conditionPair, splitNumbered } from '../cases/caseText'
 import { caseId, failReason, verdictOf, type TaskCase } from './types'
-import { mergeTraceSteps, parseTrace, type TraceStep } from './trace'
+import { mergeTraceSteps, parseTrace, traceKey, type TraceStep } from './trace'
 import { parseInteraction, type TraceInteraction } from './interaction'
 import { ScreenshotOverlay } from './ScreenshotOverlay'
+import './CaseRunView.css'
 
 /**
  * 单条用例的执行页。
@@ -25,14 +28,15 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
   const label = verdict === 'pass' ? '通过' : verdict === 'fail' ? '失败' : verdict === 'running' ? '执行中' : '其他'
   const fallback = String(row.summary || failReason(row) || '')
 
+  const session = useSessionDetail(sessionId)
   const trace = useQuery({
-    queryKey: ['task', 'trace', runId],
+    queryKey: ['task', 'trace', runId, sessionId],
     enabled: !!runId,
     queryFn: async () => {
-      const trajectory = unwrapOne<Record<string, unknown>>(await getSessionTrajectory(runId).catch(() => ({ data: {} })))
+      const trajectory = unwrapOne<Record<string, unknown>>(await (sessionId ? getSessionTrajectory(sessionId).catch(() => ({ data: {} })) : Promise.resolve({ data: {} })))
       const detail = unwrapOne<Record<string, unknown>>(await getCaseRunnerTraceDetail(runId).catch(() => ({ data: {} })))
-      const fromEvents = parseTrace(trajectory, fallback)
-      const fromTrace = parseTrace(detail, fallback)
+      const fromEvents = parseTrace(trajectory, fallback, { source: 'session', sessionId })
+      const fromTrace = parseTrace(detail, fallback, { source: 'trace', sessionId })
       return {
         summary: fromTrace.summary || fromEvents.summary || fallback,
         steps: mergeTraceSteps(fromEvents.steps, fromTrace.steps),
@@ -40,7 +44,7 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
     },
   })
 
-  const steps = trace.data?.steps || []
+  const steps = useMemo(() => trace.data?.steps || [], [trace.data?.steps])
   const script = useMemo(() => ({
     pre: splitNumbered(row.precondition),
     op: splitNumbered(row.steps || row.steps_raw),
@@ -50,16 +54,37 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
   const exEvents = useMemo(() => columnEvents(row.expected_parsed, script.ex, 'ex'), [row.expected_parsed, script.ex])
 
   const linked = useMemo(() => linkClauses(opEvents, exEvents, steps), [opEvents, exEvents, steps])
-  const [pane, setPane] = useState<'script' | 'trace' | 'log'>('script')
+  const [pane, setPane] = useState<'script' | 'trace' | 'log'>('trace')
   const [picked, setPicked] = useState('')
+  const [returnPane, setReturnPane] = useState<'script' | 'trace'>('trace')
+  const [entry, setEntry] = useState<ExecutionEntry | null>(null)
+  const detailPane = pane === 'log' ? returnPane : pane
+  useEffect(() => { setPane('trace'); setReturnPane('trace'); setPicked(''); setEntry(null) }, [runId, sessionId, id])
   const activeId = picked || linked.fallbackId
 
-  const currentTrace = linked.byClause.get(activeId) || steps.find((step) => `tr-${step.step}` === activeId)
-  const currentScript = findClause({ op: opEvents, ex: exEvents }, activeId)
+  const currentTrace = activeId.startsWith('tr-') ? steps.find((step) => `tr-${traceKey(step)}` === activeId) : linked.byClause.get(activeId)?.at(-1)
+  const activeClause = currentTrace ? stepIdOf(currentTrace.stepRef) : activeId
+  const currentScript = findClause({ op: opEvents, ex: exEvents }, activeClause)
+  const condition = activeClause.match(/^pre-(\d+)-1$/)
+  const currentCondition = condition ? script.pre.find((line) => line.num === Number(condition[1])) : undefined
+  const relationRecords = useMemo(() => [...steps, ...(session.data?.events || []), ...(session.data?.turns || []), ...(session.data?.llm || [])], [steps, session.data])
+  const scopeFor = (ref: string | undefined, title: string, seed: number[] = []): ExecutionScope => ({
+    key: ref || (currentTrace ? traceKey(currentTrace) : activeId), sessionId, title, stepRef: ref,
+    turns: linkedTurns(ref, seed, relationRecords, sessionId),
+  })
+  const activeRef = currentTrace?.stepRef || currentScript?.stepRef || (currentCondition ? `前置 ${currentCondition.num}-1` : '')
+  const seedTurn = currentTrace?.turn != null && belongsToSession(currentTrace, sessionId) ? [currentTrace.turn] : []
+  const activeScope = scopeFor(activeRef || undefined, currentScript?.clause.param || currentCondition?.text || currentTrace?.param || currentTrace?.event || '当前步骤', seedTurn)
+  const openLogs = (scope: ExecutionScope = activeScope) => {
+    if (pane !== 'log') setReturnPane(pane)
+    setEntry((previous) => ({ request: (previous?.request || 0) + 1, scope, returnLabel: (pane === 'log' ? returnPane : pane) === 'script' ? '三栏' : '轨迹' }))
+    setPane('log')
+  }
+  const changePane = (value: 'script' | 'trace' | 'log') => { if (value !== 'log') setReturnPane(value); setPane(value) }
   const firstScreenshot = steps.find((step) => step.thumb)
   const screenshotSrc = currentTrace?.thumb || firstScreenshot?.thumb || ''
   const isPortrait = expandPlatforms(platforms).some((platform) => /^(android|ios|mobile)$/i.test(platform))
-  const splitView = isPortrait || pane === 'trace'
+  const splitView = isPortrait || detailPane === 'trace'
   const interaction = currentTrace?.interaction || (currentTrace ? parseInteraction(currentTrace.event, { attrs: currentTrace.attrs, param: currentTrace.param }) : undefined)
   const screenshot = <StepScreenshot key={runId} src={screenshotSrc} fallbackStep={!currentTrace?.thumb ? firstScreenshot?.step : undefined} interaction={interaction} />
 
@@ -79,21 +104,19 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
         <Segmented
           size="small"
           value={pane}
-          onChange={(value) => setPane(value as 'script' | 'trace' | 'log')}
+          onChange={(value) => changePane(value as 'script' | 'trace' | 'log')}
           options={[{ value: 'script', label: '三栏' }, { value: 'trace', label: '轨迹' }, { value: 'log', label: '日志' }]}
         />
       </header>
 
-      {pane === 'log' ? (
-        sessionId ? <div className="min-h-0 flex-1 overflow-auto"><SessionDetail sessionId={sessionId} /></div>
-          : <Empty>这次执行没有 session。</Empty>
-      ) : trace.isLoading ? <Skeleton active paragraph={{ rows: 8 }} title={false} /> : (
+      <div className="case-content-pane" style={{ display: pane === 'log' ? 'none' : 'flex' }}>
+      {trace.isLoading ? <Skeleton active paragraph={{ rows: 8 }} title={false} /> : (
         <div className="flex min-h-0 flex-1 gap-2.5" style={{ flexDirection: splitView ? 'row' : 'column' }}>
           {splitView ? (
             <div style={{ ...shot, flex: `0 0 ${isPortrait ? '35%' : '52%'}`, maxWidth: isPortrait ? '35%' : '52%', borderRadius: 'var(--w-radius-lg)' }}>{screenshot}</div>
           ) : null}
-          <div className="min-h-0 min-w-0 flex-1" style={{ display: pane === 'trace' ? 'grid' : 'flex', flexDirection: 'column', gridTemplateRows: pane === 'trace' ? 'minmax(0, 1fr) minmax(0, 3fr)' : undefined, gap: 10, overflow: isPortrait && pane !== 'trace' ? 'auto' : undefined }}>
-            {pane === 'script' ? (
+          <div className="min-h-0 min-w-0 flex-1" style={{ display: detailPane === 'trace' ? 'grid' : 'flex', flexDirection: 'column', gridTemplateRows: detailPane === 'trace' ? 'minmax(0, 1fr) minmax(0, 3fr)' : undefined, gap: 10, overflow: isPortrait && detailPane !== 'trace' ? 'auto' : undefined }}>
+            {detailPane === 'script' ? (
               <div className="grid shrink-0" style={{ gridTemplateColumns: isPortrait ? 'minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.2fr)' : 'minmax(180px, 0.8fr) minmax(220px, 1.1fr) minmax(240px, 1.2fr)', gap: 10 }}>
                 <Card title="前置条件">
                   {script.pre.length ? script.pre.map((line) => {
@@ -101,59 +124,70 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
                     return (
                       <div key={line.num} style={lineRow}>
                         <span style={num}>{line.num}</span>
-                        <span style={chip}>
+                        <button type="button" className="case-script-chip" aria-pressed={activeClause === `pre-${line.num}-1`} onClick={() => setPicked(`pre-${line.num}-1`)}>
                           {pair.label ? <span style={verb}>{pair.label}</span> : null}
                           <b>{pair.value}</b>
-                        </span>
+                        </button><button type="button" className="case-step-inspect" onClick={() => { setPicked(`pre-${line.num}-1`); openLogs(scopeFor(`前置 ${line.num}-1`, line.text)) }}>查看回合</button>
                       </div>
                     )
                   }) : <Empty>没有写前置条件</Empty>}
                 </Card>
                 <Card title="操作步骤">
-                  <ScriptColumn events={opEvents} activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写操作步骤" />
+                  <ScriptColumn events={opEvents} activeId={activeClause} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId)?.at(-1))} onInspect={(clause) => openLogs(scopeFor(`操作 ${clause.stepNum}-${clause.id.split('-')[2]}`, clause.param))} turnsOf={(clause) => scopeFor(`操作 ${clause.stepNum}-${clause.id.split('-')[2]}`, clause.param).turns.length} empty="没有写操作步骤" />
                 </Card>
                 <Card title="预期结果">
-                  <ScriptColumn events={exEvents} activeId={activeId} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId))} empty="没有写预期结果" />
+                  <ScriptColumn events={exEvents} activeId={activeClause} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId)?.at(-1))} onInspect={(clause) => openLogs(scopeFor(`预期 ${clause.stepNum}-${clause.id.split('-')[2]}`, clause.param))} turnsOf={(clause) => scopeFor(`预期 ${clause.stepNum}-${clause.id.split('-')[2]}`, clause.param).turns.length} empty="没有写预期结果" />
                 </Card>
               </div>
             ) : null}
 
-            <section style={{ ...stage, minHeight: pane === 'trace' ? 0 : 240, gridTemplateColumns: splitView ? 'minmax(0, 1fr)' : stage.gridTemplateColumns }}>
+            <section style={{ ...stage, minHeight: detailPane === 'trace' ? 0 : 240, gridTemplateColumns: splitView ? 'minmax(0, 1fr)' : stage.gridTemplateColumns }}>
               {!splitView ? <div style={shot}>{screenshot}</div> : null}
-              <div style={{ ...params, padding: pane === 'trace' ? 12 : 16, borderLeft: splitView ? 0 : params.borderLeft }}>
-                <h3 style={{ margin: pane === 'trace' ? '0 0 8px' : '0 0 12px', fontSize: 15 }}>{currentTrace?.event || currentScript?.clause.param || '当前步骤'}</h3>
-                <dl style={{ ...grid, gridTemplateColumns: pane === 'trace' ? '52px minmax(0, 1fr) 52px minmax(0, 1fr)' : grid.gridTemplateColumns, gap: pane === 'trace' ? '8px 12px' : grid.gap }}>
+              <div style={{ ...params, padding: detailPane === 'trace' ? 12 : 16, borderLeft: splitView ? 0 : params.borderLeft }}>
+                <h3 style={{ margin: detailPane === 'trace' ? '0 0 8px' : '0 0 12px', fontSize: 15 }}>{currentTrace?.event || currentScript?.clause.param || currentCondition?.text || '当前步骤'}</h3>
+                <dl style={{ ...grid, gridTemplateColumns: detailPane === 'trace' ? '52px minmax(0, 1fr) 52px minmax(0, 1fr)' : grid.gridTemplateColumns, gap: detailPane === 'trace' ? '8px 12px' : grid.gap }}>
                   <Param k="事件" v={currentTrace?.event || currentScript?.clause.param || '无'} />
                   <Param k="参数" v={currentTrace?.param || currentScript?.clause.param || '无'} bold />
                   <Param k="属性" v={currentTrace?.attrs || '无'} />
-                  <Param k="步骤" v={currentTrace?.stepRef || currentScript?.stepRef || '无'} />
+                  <Param k="步骤" v={activeRef || '未关联用例步骤'} />
                   <Param k="状态" v={currentTrace ? statusLabel(currentTrace.status) : currentScript?.clause.blocked ? '无法执行' : '无'} />
                   <Param k="时间" v={currentTrace?.seconds ? `${currentTrace.seconds} s` : '无'} />
                 </dl>
+                <div className="case-step-context">
+                  <span>{activeRef || '执行记录'} · {activeScope.turns.length ? `关联 ${activeScope.turns.length} 个回合` : '未返回明确回合关联'}</span>
+                  <Button size="small" disabled={!sessionId} onClick={() => openLogs()}>查看关联回合</Button>
+                </div>
               </div>
             </section>
 
-            {pane === 'trace' ? (
+            {detailPane === 'trace' ? (
               <div className="min-h-0 overflow-auto" style={{ ...panel, padding: 0 }}>
                 {steps.length ? (
-                  <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
+                  <table className="case-trace-table" style={{ width: '100%', minWidth: 640, tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
+                    <colgroup><col style={{ width: 44 }} /><col style={{ width: 112 }} /><col /><col style={{ width: 96 }} /><col style={{ width: 76 }} /><col style={{ width: 80 }} /><col style={{ width: 88 }} /></colgroup>
                     <thead>
                       <tr>
-                        {['编号', '事件', '属性', '步骤', '状态', '时间戳 (s)'].map((title) => (
+                        {['编号', '事件', '属性', '步骤', '回合', '状态', '时间戳 (s)'].map((title) => (
                           <th key={title} style={th}>{title}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {steps.map((step, index) => {
-                        const rowId = linked.byStep.get(step.step) || `tr-${step.step}`
-                        const on = rowId === activeId
+                        const rowId = `tr-${traceKey(step)}`
+                        const on = currentTrace && traceKey(currentTrace) === traceKey(step)
                         return (
-                          <tr key={step.step} onClick={() => setPicked(rowId)} style={{ cursor: 'pointer', ...rowTone(step), outline: on ? '2px solid var(--w-primary)' : undefined }}>
-                            <td style={td}>{index + 1}</td>
+                          <tr key={traceKey(step)} aria-selected={on} data-status={uiStatus(step)} tabIndex={0} onClick={() => setPicked(rowId)} onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              setPicked(rowId)
+                            }
+                          }}>
+                            <td style={td}><span className="case-trace-index">{index + 1}</span></td>
                             <td style={td}>{step.event}</td>
                             <td style={td}>{step.attrs || step.summary || '无'}</td>
                             <td style={td}>{step.stepRef ? <span style={refPill}>{step.stepRef}</span> : '无'}</td>
+                            <td style={td}>{step.turn != null && belongsToSession(step, sessionId) ? <button type="button" className="case-turn-link" onClick={(event) => { event.stopPropagation(); setPicked(rowId); openLogs(scopeFor(step.stepRef || undefined, step.param || step.event, [step.turn!])) }}>回合 {step.turn}</button> : <span className="case-unlinked">未关联</span>}</td>
                             <td style={td}><StatusPill status={toStatusKind(step.status)}>{statusLabel(step.status)}</StatusPill></td>
                             <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--w-font-mono)' }}>{step.seconds || '无'}</td>
                           </tr>
@@ -167,6 +201,10 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
           </div>
         </div>
       )}
+      </div>
+      <div className="case-content-pane" style={{ display: pane === 'log' ? 'flex' : 'none' }}>
+        {sessionId ? <SessionDetail key={sessionId} sessionId={sessionId} entry={entry} onReturn={() => setPane(returnPane)} /> : <Empty>这次执行没有 session。</Empty>}
+      </div>
     </div>
   )
 }
@@ -250,13 +288,15 @@ function columnEvents(
 }
 
 function ScriptColumn({
-  events, activeId, onPick, toneOf, empty,
+  events, activeId, onPick, toneOf, empty, onInspect, turnsOf,
 }: {
   events: ScriptEvent[][]
   activeId: string
   onPick: (id: string) => void
   toneOf: (id: string) => CSSProperties
   empty: string
+  onInspect: (clause: ScriptEvent) => void
+  turnsOf: (clause: ScriptEvent) => number
 }) {
   if (!events.length) return <Empty>{empty}</Empty>
   return (
@@ -268,10 +308,11 @@ function ScriptColumn({
             {row.map((clause, index) => (
               <span key={clause.id}>
                 {index > 0 ? <span>，</span> : null}
-                <button type="button" onClick={() => onPick(clause.id)} style={{ ...chipBtn, ...(clause.uncovered ? { background: 'transparent', color: 'var(--w-text-quaternary)' } : clause.blocked ? skipChip : toneOf(clause.id)), ...(clause.id === activeId ? onChip : {}) }}>
+                <button type="button" className="case-script-chip" aria-pressed={clause.id === activeId} onClick={() => onPick(clause.id)} style={{ ...chipBtn, ...(clause.uncovered ? { background: 'transparent', color: 'var(--w-text-quaternary)' } : clause.blocked ? skipChip : toneOf(clause.id)) }}>
                   <i style={{ ...badge, background: clause.uncovered ? 'var(--w-text-quaternary)' : clause.blocked ? 'var(--w-warn)' : 'var(--w-primary)' }}>{index + 1}</i>
                   <b>{clause.param}</b>
                 </button>
+                <button type="button" className="case-step-inspect" onClick={() => { onPick(clause.id); onInspect(clause) }}>{turnsOf(clause) ? `${turnsOf(clause)} 个回合` : '查看回合'}</button>
                 {clause.blocked ? <span style={{ marginLeft: 4, color: 'var(--w-warn)', fontSize: 11, fontWeight: 750 }}>无法执行</span> : null}
               </span>
             ))}
@@ -334,52 +375,20 @@ function eventTone(step?: TraceStep): CSSProperties {
   return { background: 'var(--w-fill)', color: 'var(--w-text-tertiary)' }
 }
 
-function rowTone(step: TraceStep): CSSProperties {
-  const tone = eventTone(step)
-  return { background: tone.background, color: tone.color === 'var(--w-text-tertiary)' ? undefined : tone.color }
-}
-
 function Empty({ children }: { children: string }) {
   return <p style={{ margin: '8px 0', color: 'var(--w-text-quaternary)' }}>{children}</p>
 }
 
-/** 三栏徽章按先后对上带截图的轨迹。有「操作 1-2」这种步骤号就直接用。 */
-function linkClauses(
-  ops: ScriptEvent[][],
-  expects: ScriptEvent[][],
-  steps: TraceStep[],
-) {
-  const points = [...ops.flat(), ...expects.flat()]
-  const byClause = new Map<string, TraceStep>()
-  const used = new Set<number>()
+function linkClauses(ops: ScriptEvent[][], expects: ScriptEvent[][], steps: TraceStep[]) {
+  const valid = new Set([...ops.flat(), ...expects.flat()].map((clause) => clause.id))
+  const byClause = new Map<string, TraceStep[]>()
   for (const step of steps) {
-    const id = refId(step.stepRef)
-    if (!id || byClause.has(id)) continue
-    byClause.set(id, step)
-    used.add(step.step)
+    const id = stepIdOf(step.stepRef)
+    if (!id || (!valid.has(id) && !id.startsWith('pre-'))) continue
+    byClause.set(id, [...(byClause.get(id) || []), step])
   }
-  const pool = () => steps.filter((step) => !used.has(step.step))
-  for (const point of points) {
-    if (byClause.has(point.id) || point.blocked) continue
-    // 预期没有对上的执行步就保持未执行。不要借前面已通过的打开页面或租号来涂绿。
-    if (point.id.startsWith('ex-')) continue
-    const open = pool()
-    const chosen = open.find((step) => step.thumb || !/^(think|observe|done|resource)$/i.test(step.event)) || open[0]
-    if (!chosen) break
-    byClause.set(point.id, chosen)
-    used.add(chosen.step)
-  }
-  const byStep = new Map<number, string>()
-  for (const [id, step] of byClause) byStep.set(step.step, id)
-  const failed = [...steps].reverse().find((step) => /fail|give_up|declined/.test(step.status))
-  const fallbackId = (failed && byStep.get(failed.step)) || points.find((point) => byClause.has(point.id))?.id || ''
-  return { byClause, byStep, fallbackId }
-}
-
-function refId(ref: string) {
-  const matched = ref.match(/^(操作|预期)\s*(\d+)\s*-\s*(\d+)$/)
-  if (!matched) return ''
-  return `${matched[1] === '预期' ? 'ex' : 'op'}-${matched[2]}-${matched[3]}`
+  const first = [...steps].reverse().find((step) => /fail|give_up|declined/.test(step.status)) || steps[0]
+  return { byClause, fallbackId: first ? `tr-${traceKey(first)}` : ops.flat()[0]?.id || '' }
 }
 
 function findClause(events: { op: ScriptEvent[][]; ex: ScriptEvent[][] }, id: string) {
@@ -419,7 +428,6 @@ const copyBtn: CSSProperties = {
   border: '1px solid var(--w-border)', background: 'var(--w-surface)', borderRadius: 8,
   padding: '2px 8px', fontSize: 12, color: 'var(--w-text-secondary)', cursor: 'pointer',
 }
-const onChip: CSSProperties = { outline: '2px solid var(--w-primary)', outlineOffset: 1 }
 const verb: CSSProperties = { fontWeight: 750, color: '#312e81', marginRight: 3 }
 const badge: CSSProperties = {
   display: 'inline-grid', placeItems: 'center', width: 15, height: 15, marginRight: 3,
@@ -432,6 +440,6 @@ const stage: CSSProperties = {
 const shot: CSSProperties = { position: 'relative', minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#10141c', display: 'grid', placeItems: 'center', color: '#94a3b8' }
 const params: CSSProperties = { minWidth: 0, minHeight: 0, padding: 16, borderLeft: '1px solid var(--w-border)', overflow: 'auto' }
 const grid: CSSProperties = { display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr)', gap: '10px 12px', margin: 0 }
-const th: CSSProperties = { position: 'sticky', top: 0, textAlign: 'left', background: 'var(--w-fill)', color: 'var(--w-text-tertiary)', fontSize: 11, fontWeight: 750, padding: '7px 10px', borderBottom: '1px solid var(--w-border)' }
-const td: CSSProperties = { padding: '7px 10px', borderBottom: '1px solid var(--w-border)', verticalAlign: 'middle' }
-const refPill: CSSProperties = { fontWeight: 750, color: '#312e81', background: 'var(--w-primary-soft)', borderRadius: 999, padding: '2px 8px' }
+const th: CSSProperties = { position: 'sticky', top: 0, zIndex: 1, textAlign: 'left', whiteSpace: 'nowrap', background: 'var(--w-fill)', color: 'var(--w-text-tertiary)', fontSize: 11, fontWeight: 650, padding: '9px 10px', borderBottom: '1px solid var(--w-border)' }
+const td: CSSProperties = { padding: '10px', borderBottom: '1px solid var(--w-border)', verticalAlign: 'middle', overflowWrap: 'anywhere' }
+const refPill: CSSProperties = { display: 'inline-block', whiteSpace: 'nowrap', fontWeight: 650, color: 'var(--w-primary)', background: 'var(--w-primary-soft)', borderRadius: 'var(--w-radius-pill)', padding: '2px 8px' }

@@ -18,6 +18,9 @@ export interface SessionMeta {
   started_at?: string
   finished_at?: string
   summary?: string
+  runtime_context?: Record<string, unknown>
+  verdict?: Record<string, unknown>
+  finalization_id?: string
 }
 
 export interface SessionEvent {

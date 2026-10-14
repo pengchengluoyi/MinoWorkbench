@@ -1,218 +1,75 @@
-import { useState, type CSSProperties } from 'react'
-import { conditionPair, scriptSource, splitNumbered } from './caseText'
+import { Fragment, type ReactNode } from 'react'
+import { Info, MousePointer2, ShieldCheck, Sparkles, TriangleAlert } from 'lucide-react'
+import { originalLines, summaryTasks, type AutomationDetail, type PreviewParameter, type PreviewTask, type ScriptKind } from './caseUnderstanding'
+import { displayParameters, parameterLabel, sourceAnchor } from './caseAnnotations'
+import './ScriptField.css'
 
-export interface AutomationDetail {
-  step: number
-  text: string
-  coverable: boolean
-  reason: string
-}
+export type { AutomationDetail } from './caseUnderstanding'
 
-/**
- * 用例的一格：前置、操作或预期。
- * 原文和预览各有自己的开关，只切换这一格。
- */
-export function ScriptField({
-  value,
-  kind,
-  max = 4,
-  compiled,
-  automation,
-}: {
+export function ScriptField({ value, kind, compiled, automation, tasks: suppliedTasks, resourceParameters = [], resolved, status = 'ready', onRetry, compact = false }: {
   value: unknown
-  kind: 'pre' | 'op' | 'ex'
-  max?: number
-  /** 编译器产出的步骤文案。传入后，预览只画这些，不再按逗号拆原文。 */
+  kind: ScriptKind
   compiled?: unknown
   automation?: AutomationDetail[]
+  tasks?: PreviewTask[]
+  resourceParameters?: PreviewParameter[]
+  resolved?: boolean
+  status?: 'ready' | 'loading' | 'pending' | 'error' | 'cancelled' | 'incomplete'
+  onRetry?: () => void
+  compact?: boolean
 }) {
-  const [mode, setMode] = useState<'raw' | 'preview'>('preview')
-  const [open, setOpen] = useState(false)
-  const lines = splitNumbered(scriptSource(value))
-  const compiledLines = kind === 'pre' ? null : stringList(compiled ?? [])
-  const previewRows = compiledLines ? compiledRows(compiledLines, lines) : lines.map((line) => ({ num: line.num, line, items: null as { text: string }[] | null }))
-  const shown = mode === 'preview' && compiledLines ? previewRows : lines.map((line) => ({ num: line.num, line, items: null as { text: string }[] | null }))
-  const visible = open ? shown : shown.slice(0, max)
-
-  return (
-    <div style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }} onClick={(event) => event.stopPropagation()}>
-      <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
-        <ModeButton pressed={mode === 'raw'} onClick={() => setMode('raw')}>查看原文</ModeButton>
-        <ModeButton pressed={mode === 'preview'} onClick={() => setMode('preview')}>预览</ModeButton>
-      </div>
-      {mode === 'preview' && automation ? (
-        automation.length ? automation.map((item, index) => (
-          <div key={`${item.step}-${index}`} style={row}>
-            <span style={num}>{item.step}</span>
-            <div style={{ minWidth: 0, padding: '5px 7px', borderRadius: 6, background: item.coverable ? 'var(--w-primary-soft)' : 'var(--w-warn-bg)', overflowWrap: 'anywhere' }}>
-              <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: item.coverable ? 'var(--w-primary)' : 'var(--w-warn)' }}>
-                {item.coverable ? kind === 'pre' ? '可自动准备' : kind === 'ex' ? '可自动校验' : '可自动执行' : kind === 'pre' ? '需人工准备' : '不能自动化'}
-              </span>
-              <span style={{ ...plain, display: 'block', color: 'var(--w-text)' }}>{item.text}</span>
-              <span style={{ ...plain, display: 'block', marginTop: 3 }}>{item.reason}</span>
-            </div>
-          </div>
-        )) : <span style={plain}>{kind === 'pre' ? '无额外准备要求' : '未解析出可执行内容，请查看原文'}</span>
-      ) : !shown.length ? <span style={{ color: 'var(--w-text-quaternary)' }}>无</span> : (
-        <>
-          {visible.map((item) => (
-            <div key={item.num} style={row}>
-              <span style={num}>{item.num}</span>
-              {mode === 'raw' ? (
-                <span style={plain}>{item.line?.text || '无'}</span>
-              ) : item.items ? (
-                <div style={{ minWidth: 0 }}>
-                  {uncoveredMarks(item.items).length ? (
-                    <PaintedText text={item.line?.text || ''} marks={uncoveredMarks(item.items)} />
-                  ) : null}
-                  {recognizedItems(item.items).length ? <CompiledLine items={recognizedItems(item.items)} /> : uncoveredMarks(item.items).length ? null : <CompiledLine items={[]} />}
-                </div>
-              ) : kind === 'pre' ? (
-                <PreLine text={item.line?.text || ''} />
-              ) : (
-                <CompiledLine items={[]} />
-              )}
-            </div>
-          ))}
-          {shown.length > max && (
-            <button type="button" onClick={() => setOpen((value) => !value)} style={more}>
-              {open ? '收起' : `还有 ${shown.length - max} 条`}
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-function compiledRows(
-  compiledLines: { step: string; text: string }[],
-  lines: { num: number; text: string }[],
-) {
-  if (!compiledLines.length) {
-    return lines.map((line) => ({ num: line.num, line, items: [] as { text: string }[] }))
-  }
-  const order: string[] = []
-  const groups = new Map<string, { text: string }[]>()
-  for (const item of compiledLines) {
-    const key = item.step || '1'
-    if (!groups.has(key)) {
-      groups.set(key, [])
-      order.push(key)
-    }
-    groups.get(key)!.push({ text: item.text })
-  }
-  return order.map((key) => ({
-    num: Number(key) || 1,
-    line: lines.find((line) => String(line.num) === key),
-    items: groups.get(key) || [],
-  }))
-}
-
-function PreLine({ text }: { text: string }) {
-  const pair = conditionPair(text)
-  return (
-    <span style={chip}>
-      {pair.label ? <span style={verb}>{pair.label}</span> : null}
-      <b>{pair.value}</b>
-    </span>
-  )
-}
-
-function stringList(value: unknown): { step: string; text: string }[] {
-  const rows = Array.isArray(value) ? value : typeof value === 'string' && value.trim() ? value.split('\n') : []
-  return rows.map((item) => String(item ?? '').trim()).filter(Boolean).map((line) => {
-    const matched = line.match(/^(\d+)\.\s*(.*)$/)
-    return matched ? { step: matched[1], text: matched[2] } : { step: '', text: line }
-  })
-}
-
-function uncoveredMarks(items: { text: string }[]): string[] {
-  const mark = '未执行：'
-  return items.flatMap((item) => {
-    const at = item.text.indexOf(mark)
-    if (at < 0) return []
-    const text = item.text.slice(at + mark.length).trim()
-    return text ? [text] : []
-  })
-}
-
-function recognizedItems(items: { text: string }[]) {
-  return items.filter((item) => !item.text.includes('未执行：'))
-}
-
-function PaintedText({ text, marks }: { text: string; marks: string[] }) {
-  const nodes: { text: string; gray: boolean }[] = []
-  let rest = text
-  while (rest) {
-    let hit = -1
-    let mark = ''
-    for (const item of marks) {
-      const at = item ? rest.indexOf(item) : -1
-      if (at >= 0 && (hit < 0 || at < hit)) {
-        hit = at
-        mark = item
-      }
-    }
-    if (hit < 0 || !mark) {
-      nodes.push({ text: rest, gray: false })
-      break
-    }
-    if (hit > 0) nodes.push({ text: rest.slice(0, hit), gray: false })
-    nodes.push({ text: mark, gray: true })
-    rest = rest.slice(hit + mark.length)
-  }
-  return (
-    <span style={plain}>
-      {nodes.map((node, index) => (
-        <span key={index} style={node.gray ? { color: 'var(--w-text-quaternary)' } : undefined}>{node.text}</span>
-      ))}
-      <span style={{ marginLeft: 6, color: 'var(--w-text-quaternary)', fontSize: 11 }}>未执行</span>
-    </span>
-  )
-}
-
-function CompiledLine({ items }: { items: { text: string }[] }) {
-  if (!items.length) return <span style={plain}>未编译</span>
-  return (
-    <span style={{ lineHeight: 1.7 }}>
-      {items.map((item, index) => {
-        const uncovered = item.text.includes('未执行')
-        const blocked = uncovered || item.text.startsWith('×') || item.text.includes('无法')
-        return (
-          <span key={index} style={{ display: 'block', marginBottom: 4 }}>
-            <span style={{ ...chip, ...(blocked ? skip : {}) }}>
-              <i style={{ ...badge, background: blocked ? 'var(--w-warn)' : 'var(--w-primary)' }}>{index + 1}</i>
-              <b>{item.text}</b>
-            </span>
-          </span>
-        )
+  const lines = originalLines(value)
+  const tasks = suppliedTasks ?? summaryTasks(compiled, automation, kind, lines)
+  const unlinked = tasks.filter(task => !lines.some(line => line.num === task.step))
+  const hasResults = resolved ?? tasks.length > 0
+  return <div className={`case-script-field${compact ? ' is-compact' : ''}`} onClick={event => event.stopPropagation()}>
+    {!lines.length ? <p className="case-script-empty">{kind === 'pre' ? '无额外前置条件' : '原文未返回'}</p> : null}
+    <div className="case-script-lines">
+      {lines.map((line, index) => {
+        const items = tasks.filter(task => task.step === line.num)
+        const executable = items.filter(task => !task.blocked).length
+        const blocked = items.length - executable
+        return <section key={`${line.num}-${index}`} className="case-script-step" aria-label={`原文步骤 ${line.num}`}>
+          <p className="case-script-original"><span className="case-script-step-number" aria-label={`步骤 ${line.num}`}>{line.num}</span><AnnotatedSource text={line.text} tasks={items} />
+            {(items.length > 1 || blocked > 0) && kind !== 'pre' ? <span className="case-script-count">{kind === 'ex' ? `${executable} 项校验` : `${executable} 个任务`}{blocked ? ` · ${blocked} 处待处理` : ''}</span> : null}
+          </p>
+        </section>
       })}
-    </span>
-  )
+    </div>
+    {unlinked.length ? <div className="case-script-unlinked"><span>未关联原文编号的解析记录</span><p>{unlinked.map((task, index) => <TaskAnnotation key={`${task.id}-${index}`} task={task} number={index + 1} unlocated />)}</p></div> : null}
+    {resourceParameters.length ? <div className="case-resource-summary"><p><span>资源准备：</span>{resourceParameters.map((parameter, index) => <span className="case-resource-parameter" key={`${parameter.label}-${index}`}>{parameter.label}：{parameter.value}</span>)}</p></div> : null}
+    {status !== 'ready' || (kind !== 'pre' && !hasResults) ? <div className="case-script-notice" data-status={status} role={status === 'error' ? 'alert' : 'status'}>
+      <Info size={12} /><span>{status === 'pending' ? '正在解析，完成后显示事件标注' : status === 'loading' ? '正在读取已保存的解析结果' : status === 'error' ? '解析结果读取失败，原文仍可查看' : status === 'cancelled' ? '本次解析已停止' : status === 'incomplete' ? '缺少必要字段，补全列映射后重新解析' : '暂无保存的解析结果，原文完整保留'}</span>
+      {status === 'error' && onRetry ? <button type="button" onClick={onRetry}>重试</button> : null}
+    </div> : null}
+  </div>
 }
 
-function ModeButton({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: string }) {
-  return (
-    <button type="button" aria-pressed={pressed} onClick={onClick} style={{ ...mode, ...(pressed ? modeOn : {}) }}>
-      {children}
-    </button>
-  )
+function AnnotatedSource({ text, tasks }: { text: string; tasks: PreviewTask[] }) {
+  const anchored = tasks.map((task, index) => ({ task, number: index + 1, end: sourceAnchor(text, task.source) }))
+  const endpoints = [...new Set(anchored.flatMap(item => item.end === null ? [] : [item.end]))].sort((a, b) => a - b)
+  const output: ReactNode[] = []
+  let cursor = 0
+  for (const end of endpoints) {
+    output.push(<span className="case-source-text" key={`text-${cursor}`}>{text.slice(cursor, end)}</span>)
+    for (const item of anchored.filter(item => item.end === end)) output.push(<TaskAnnotation key={`task-${item.number}`} task={item.task} number={item.number} />)
+    cursor = end
+  }
+  if (cursor < text.length) output.push(<span className="case-source-text" key={`text-${cursor}`}>{text.slice(cursor)}</span>)
+  for (const item of anchored.filter(item => item.end === null)) output.push(<TaskAnnotation key={`task-${item.number}`} task={item.task} number={item.number} unlocated />)
+  return <>{output}</>
 }
 
-const row: CSSProperties = { display: 'grid', gridTemplateColumns: '18px minmax(0, 1fr)', gap: 6, padding: '3px 0', alignItems: 'start', minWidth: 0 }
-const num: CSSProperties = { color: 'var(--w-text-tertiary)', fontWeight: 750, fontVariantNumeric: 'tabular-nums', fontSize: 12 }
-const plain: CSSProperties = { minWidth: 0, color: 'var(--w-text-secondary)', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
-const chip: CSSProperties = { display: 'inline', background: '#e7ebf8', borderRadius: 5, padding: '1px 5px', lineHeight: 1.7, fontSize: 12, overflowWrap: 'anywhere' }
-const skip: CSSProperties = { background: 'var(--w-warn-bg)' }
-const verb: CSSProperties = { fontWeight: 750, color: '#312e81', marginRight: 3 }
-const badge: CSSProperties = {
-  display: 'inline-grid', placeItems: 'center', width: 15, height: 15, marginRight: 3,
-  borderRadius: 4, color: '#fff', fontSize: 10, fontWeight: 800, fontStyle: 'normal', verticalAlign: '1px',
+function TaskAnnotation({ task, number, unlocated = false }: { task: PreviewTask; number: number; unlocated?: boolean }) {
+  const parameters = displayParameters(task)
+  const Icon = task.blocked ? TriangleAlert : task.tone === 'logic' ? Sparkles : task.tone === 'check' ? ShieldCheck : task.tone === 'condition' ? Info : MousePointer2
+  const readingCondition = task.tone === 'condition' && task.summaryOnly
+  return <span className="case-task-annotation" data-tone={task.tone} data-task-id={task.id} title={task.source ? `解析依据：${task.source}` : '接口未返回解析依据'}>
+    <span className={`case-task-heading${task.title.length <= 22 ? ' is-short' : ''}`}><Icon size={11} /><strong>{readingCondition ? '条件' : `${number} · ${task.title}`}</strong></span>
+    {parameters.map((parameter, index) => <Fragment key={`${parameter.label}-${index}`}><span className="case-task-separator"> · </span><span className={`case-task-parameter${parameterLabel(parameter.label).length + parameter.value.length <= 18 && !parameter.value.includes('\n') ? ' is-short' : ''}`}><span className={`case-task-parameter-label${parameterLabel(parameter.label).length <= 12 ? ' is-short' : ''}`}>{parameterLabel(parameter.label)}：</span>{parameter.value}</span></Fragment>)}
+    {task.blocked ? <span className="case-task-state"> · 待处理</span> : null}
+    {task.reason && task.reason !== task.title ? <span className="case-task-reason"> · {task.reason}</span> : null}
+    {task.summaryOnly && !readingCondition && !task.blocked ? <span className="case-task-summary-only"> · 解析摘要</span> : null}
+    {unlocated ? <span className="case-task-location"> · 未定位原文片段{task.source ? `「${task.source}」` : ''}</span> : null}
+  </span>
 }
-const mode: CSSProperties = {
-  border: '1px solid var(--w-border-strong)', background: 'var(--w-surface)', borderRadius: 8,
-  padding: '2px 8px', fontSize: 11, fontWeight: 700, color: 'var(--w-text-secondary)', cursor: 'pointer',
-}
-const modeOn: CSSProperties = { borderColor: 'var(--w-primary)', background: 'var(--w-primary-soft)', color: 'var(--w-primary)' }
-const more: CSSProperties = { marginTop: 2, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 650, color: 'var(--w-primary)' }

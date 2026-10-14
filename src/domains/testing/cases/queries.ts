@@ -41,15 +41,18 @@ export const useCaseModules = (projectId: string) => useQuery({
   queryFn: async () => unwrapOne<{ items: { name: string; count: number }[]; total: number }>(await getCaseModules(projectId))!,
 })
 
-export const useProjectCase = (projectId: string, caseId: string) => useQuery({
+export const projectCaseOptions = (projectId: string, caseId: string) => queryOptions({
   queryKey: [...caseKeys.list(projectId), 'detail', caseId], enabled: !!projectId && !!caseId,
-  queryFn: async () => {
+  staleTime: 60_000,
+  queryFn: async (): Promise<CaseRow> => {
     const response = await getProjectCase(projectId, caseId)
     const row = response.data?.case
     if (!row) throw new Error('用例详情未返回')
     return { ...row, title: row.title || String(row.name || row.case_id) }
   },
 })
+
+export const useProjectCase = (projectId: string, caseId: string) => useQuery(projectCaseOptions(projectId, caseId))
 
 /** 账号内的全部设备及服务端可执行判定，每 30 秒刷新任务上下文。 */
 export const useRunDevices = (enabled = true, context: RunDeviceContext = {}) =>

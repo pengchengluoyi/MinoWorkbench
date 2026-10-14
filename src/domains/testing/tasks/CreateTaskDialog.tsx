@@ -37,6 +37,7 @@ export function CreateTaskDialog({
   const [profile, setProfile] = useState('')
   const [sn, setSn] = useState('')
   const [scheme, setScheme] = useState<'visual' | 'dom'>('visual')
+  const [mode, setMode] = useState<'legacy' | 'v5'>('legacy')
   const [picked, setPicked] = useState<string[]>([])
   const [kw, setKw] = useState('')
   const devices = useRunDevices(open, { app_id: appId, env_surface: surface, env_profile: profile, action_scheme: scheme })
@@ -44,6 +45,7 @@ export function CreateTaskDialog({
   useEffect(() => {
     if (!open) return
     setScheme('visual')
+    setMode('legacy')
     setPicked([])
     setKw('')
   }, [open])
@@ -78,7 +80,9 @@ export function CreateTaskDialog({
   const block = devices.isLoading ? '正在查询设备'
     : devices.isError ? errText(devices.error, '设备信息读取失败')
       : !device || !isExecutable(device) ? device?.blocked_reason || '请选择兼容且就绪的执行设备'
-        : !picked.length ? '先勾选用例' : ''
+        : mode === 'v5' && device.platform !== 'web' ? 'V5 首期只支持固定 Web 节点'
+          : mode === 'v5' && (cases.data || []).some(row => picked.includes(row.case_id) && row.v5_plan_state !== 'published') ? '所选用例尚未发布或需要重新核验'
+            : !picked.length ? '先勾选用例' : ''
 
   const start = useMutation({
     mutationFn: async () => {
@@ -93,6 +97,8 @@ export function CreateTaskDialog({
         env_surface: surface || undefined,
         action_scheme: scheme,
         run_type: 'manual',
+        execution_mode: mode,
+        playwright_headless: true,
       })
       const runId = res?.data?.run_id || res?.data?.task_id
       if (!runId) throw new Error('没有返回任务编号，无法跟踪这次执行')
@@ -168,6 +174,7 @@ export function CreateTaskDialog({
         </Section>
 
         <Section n="5" title="勾选用例">
+          <label><Checkbox checked={mode === 'v5'} onChange={event => { setMode(event.target.checked ? 'v5' : 'legacy'); if (event.target.checked) setScheme('dom') }} /> V5：冻结计划、严格 Web 执行、原子核验（headless）</label>
           <Input size="small" value={kw} placeholder="按名称或编号筛选" onChange={(event) => setKw(event.target.value)} style={{ marginBottom: 8 }} />
           <div className="flex flex-col" style={{ gap: 4, maxHeight: 220, overflow: 'auto' }}>
             {cases.isLoading ? <p style={hint}>正在读取用例…</p> : null}

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Save, TriangleAlert } from 'lucide-react'
-import { Button, EmptyState, Input, Modal, Select, Skeleton, errText, useFeedback } from '@/ui'
+import { Button, EmptyState, Input, Modal, Select, Segmented, Skeleton, errText, useFeedback } from '@/ui'
+import { ControlRegistry } from './ControlRegistry'
 import { getProjectEnv, updateProjectEnv } from '@/api/projectEnv'
 import { unwrapOne } from '@/lib/unwrap'
 import { AppEnvCard } from './AppEnvCard'
@@ -18,6 +19,16 @@ import {
  * 右边只编辑当前选中的应用，避免两张完整表单叠在一起上下翻。
  */
 export function EnvConfigPanel() {
+  const [params] = useSearchParams()
+  const [view, setView] = useState('environment')
+  return <div className="flex min-h-0 flex-1 flex-col" style={{ gap: 12 }}>
+    <Segmented value={view} onChange={value => setView(String(value))} options={[{ value: 'environment', label: '项目环境' }, { value: 'controls', label: '控件定位' }]} />
+    <div className="min-h-0 flex-1" style={{ display: view === 'environment' ? 'flex' : 'none' }}><EnvironmentSettings /></div>
+    {view === 'controls' && <ControlRegistry projectId={params.get('projectId') || ''} />}
+  </div>
+}
+
+function EnvironmentSettings() {
   const [params] = useSearchParams()
   const projectId = params.get('projectId') || ''
   const fb = useFeedback()

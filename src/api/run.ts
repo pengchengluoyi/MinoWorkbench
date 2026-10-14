@@ -32,6 +32,8 @@ export interface RunPayload {
   async_exec?: boolean
   use_cache?: boolean
   run_type?: string
+  execution_mode?: 'legacy' | 'v5'
+  playwright_headless?: boolean
 }
 
 export const runCaseRunner = (data: RunPayload) =>
