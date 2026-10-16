@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button, Dropdown, Checkbox, Pagination, Table, Skeleton, Tooltip } from 'antd'
 import type { TableProps } from 'antd'
-import { Columns3, RotateCcw, TriangleAlert } from 'lucide-react'
+import { Columns3, RotateCcw } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { useColumnConfig } from '@/hooks/useColumnConfig'
 import { errText } from './feedback'
@@ -50,6 +50,8 @@ export interface DataTableProps<T> {
   /** 超过这个行数才开虚拟滚动，默认 100 */
   virtualThreshold?: number
   onRowClick?: (row: T) => void
+  activeRowKey?: React.Key
+  onRetry?: () => void
 }
 
 /**
@@ -76,7 +78,7 @@ export function DataTable<T extends object>({
   fill,
   scrollY,
   virtualThreshold = 100,
-  onRowClick,
+  onRowClick, activeRowKey, onRetry,
 }: DataTableProps<T>) {
   const { isHidden, toggle, reset, hiddenCount } = useColumnConfig(viewId)
 
@@ -117,9 +119,11 @@ export function DataTable<T extends object>({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(pagination?.pageSize || 20)
   const client = !pagination
-  const pageRows = client ? rows.slice((page - 1) * pageSize, page * pageSize) : rows
+  const safePage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)))
+  useEffect(() => { if (client && page !== safePage) setPage(safePage) }, [client, page, safePage])
+  const pageRows = client ? rows.slice((safePage - 1) * pageSize, safePage * pageSize) : rows
   const total = client ? rows.length : pagination.total
-  const current = client ? page : pagination.page
+  const current = client ? safePage : Number.isFinite(pagination.page) ? Math.max(1, Math.trunc(pagination.page) || 1) : 1
   const size = client ? pageSize : pagination.pageSize
 
   const hostRef = useRef<HTMLDivElement>(null)
@@ -137,17 +141,6 @@ export function DataTable<T extends object>({
   const y = fill ? bodyH : scrollY
   const useVirtual = !!y && pageRows.length > virtualThreshold
 
-  if (error) {
-    return (
-      <div style={card}>
-        <EmptyState
-          icon={<TriangleAlert size={30} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
-          title="读取失败"
-          hint={errText(error, '接口没有返回数据。确认 Nexus 是否已启动。')}
-        />
-      </div>
-    )
-  }
 
   return (
     <div className={fill ? 'flex h-full min-h-0 flex-1 flex-col' : 'flex flex-col'} style={{ minHeight: 0, gap: 'var(--w-space-2)' }}>
@@ -164,6 +157,7 @@ export function DataTable<T extends object>({
         </div>
       )}
 
+      {error ? <div role="alert" style={{ ...card, padding: 12 }}><span>{errText(error, '读取失败')}</span>{rows.length ? <span> · 以下保留上次读取内容</span> : null}{onRetry ? <Button size="small" onClick={onRetry}>重试读取</Button> : null}</div> : null}
       <div ref={hostRef} className={fill ? 'min-h-0 flex-1' : undefined} style={card}>
         {loading && !rows.length ? (
           <div style={{ padding: 'var(--w-card-padding)' }}>
@@ -188,12 +182,16 @@ export function DataTable<T extends object>({
                   }
                 : undefined
             }
+            rowClassName={row => activeRowKey != null && (typeof rowKey === 'function' ? rowKey(row) : row[rowKey]) === activeRowKey ? 'w-detail-row-active' : ''}
             onRow={onRowClick ? (row) => ({
               onClick: (event) => {
                 const target = event.target as HTMLElement | null
                 if (target?.closest('button, a, input, label, .ant-checkbox, .ant-dropdown')) return
                 onRowClick(row)
               },
+              tabIndex: 0,
+              'aria-label': '查看详情',
+              onKeyDown: (event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onRowClick(row) } },
               style: { cursor: 'pointer' },
             }) : undefined}
             locale={{

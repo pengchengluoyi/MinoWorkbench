@@ -1,3 +1,4 @@
+import { usesDesktopExecutor } from '@/constants/platformContract'
 import type { ReactNode } from 'react'
 import { Globe, Monitor, RefreshCw, Smartphone } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -42,7 +43,7 @@ export function DeviceSelect({ devices, value, onChange, loading = false, refres
     </div>,
     options: [...group.devices].sort((left, right) => Number(isExecutable(right)) - Number(isExecutable(left))).map((device) => ({
       value: device.sn,
-      label: `${deviceFamilyLabel(device)}${device.model && device.platform !== 'desktop' ? ` · ${device.model}` : ''}`,
+      label: `${deviceFamilyLabel(device)}${device.model && !usesDesktopExecutor(device.platform) ? ` · ${device.model}` : ''}`,
       disabled: !isExecutable(device),
       searchText: `${group.name} ${nodeId} ${device.sn} ${device.model || ''} ${deviceFamilyLabel(device)}`.toLowerCase(),
       device,
@@ -72,13 +73,13 @@ export function DeviceSelect({ devices, value, onChange, loading = false, refres
         listHeight={320}
         virtual={false}
         filterOption={(input, option) => String(option?.searchText || '').includes(input.toLowerCase())}
-        labelRender={() => selected ? deviceFamilyLabel(selected) + (selected.model && selected.platform !== 'desktop' ? ` · ${selected.model}` : '') : '所选设备已不可用'}
+        labelRender={() => selected ? deviceFamilyLabel(selected) + (selected.model && !usesDesktopExecutor(selected.platform) ? ` · ${selected.model}` : '') : '所选设备已不可用'}
         notFoundContent={devices.length ? '没有匹配的设备' : '尚未发现设备'}
         optionRender={(option) => {
           const device = option.data.device
           if (!device) return option.label
           const ready = isExecutable(device)
-          const Icon = device.platform === 'desktop' ? Monitor : device.platform === 'web' ? Globe : Smartphone
+          const Icon = usesDesktopExecutor(device.platform) ? Monitor : device.platform === 'web' ? Globe : Smartphone
           return <div style={{ padding: '5px 0', whiteSpace: 'normal' }}>
             <div className="flex items-center gap-2" style={{ color: 'var(--w-text)' }}>
               <Icon size={15} style={{ flexShrink: 0 }} />

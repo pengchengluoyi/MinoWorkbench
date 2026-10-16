@@ -54,3 +54,5 @@
 .case-step-inspect { margin-left: 5px; }
 .case-step-inspect:hover, .case-turn-link:hover { text-decoration: underline; }
 .case-unlinked { color: var(--w-text-quaternary); font-size: var(--w-font-meta); white-space: nowrap; }
+
+.execution-source-alert { flex-shrink: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border: 1px solid var(--w-border); border-radius: var(--w-radius-lg); background: var(--w-warn-bg); color: var(--w-warn); font-size: var(--w-font-sm); overflow-wrap: anywhere; }

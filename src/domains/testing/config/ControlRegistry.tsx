@@ -1,13 +1,23 @@
-import { useEffect, useState } from 'react'
+import { recordAudit } from '@/domains/admin/audit/auditLog'
+import { Link, useParams } from 'react-router-dom'
+import { useEffect, useState, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Checkbox, EmptyState, Input, Select, Skeleton, errText } from '@/ui'
 import { listV5Controls, probeV5Control, saveV5Control, type V5Control } from '@/api/v5'
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { unwrapOne } from '@/lib/unwrap'
 
 export function ControlRegistry({ projectId }: { projectId: string }) {
   const qc = useQueryClient()
-  const query = useQuery({ queryKey: ['v5-controls', projectId], queryFn: async () => unwrapOne<{ items: V5Control[]; identity_conflicts: { control_id: string; count: number }[] }>(await listV5Controls(projectId)), enabled: !!projectId })
+  const { appId } = useParams()
+  const query = useQuery({ queryKey: ['v5-controls', projectId], queryFn: async () => {
+    const data = unwrapOne<{ items: V5Control[]; identity_conflicts: { control_id: string; count: number }[] }>(await listV5Controls(projectId))
+    if (!Array.isArray(data?.items) || !Array.isArray(data?.identity_conflicts)) throw new Error('控件注册表返回不完整，无法确认控件清单与身份冲突。请重新读取。')
+    return data
+  }, enabled: !!projectId })
   const [picked, setPicked] = useState('')
+  const baseline = useRef<V5Control | undefined>(undefined)
+  const [stale, setStale] = useState(false)
   const control = query.data?.items.find(row => row.control_id === picked)
   const [kind, setKind] = useState('test_id')
   const [value, setValue] = useState('')
@@ -20,8 +30,11 @@ export function ControlRegistry({ projectId }: { projectId: string }) {
   const [sn, setSn] = useState('')
   const [url, setUrl] = useState('')
   const [probe, setProbe] = useState<Record<string, unknown> | null>(null)
+  const draftDirty = useRef(false)
   useEffect(() => {
-    const cfg = control?.locator_spec.playwright
+    if (control && baseline.current?.control_id === control.control_id && draftDirty.current) { setStale(baseline.current.revision !== control.revision); return }
+    baseline.current = control; setStale(false)
+    const cfg = control?.locator_spec?.playwright
     setKind(cfg?.selector.kind || 'test_id'); setValue(cfg?.selector.value || '')
     setName(cfg?.selector.name || ''); setCardinality(cfg?.cardinality || 'one')
     setSensitive(!!control?.sensitive); setReviewed(false); setProbe(null)
@@ -30,22 +43,28 @@ export function ControlRegistry({ projectId }: { projectId: string }) {
   useEffect(() => { setPicked('') }, [projectId])
   const spec: V5Control['locator_spec'] = { playwright: { contract: 'web.locator.v1', scope: { kind: 'page', page_id: 'main' },
     selector: { kind, value, ...(kind === 'role' ? { name, exact: true } : kind === 'label' ? { exact: true } : {}) }, cardinality } }
-  const saved = control?.locator_spec.playwright
+  const saved = baseline.current?.locator_spec?.playwright || control?.locator_spec?.playwright
   const dirty = !!control && (!saved || kind !== saved.selector.kind || value !== saved.selector.value ||
-    name !== (saved.selector.name || '') || cardinality !== saved.cardinality || sensitive !== control.sensitive)
+    name !== (saved.selector.name || '') || cardinality !== saved.cardinality || sensitive !== (baseline.current?.sensitive ?? control.sensitive))
+  draftDirty.current = dirty
+  useUnsavedChanges(dirty)
+  useEffect(() => { setReviewed(false) }, [kind, value, name, cardinality, sensitive])
   const conflict = query.data?.identity_conflicts.some(row => row.control_id === picked)
   async function save(publish: boolean) {
-    if (!control) return
+    if (!control || stale) return
     setBusy(true); setNotice('')
     try {
-      await saveV5Control(projectId, picked, { expected_revision: control.revision, locator_spec: spec, sensitive, publish })
+      await saveV5Control(projectId, picked, { expected_revision: baseline.current?.revision ?? control.revision, locator_spec: spec, sensitive, publish })
+      baseline.current = { ...control, locator_spec: spec, sensitive }
+      draftDirty.current = false
       await qc.invalidateQueries({ queryKey: ['v5-controls', projectId] })
+      recordAudit('控件保存或发布')
       setNotice(publish ? '控件已发布；受影响用例需要重新核对并发布。' : '草稿已保存。')
     } catch (error) { setNotice(errText(error, '保存失败，请刷新检查版本冲突。')) }
     finally { setBusy(false) }
   }
   async function observe() {
-    if (!control) return
+    if (!control || stale) return
     setBusy(true); setNotice('')
     try { setProbe(unwrapOne<Record<string, unknown>>(await probeV5Control(projectId, picked, { expected_revision: control.revision, sn, url })) ?? null) }
     catch (error) { setNotice(errText(error, '只读探测失败')) }
@@ -58,21 +77,22 @@ export function ControlRegistry({ projectId }: { projectId: string }) {
     <strong>控件注册表</strong>
     <p>文字用例编译后会生成本项目的草稿控件。先补充当前 Web 渠道定位，再人工核对并发布。运行时配置只读。</p>
     {!!query.data?.identity_conflicts.length && <p role="alert">发现重复控件身份，请先处理冲突：{query.data.identity_conflicts.map(row => row.control_id).join('、')}</p>}
-    <Select aria-label="选择控件" value={picked || undefined} placeholder="选择控件" style={{ width: '100%' }} onChange={setPicked}
+    <Select aria-label="选择控件" value={picked || undefined} placeholder="选择控件" style={{ width: '100%' }} disabled={busy} onChange={value => { if (dirty && value !== picked) { setNotice('请先保存当前控件草稿，再切换控件。'); return } setPicked(value) }}
       options={query.data?.items.map(row => ({ value: row.control_id, label: `${row.target_desc || row.control_id} · ${row.publish_state} · r${row.revision}` }))} />
     {!query.data?.items.length && <EmptyState title="本项目尚无控件" hint="请在本项目内导入或重新编译用例；历史 _project 控件不能直接发布为本项目的 V5 配置。" />}
+    {stale && <p role="alert">此控件已有新版本，当前草稿保留。请重新读取并核对版本后再提交。</p>}
     {control && <>
       <p>{control.control_id} · 项目 {control.project_id} · 当前版本 {control.revision} · {control.publish_state} · {control.published_by} {control.published_at}</p>
       {control.scope !== 'page' && <p role="alert">首期仅支持主页面 scope；此控件需要人工调整作用域，不能静默映射。</p>}
-      <label>定位类型<Select aria-label="定位类型" value={kind} onChange={setKind} options={['test_id', 'role', 'label', 'css'].map(value => ({ value, label: value }))} /></label>
-      <label>定位值<Input aria-label="定位值" value={value} onChange={event => setValue(event.target.value)} /></label>
-      {kind === 'role' && <label>准确名称<Input aria-label="准确名称" value={name} onChange={event => setName(event.target.value)} /></label>}
-      <label>目标数量<Select aria-label="目标数量" value={cardinality} onChange={setCardinality} options={[{ value: 'one', label: '唯一目标 one' }, { value: 'set', label: '目标集合 set（只用于事实读取）' }]} /></label>
-      <Checkbox checked={sensitive} onChange={event => setSensitive(event.target.checked)}>敏感控件（禁止明文事实与模型输出）</Checkbox>
-      <Checkbox checked={reviewed} onChange={event => setReviewed(event.target.checked)}>已人工核对定位、作用域和敏感属性</Checkbox>
-      <div className="flex gap-2"><Button disabled={busy || conflict || !value.trim() || control.scope !== 'page'} onClick={() => void save(false)}>保存定位草稿</Button>
-        <Button type="primary" disabled={busy || conflict || !reviewed || !value.trim() || control.scope !== 'page'} onClick={() => void save(true)}>发布控件</Button>
-        <Button disabled={busy} onClick={() => void query.refetch()}>刷新</Button></div>
+      <label>定位类型<Select aria-label="定位类型" disabled={busy} value={kind} onChange={setKind} options={['test_id', 'role', 'label', 'css'].map(value => ({ value, label: value }))} /></label>
+      <label>定位值<Input aria-label="定位值" disabled={busy} value={value} onChange={event => setValue(event.target.value)} /></label>
+      {kind === 'role' && <label>准确名称<Input aria-label="准确名称" disabled={busy} value={name} onChange={event => setName(event.target.value)} /></label>}
+      <label>目标数量<Select aria-label="目标数量" disabled={busy} value={cardinality} onChange={setCardinality} options={[{ value: 'one', label: '唯一目标 one' }, { value: 'set', label: '目标集合 set（只用于事实读取）' }]} /></label>
+      <Checkbox disabled={busy} checked={sensitive} onChange={event => setSensitive(event.target.checked)}>敏感控件（禁止明文事实与模型输出）</Checkbox>
+      <Checkbox disabled={busy || stale} checked={reviewed} onChange={event => setReviewed(event.target.checked)}>已人工核对定位、作用域和敏感属性</Checkbox>
+      <div className="flex gap-2"><Button disabled={busy || stale || conflict || !value.trim() || control.scope !== 'page'} onClick={() => void save(false)}>保存定位草稿</Button>
+        <Button type="primary" disabled={busy || stale || conflict || !reviewed || !value.trim() || control.scope !== 'page'} onClick={() => void save(true)}>发布控件</Button>
+        <Button disabled={busy} onClick={() => void query.refetch()}>检查新版本</Button><Button disabled={busy || !dirty} onClick={() => { draftDirty.current = false; baseline.current = undefined; setPicked(''); setNotice('已放弃本控件草稿，请重新选择控件。') }}>放弃草稿</Button></div>
       <details><summary>只读探测（独立无登录浏览器，不点击或输入）</summary>
         <label>Web 设备标识<Input aria-label="探测设备" placeholder="web节点ID" value={sn} onChange={event => setSn(event.target.value)} /></label>
         <label>受控页面 URL<Input aria-label="探测页面" placeholder="https://..." value={url} onChange={event => setUrl(event.target.value)} /></label>
@@ -82,5 +102,6 @@ export function ControlRegistry({ projectId }: { projectId: string }) {
       </details>
     </>}
     {notice && <p role="status">{notice}</p>}
+    {appId && <p>服务端未返回控件影响的用例清单；<Link to={`/testing/${encodeURIComponent(appId)}?tab=cases`}>返回当前应用用例核对理解与发布版本</Link>。</p>}
   </section>
 }

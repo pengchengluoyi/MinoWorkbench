@@ -1,68 +1,13 @@
-import { useState } from 'react'
-import { RefreshCw } from 'lucide-react'
-import { Button, EmptyState, Segmented, Skeleton, Tooltip, errText } from '@/ui'
+import { useEffect, useState } from 'react'
+import { Button, Input, Select, Segmented, Skeleton, errText } from '@/ui'
 import { useNodeLogs } from './queries'
-
-/**
- * Scout 日志。
- *
- * Nexus 的 GET /runtime/nodes/:id/logs 是现成接口 —— 纯 Web 下完全可用，
- * 不需要原来那个"打开本机日志文件夹"的 Electron 调用。
- */
 export function NodeLogs({ nodeId, embedded = false }: { nodeId: string; embedded?: boolean }) {
-  const [lines, setLines] = useState(200)
-  const [open, setOpen] = useState(embedded)
-  const logs = useNodeLogs(nodeId, lines, open)
-
-  if (!open) {
-    return (
-      <Button size="small" onClick={() => setOpen(true)}>查看日志</Button>
-    )
-  }
-
-  return (
-    <div className="flex flex-col" style={{ gap: 'var(--w-space-2)', minHeight: 0 }}>
-      <div className="flex items-center gap-2">
-        <Segmented
-          size="small"
-          value={String(lines)}
-          onChange={(v) => setLines(Number(v))}
-          options={[{ value: '100', label: '100 行' }, { value: '200', label: '200 行' }, { value: '1000', label: '1000 行' }]}
-        />
-        <Tooltip title="刷新">
-          <Button size="small" icon={<RefreshCw size={13} />} loading={logs.isFetching} onClick={() => void logs.refetch()} aria-label="刷新日志" />
-        </Tooltip>
-        <span style={{ flex: 1 }} />
-        <Button size="small" type="text" onClick={() => setOpen(false)}>收起</Button>
-      </div>
-
-      {logs.isLoading ? (
-        <Skeleton active title={false} paragraph={{ rows: 6 }} />
-      ) : logs.isError ? (
-        <EmptyState title="读取日志失败" hint={errText(logs.error, '节点可能已离线，或 Nexus 没有缓存到它的日志。')} />
-      ) : !logs.data?.length ? (
-        <EmptyState title="没有日志" hint="Scout 还没有上报日志，或这个节点刚启动。" />
-      ) : (
-        <pre
-          className="w-mono"
-          style={{
-            margin: 0,
-            padding: 'var(--w-space-3)',
-            maxHeight: 320,
-            overflow: 'auto',
-            background: 'var(--w-surface-subtle)',
-            border: '1px solid var(--w-border)',
-            borderRadius: 'var(--w-radius-sm)',
-            fontSize: 'var(--w-font-meta)',
-            lineHeight: 1.55,
-            color: 'var(--w-text-secondary)',
-            whiteSpace: 'pre-wrap',
-            overflowWrap: 'anywhere',
-          }}
-        >
-          {logs.data.join('\n')}
-        </pre>
-      )}
-    </div>
-  )
+ const [lines, setLines] = useState(200), [open, setOpen] = useState(embedded)
+ const [search, setSearch] = useState(''), [level, setLevel] = useState('all'), [follow, setFollow] = useState(false)
+ const logs = useNodeLogs(nodeId, lines, open)
+ const { refetch, isFetching } = logs
+ useEffect(() => { if (!open || !follow) return; const timer = window.setInterval(() => { if (document.visibilityState === 'visible' && !isFetching) void refetch() }, 5000); return () => window.clearInterval(timer) }, [open, follow, refetch, isFetching])
+ const shown = (logs.data || []).filter(line => (!search || line.toLowerCase().includes(search.toLowerCase())) && (level === 'all' || new RegExp(`\\b${level}\\b`, 'i').test(line)))
+ if (!open) return <Button onClick={() => setOpen(true)}>查看日志</Button>
+ return <section className="flex flex-col" style={{ gap: 10, minHeight: 0 }}><div className="flex flex-wrap gap-2 items-center"><Segmented value={String(lines)} onChange={value => setLines(Number(value))} options={['100','200','1000'].map(value => ({value,label:`最近 ${value} 行`}))} /><Input aria-label="节点日志关键词" placeholder="仅检索已加载窗口" value={search} onChange={event => setSearch(event.target.value)} style={{ width: 230 }} /><Select aria-label="节点日志级别" value={level} onChange={setLevel} options={['all','error','warn','info','debug'].map(value => ({ value, label: value === 'all' ? '全部级别' : value }))} /><Button loading={isFetching} onClick={() => void refetch()}>刷新</Button><Button aria-pressed={follow} onClick={() => setFollow(!follow)}>{follow ? '暂停自动读取' : '每 5 秒读取'}</Button>{!embedded && <Button onClick={() => setOpen(false)}>关闭</Button>}</div><p style={{ margin: 0, color: 'var(--w-text-tertiary)' }}>节点尾部窗口，已加载 {(logs.data || []).length} 行，匹配 {shown.length} 行；不代表全部历史。{logs.dataUpdatedAt ? ` 上次读取 ${new Date(logs.dataUpdatedAt).toLocaleTimeString()}` : ''}</p>{logs.isError && <p role="alert">{errText(logs.error, '节点日志读取失败')}，保留上次读取窗口。<Button onClick={() => void refetch()}>重试</Button></p>}{logs.isLoading ? <Skeleton active /> : <pre className="w-read-detail" style={{ margin: 0, maxHeight: 440, overflow: 'auto', padding: 12, background: 'var(--w-surface-subtle)', borderRadius: 10 }}>{shown.join('\n') || '当前窗口没有匹配日志。'}</pre>}</section>
 }

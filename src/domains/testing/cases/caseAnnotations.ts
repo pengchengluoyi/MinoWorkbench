@@ -17,7 +17,8 @@ export function displayParameters(task: PreviewTask): PreviewParameter[] {
     if (seen.has(identity)) return false
     seen.add(identity)
     if (['任务内容', '校验要求', '条件原文'].includes(label.split(' · ').at(-1) || '') && parameter.value === task.source) return false
-    if (label === '登录方式（原文）' && task.title.endsWith(` · ${parameter.value}`)) return false
+    if (['登录方式', '登录方式（原文）'].includes(label) && task.title.endsWith(` · ${parameter.value}`)) return false
+    if (task.tone === 'check' && ['校验规则 · 文本', '校验规则 · 正文'].includes(label) && task.title.endsWith(` · ${parameter.value}`)) return false
     if (/^(目标|元素) · 名称$/.test(parameter.label) && task.title.endsWith(` · ${parameter.value}`)) return false
     if (task.tone === 'condition' && task.summaryOnly && task.source.replace(/\s/g, '') === `${parameter.label}：${parameter.value}`.replace(/\s/g, '')) return false
     return true

@@ -62,8 +62,39 @@ export const listImportRequirements = (projectId: string) =>
     method: 'get',
   })
 
+export interface ImportPreviewData {
+  preview_token?: string
+  rows?: ImportPreviewRow[]
+  parsed?: number
+  total?: number
+  done?: boolean
+  cancelled?: boolean
+  conflicts?: unknown[]
+}
+export interface ImportCommitRow {
+  row_index?: number
+  case_id?: string
+  status?: string
+  reason?: string
+  step_key_validation?: Record<string, unknown>
+}
+export interface ImportCommitData {
+  receipt_id?: string
+  client_request_id?: string
+  receipt_state?: 'pending' | 'completed'
+  pending?: number
+  rows?: ImportPreviewRow[]
+  created?: number
+  updated?: number
+  skipped?: number
+  blocked?: number
+  failed?: number
+  total?: number
+  results?: ImportCommitRow[]
+}
+
 export const previewCaseImport = (projectId: string, data: Record<string, unknown>) =>
-  request<{ preview_token?: string; rows?: ImportPreviewRow[]; parsed?: number; total?: number; done?: boolean; conflicts?: unknown[] }>({
+  request<ImportPreviewData>({
     url: `/project/${projectId}/cases/import/preview`,
     method: 'post',
     data,
@@ -71,25 +102,31 @@ export const previewCaseImport = (projectId: string, data: Record<string, unknow
   })
 
 export const getImportPreview = (projectId: string, token: string) =>
-  request<{ preview_token?: string; rows?: ImportPreviewRow[]; parsed?: number; total?: number; done?: boolean }>({
+  request<ImportPreviewData>({
     url: `/project/${projectId}/cases/import/preview/${token}`,
     method: 'get',
   })
 
 export const cancelImportPreview = (projectId: string, token: string) =>
-  request({ url: `/project/${projectId}/cases/import/preview/${token}/cancel`, method: 'post' })
+  request<{ cancelled?: boolean }>({ url: `/project/${projectId}/cases/import/preview/${token}/cancel`, method: 'post' })
 
 export const retryImportPreviewRow = (projectId: string, token: string, rowIndex: number) =>
-  request<{ rows?: ImportPreviewRow[]; parsed?: number; total?: number; done?: boolean }>({
+  request<ImportPreviewData>({
     url: `/project/${projectId}/cases/import/preview/${token}/retry`,
     method: 'post',
     data: { row_index: rowIndex },
   })
 
 export const commitCaseImport = (projectId: string, data: Record<string, unknown>) =>
-  request<{ created?: number; updated?: number; skipped?: number }>({
+  request<ImportCommitData>({
     url: `/project/${projectId}/cases/import/commit`,
     method: 'post',
     data,
     timeout: 120_000,
   })
+
+export const getCaseImportReceipt = (projectId: string, requestId: string) =>
+  request<ImportCommitData>({ url: `/project/${projectId}/cases/import/receipts/by-request/${encodeURIComponent(requestId)}`, method: 'get' })
+
+export const resumeCaseImportReceipt = (projectId: string, receiptId: string) =>
+  request<ImportCommitData>({ url: `/project/${projectId}/cases/import/receipts/${encodeURIComponent(receiptId)}/resume`, method: 'post', timeout: 120_000 })

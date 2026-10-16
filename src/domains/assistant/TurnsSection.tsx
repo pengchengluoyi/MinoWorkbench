@@ -1,9 +1,8 @@
-import { useState } from 'react'
 import { Segmented, StatusPill, DataTable, type DataColumn } from '@/ui'
 import type { AssistantTurn } from '@/api/assistant'
 import { isAssistantNotReady } from '@/api/assistant'
 import { useUrlState } from '@/hooks/useUrlState'
-import { channelLabel, fmtMs, fmtTime, surfaceLabel, turnStatus } from './format'
+import { channelLabel, fmtMs, fmtTime, fmtTokens, surfaceLabel, turnStatus } from './format'
 import { useTurns } from './queries'
 import { TurnDrawer } from './TurnDrawer'
 import { QueryProblem } from './AssistantNotReady'
@@ -18,14 +17,18 @@ const columns: DataColumn<AssistantTurn>[] = [
   { key: 'intent', title: '意图', ellipsis: true, alwaysVisible: true, render: (_: unknown, r) => r.intent || '无' },
   { key: 'status', title: '状态', width: 90, render: (_: unknown, r) => { const s = turnStatus(r.status); return <StatusPill status={s.kind}>{s.text}</StatusPill> } },
   { key: 'elapsed', title: '耗时', width: 80, render: (_: unknown, r) => fmtMs(r.elapsed_ms) },
-  { key: 'tokens', title: 'token', width: 110, render: (_: unknown, r) => `${r.prompt_tokens ?? 0} / ${r.completion_tokens ?? 0}` },
+  { key: 'tokens', title: 'Tokens · 输入 / 输出', width: 180, render: (_: unknown, r) => <span className="w-mono" style={{ whiteSpace: 'nowrap' }}>{fmtTokens(r.prompt_tokens, r.completion_tokens, r.detail?.usage_status)}</span> },
 ]
 
 /** 会话与轨迹。只存调用轨迹，原话不在这里，点开详情再从节点现取。 */
 export function TurnsSection() {
-  const [surface, setSurface] = useState<'' | 'im' | 'mcp'>('')
-  const [page, setPage] = useState(1)
-  const [size, setSize] = useState(20)
+  const [surface, setSurface] = useUrlState<'' | 'im' | 'mcp'>('surface', '', ['', 'im', 'mcp'])
+  const [pageRaw, setPageRaw] = useUrlState<string>('turnPage', '1')
+  const [sizeRaw, setSizeRaw] = useUrlState<string>('turnSize', '20')
+  const page = Math.min(100000, Math.max(1, Math.trunc(Number(pageRaw)) || 1))
+  const size = [20, 50, 100, 200].includes(Number(sizeRaw)) ? Number(sizeRaw) : 20
+  const setPage = (value: number) => setPageRaw(String(value))
+  const setSize = (value: number) => setSizeRaw(String(value))
   const [openId, setOpenId] = useUrlState<string>('turn', '')
   const q = useTurns(page, size, surface)
 
@@ -42,6 +45,8 @@ export function TurnsSection() {
         loading={q.isLoading}
         error={q.error}
         columns={columns}
+        activeRowKey={openId}
+        onRetry={() => void q.refetch()}
         onRowClick={(r) => setOpenId(r.turn_id)}
         emptyTitle="还没有会话记录"
         emptyHint="在 IM 里对机器人说一句话，或用 MCP 调一次工具，这里就会出现一条轨迹。"

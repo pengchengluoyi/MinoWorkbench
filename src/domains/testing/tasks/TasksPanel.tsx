@@ -2,13 +2,16 @@ import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Filter, RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
-import { Button, DataTable, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
+import { Input, Select, Button, DataTable, PageHeader, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
+import { cancelTestingTask, recheckTaskWriteSafety } from '@/api/caseRunner'
 import { onRealtimeState, realtimeState, type RealtimeState } from '@/lib/realtime'
 import type { PlatformInput } from '@/constants/appPlatforms'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
+import { copyToClipboard } from '@/lib/clipboard'
 import { CreateTaskDialog } from './CreateTaskDialog'
 import { useTaskDetail, useTaskList } from './queries'
-import { byAttention, caseId, failReason, taskId, verdictOf, type TaskCase, type TaskRow, type Verdict } from './types'
+import { byAttention, caseId, executionKey, failReason, taskId, verdictOf, type TaskCase, type TaskRow, type Verdict } from './types'
+import { taskCount, taskDate, taskName, taskProgress, taskStatus } from './presentation'
 import { beginListNavigation, useListPerformance } from '../workbench/performance'
 
 const CaseRunView = lazy(() => import('./CaseRunView').then((module) => ({ default: module.CaseRunView })))
@@ -25,17 +28,22 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
   const page = Number.isFinite(pageValue) ? Math.max(1, Math.trunc(pageValue) || 1) : 1
   const sizeValue = Number(params.get('taskSize'))
   const size = [20, 50, 100, 200].includes(sizeValue) ? sizeValue : 50
-  const list = useTaskList(appId, page, size)
+  const statusFilter = params.get('taskStatus') || ''
+  const [taskLookup, setTaskLookup] = useState('')
+  const list = useTaskList(appId, page, size, statusFilter)
   const tasks: TaskRow[] = list.data?.items ?? EMPTY_ARRAY
   const urlRun = params.get('run') || ''
   useListPerformance(appId, 'tasks', list.isSuccess && !urlRun, list.isError, !!list.data, JSON.stringify([page, size]))
   const tcase = params.get('tcase') || ''
+  const unit = params.get('unit') || ''
 
   const detail = useTaskDetail(urlRun, true)
   const task = detail.data
   const live = verdictOf(task?.status) === 'running'
   const [onlyAttention, setOnlyAttention] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [cancelBusy, setCancelBusy] = useState(false)
+  const [cancelNotice, setCancelNotice] = useState('')
   const [rt, setRt] = useState<RealtimeState>(realtimeState)
 
   useEffect(() => onRealtimeState(setRt), [])
@@ -47,7 +55,7 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
       const v = verdictOf(c.status || c.overall_status)
       return v === 'fail' || v === 'other'
     })
-    return attention.length ? attention : allCases
+    return attention
   }, [allCases, onlyAttention])
 
   const counts = useMemo(() => {
@@ -62,9 +70,35 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
       if (value) next.set(key, value)
       else next.delete(key)
     }
-    setParams(next, { replace: true })
+    setParams(next, { replace: !Object.keys(patch).some(key => ['run', 'tcase', 'unit'].includes(key)) })
   }
 
+  useEffect(() => {
+    if (!list.isSuccess || !list.data?.total || page <= Math.ceil(list.data.total / size)) return
+    const next = new URLSearchParams(params); next.set('taskPage', String(Math.max(1, Math.ceil(list.data.total / size)))); setParams(next, { replace: true })
+  }, [list.isSuccess, list.data, page, size, params, setParams])
+  const cancel = async () => {
+    const ok = await fb.confirm({ title: `请求取消任务 ${urlRun}？`, content: '服务端会记录取消请求。记录取消不代表所有设备动作已停止，请继续核对执行证据和资源状态。', okText: '请求取消' })
+    if (!ok || cancelBusy) return
+    setCancelBusy(true)
+    try { await cancelTestingTask(urlRun); setCancelNotice('服务端已响应取消请求，请核对最新任务与设备状态。'); await detail.refetch() }
+    catch (error) { setCancelNotice(errText(error, '取消受理结果待确认，请重新读取任务状态，不自动重发')) }
+    finally { setCancelBusy(false) }
+  }
+  const recheckSafety = async () => {
+    if (cancelBusy) return
+    setCancelBusy(true)
+    try {
+      const response = await recheckTaskWriteSafety(urlRun)
+      const pending = (response.data?.actions ?? []).filter((action) => !action.recovered).map((action) => action.reason_code).join('、')
+      const baseline = response.data?.baseline_required?.length ?? 0
+      setCancelNotice(response.data?.resource_isolated === false
+        ? `停止证据已核对，执行隔离已解除；原业务结果不变。${baseline ? `${baseline} 台设备的登录态已标为待观察，` : ''}新任务会先核验账号和页面状态。`
+        : `仍缺少可确认的停止证据，继续保留资源隔离${pending ? `（${pending}）` : ''}。升级或任务结束不能替代停止确认。`)
+      await detail.refetch()
+    } catch (error) { setCancelNotice(errText(error, '停止复核未完成；请刷新状态，资源不会因请求失败而强制释放。')) }
+    finally { setCancelBusy(false) }
+  }
   const createButton = (
     <Button size="small" type="primary" disabled={!projectId} onClick={() => setCreating(true)}>新建任务</Button>
   )
@@ -94,7 +128,7 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
     )
   }
 
-  if (!urlRun && !list.isLoading && !tasks.length && !list.data?.total) {
+  if (!urlRun && !statusFilter && !list.isLoading && !tasks.length && !list.data?.total) {
     return (
       <>
         <Card>
@@ -108,14 +142,15 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
   if (!urlRun) {
     return (
       <>
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="w-workspace flex h-full min-h-0 flex-col">
+          <PageHeader title="执行任务" subtitle="查看任务目标、执行进度与结果，逐层进入用例和执行证据。" extra={createButton} />
           <DataTable<TaskRow>
             viewId="testing.tasks"
             fill
             rowKey={(row) => taskId(row)}
             dataSource={tasks}
             loading={list.isLoading}
-            columns={batchColumns}
+            columns={batchColumns(row => setQuery({ run: taskId(row), tcase: null, unit: null }), fb)}
             pagination={{ page, pageSize: size, total: list.data?.total || 0,
               onChange: (next, nextSize) => {
                 beginListNavigation(appId, 'tasks')
@@ -125,7 +160,9 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
             toolbar={(
               <>
                 <Button size="small" icon={<RefreshCw size={13} />} loading={list.isFetching} onClick={() => void list.refetch()}>刷新</Button>
-                {createButton}
+                <Select aria-label="任务状态筛选" value={statusFilter} style={{ minWidth: 140 }} onChange={value => setQuery({ taskStatus: value, taskPage: '1' })} options={[{ value: '', label: '全部状态' }, { value: 'running', label: '执行中' }, { value: 'pass', label: '通过' }, { value: 'fail', label: '失败' }, { value: 'cancelled', label: '已取消' }, { value: 'blocked', label: '受阻' }]} />
+                <Input aria-label="任务编号直达" placeholder="输入完整任务编号" value={taskLookup} onChange={event => setTaskLookup(event.target.value)} style={{ width: 230 }} /><Button disabled={!taskLookup.trim()} onClick={() => setQuery({ run: taskLookup.trim(), tcase: null, unit: null })}>查看任务</Button>
+                <span>本页 {tasks.length} 条 · 上次读取 {list.dataUpdatedAt ? new Date(list.dataUpdatedAt).toLocaleTimeString() : '尚未读取'}</span>
               </>
             )}
             emptyTitle="还没有执行批次"
@@ -136,16 +173,14 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
     )
   }
 
-  const current = allCases.find((row) => caseId(row) === tcase)
-  if (task && task.app_id !== appId) return <Card><EmptyState title="任务不属于当前应用" action={<Button onClick={() => setQuery({ run: null, tcase: null })}>返回列表</Button>} /></Card>
+  const current = allCases.find((row) => caseId(row) === tcase && (!unit || executionKey(row) === unit))
+  if (task?.app_id && task.app_id !== appId) return <Card><EmptyState title="任务不属于当前应用" action={<Button onClick={() => setQuery({ run: null, tcase: null })}>返回列表</Button>} /></Card>
   if (tcase && current) {
-    return <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}><CaseRunView row={current} taskId={urlRun} platforms={typeof task?.platform === 'string' && task.platform ? task.platform : platforms} onBack={() => setQuery({ tcase: null })} /></Suspense>
+    return <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}><CaseRunView row={current} taskId={urlRun} platforms={typeof task?.platform === 'string' && task.platform ? task.platform : platforms} onBack={() => setQuery({ tcase: null, unit: null })} /></Suspense>
   }
 
-  const total = Number(task?.total ?? allCases.length) || allCases.length
-  const done = Number(task?.completed ?? (counts.pass + counts.fail)) || 0
-  const pct = total ? Math.round((done / total) * 100) : 0
-  const title = String(task?.title || allCases[0]?.title || urlRun)
+  const progress = taskProgress(task)
+  const title = task ? taskName(task) : '任务详情'
 
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ gap: 12 }}>
@@ -173,15 +208,20 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
           ]}
         />
         <Button size="small" icon={<RefreshCw size={13} />} loading={detail.isFetching} onClick={() => void detail.refetch()} aria-label="刷新详情" />
+        {!live && task?.resource_isolated === true && <Button loading={cancelBusy} onClick={() => void recheckSafety()}>核对停止并尝试解除隔离</Button>}
+        {live && <Button danger loading={cancelBusy} onClick={() => void cancel()}>请求取消</Button>}
         {createButton}
       </header>
+      {cancelNotice && <p role="status">{cancelNotice}</p>}
+      {counts.fail > 0 && <p style={{ margin: 0, color: 'var(--w-text-tertiary)' }}>失败重试暂不开放：现有接口未返回停止确认、写效果与资源隔离的安全重试条件。</p>}
       <div className="flex shrink-0 flex-wrap gap-2" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>
+        <span>原请求总数：{typeof task?.requested_total === 'number' ? task.requested_total : '服务端未报告'} · 本批次返回 {allCases.length} 个执行单元</span>
         {batchFacts(task).map((fact) => <span key={fact}>{fact}</span>)}
       </div>
       <div className="grid shrink-0" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <Stat kicker="进度" value={`${pct}%`} note={total ? `${done} / ${total} 已结束` : ''} />
+        <Stat kicker="进度" value={progress.percent != null ? `${progress.percent}%` : '未提供'} note={`已执行 ${progress.completed ?? '未知'} / 总数 ${progress.total ?? '未知'}`} />
         <Stat kicker="通过" value={String(counts.pass)} tone="var(--w-pass)" />
-        <Stat kicker="失败" value={String(counts.fail)} tone="var(--w-fail)" />
+        <Stat kicker="失败" value={String(counts.fail)} tone="var(--w-fail)" /><Stat kicker="进行中" value={String(counts.running)} /><Stat kicker="其他 / 未核验" value={String(counts.other)} note="包括取消、阻塞、跳过及未知状态；不计为通过" />
       </div>
       {detail.isLoading ? (
         <Skeleton active paragraph={{ rows: 8 }} title={false} />
@@ -191,12 +231,12 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
         <DataTable<TaskCase>
           viewId="testing.task.cases"
           fill
-          rowKey={(row) => caseId(row)}
+          rowKey={executionKey}
           dataSource={cases}
           columns={caseColumns}
-          onRowClick={(row) => setQuery({ tcase: caseId(row) })}
-          emptyTitle="这个批次还没有用例结果"
-          emptyHint="执行器还没有回传，稍等或手动刷新。"
+          onRowClick={(row) => setQuery({ tcase: caseId(row), unit: executionKey(row) })}
+          emptyTitle={onlyAttention && allCases.length ? "当前没有需关注项" : "这个批次还没有用例结果"}
+          emptyHint={onlyAttention && allCases.length ? "切换到全部可以查看所有结果。" : "执行器还没有回传，稍等或手动刷新。"}
         />
       )}
       {createDialog}
@@ -204,41 +244,32 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
   )
 }
 
-const batchColumns: DataColumn<TaskRow>[] = [
+const batchColumns = (onOpen: (row: TaskRow) => void, fb: { ok: (s: string) => void; fail: (s: string) => void }): DataColumn<TaskRow>[] => [
   {
-    key: 'status',
-    title: '状态',
-    width: 100,
+    key: 'id', title: '任务 / 用例范围', alwaysVisible: true, width: 260,
+    render: (_: unknown, row) => <div><div className="w-task-title">{taskName(row)}</div><div className="w-task-meta">{taskCount(row.total) != null ? `${row.total} 个执行单元` : '执行范围未提供'} · <button type="button" className="w-mono" title="复制完整批次编号" style={idBtn} onClick={() => copyTaskId(taskId(row), fb)}>{taskId(row)}</button></div></div>,
+  },
+  {
+    key: 'target', title: '目标 / 环境', width: 180,
+    render: (_: unknown, row) => <div><div className="w-task-title">{String(row.platform || '平台未提供')} · {String(row.env_profile || row.envProfile || '环境未提供')}</div><div className="w-task-meta">{String(row.sn || row.device_sn || row.node_id || '目标未提供')}</div></div>,
+  },
+  {
+    key: 'status', title: '执行进度与结果', width: 230,
     render: (_: unknown, row) => {
-      const v = verdictOf(row.status)
-      const label = v === 'pass' ? '通过' : v === 'fail' ? '失败' : v === 'running' ? '执行中' : '其他'
-      return <StatusPill status={v === 'other' ? 'muted' : v}>{label}</StatusPill>
+      const status = taskStatus(row.status)
+      const progress = taskProgress(row)
+      return <div><StatusPill status={status.tone}>{status.label}</StatusPill><div className="w-task-meta">已执行 {progress.completed ?? '未知'} / {progress.total ?? '未知'} · 通过 {taskCount(row.passed) ?? '未提供'} · 失败 {taskCount(row.failed) ?? '未提供'}</div>{progress.percent != null && <div className="w-task-progress" role="progressbar" aria-label="任务执行进度" aria-valuenow={progress.percent} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progress.percent}%` }} /></div>}</div>
     },
   },
   {
-    key: 'id',
-    title: '批次',
-    alwaysVisible: true,
-    render: (_: unknown, row) => <span className="w-mono">{taskId(row)}</span>,
+    key: 'events', title: '执行证据', width: 180,
+    render: (_: unknown, row) => <div><Button type="link" style={{ padding: 0 }} onClick={() => onOpen(row)}>查看用例与事件</Button><div className="w-task-meta">当前列表未提供事件摘要</div></div>,
   },
   {
-    key: 'result',
-    title: '结果',
-    width: 180,
-    render: (_: unknown, row) => {
-      const passed = Number(row.passed ?? 0)
-      const failed = Number(row.failed ?? 0)
-      const total = Number(row.total ?? row.cases?.length ?? 0)
-      return (
-        <span style={{ fontWeight: 650 }}>
-          {failed > 0 && <span style={{ color: 'var(--w-fail)', marginRight: 8 }}>挂 {failed}</span>}
-          {passed > 0 && <span style={{ color: 'var(--w-pass)', marginRight: 8 }}>过 {passed}</span>}
-          <span style={{ color: 'var(--w-text-quaternary)' }}>/ {total}</span>
-        </span>
-      )
-    },
+    key: 'started', title: '时间', width: 165,
+    render: (_: unknown, row) => <div><span title={String(row.started_at || '')}>{taskDate(row.started_at)}</span><div className="w-task-meta">{row.finished_at ? `结束 ${taskDate(row.finished_at)}` : verdictOf(row.status) === 'running' ? '尚未结束' : '结束时间未提供'}</div></div>,
   },
-  { key: 'started', title: '开始', width: 180, render: (_: unknown, row) => row.started_at || row.finished_at || '—' },
+  { key: 'open', title: '详情', width: 80, fixed: 'right', alwaysVisible: true, render: (_: unknown, row) => <Button onClick={() => onOpen(row)}>查看</Button> },
 ]
 
 const caseColumns: DataColumn<TaskCase>[] = [
@@ -247,9 +278,8 @@ const caseColumns: DataColumn<TaskCase>[] = [
     title: '状态',
     width: 90,
     render: (_: unknown, row) => {
-      const v = verdictOf(row.status || row.overall_status)
-      const label = v === 'pass' ? '通过' : v === 'fail' ? '失败' : v === 'running' ? '执行' : '其他'
-      return <StatusPill status={v === 'other' ? 'muted' : v}>{label}</StatusPill>
+      const status = taskStatus(row.status || row.overall_status)
+      return <StatusPill status={status.tone}>{status.label}</StatusPill>
     },
   },
   {
@@ -295,7 +325,7 @@ function batchFacts(task: TaskRow | undefined) {
 }
 
 function copyTaskId(text: string, fb: { ok: (s: string) => void; fail: (s: string) => void }) {
-  navigator.clipboard.writeText(text).then(() => fb.ok('已复制')).catch(() => fb.fail('剪贴板不可用'))
+  copyToClipboard(text).then(() => fb.ok('已复制')).catch(() => fb.fail('复制失败，请选中文本手动复制'))
 }
 
 function taskClock(task: TaskRow | undefined) {

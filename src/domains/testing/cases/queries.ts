@@ -89,7 +89,7 @@ export const useLastResults = (appId: string, caseIds: string[]) =>
       const out: Record<string, LastResult> = {}
       for (const [id, result] of Object.entries(items)) {
         const value = String(result.status || '').toLowerCase()
-        out[id] = { ...result, status: /pass|success|done/.test(value) ? 'pass' : /fail|error|exception/.test(value) ? 'fail' : 'other' }
+        out[id] = { ...result, status: ['pass', 'passed', 'success', 'succeeded'].includes(value) ? 'pass' : /fail|error|exception/.test(value) ? 'fail' : 'other' }
       }
       return out
     },

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
-import { Drawer, Skeleton, StatusPill } from '@/ui'
+import { Button, Drawer, Skeleton, StatusPill } from '@/ui'
 import { isAssistantNotReady, type AssistantTurn } from '@/api/assistant'
-import { channelLabel, fmtMs, fmtTime, surfaceLabel, turnStatus } from './format'
+import { channelLabel, fmtMs, fmtTokens, fmtTime, surfaceLabel, turnStatus } from './format'
 import { useTurn, useTurnMessages } from './queries'
 import { MinoCardView, TraceList } from './MinoCardView'
 import { QueryProblem } from './AssistantNotReady'
@@ -27,14 +27,14 @@ function Messages({ turnId }: { turnId: string }) {
   if (q.isLoading) return <Skeleton active paragraph={{ rows: 3 }} title={false} />
   if (q.isError) {
     return <div style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
-      {isAssistantNotReady(q.error) ? '助手服务尚未就绪，暂时取不到对话正文。' : '对话正文读取失败。'}
+      {isAssistantNotReady(q.error) ? '助手服务尚未就绪，暂时取不到对话正文。' : '对话正文读取失败。'}<Button size="small" onClick={() => void q.refetch()}>重新读取正文</Button>
     </div>
   }
   const d = q.data!
   if (!d.available) {
     return (
       <div role="status" style={{ padding: '8px 12px', borderRadius: 'var(--w-radius-sm)', background: 'var(--w-warn-bg)', color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>
-        节点离线，正文暂不可见{d.reason ? `（${d.reason}）` : ''}
+        正文暂不可见（可能离线、无权限或已过保留期）{d.reason ? `（${d.reason}）` : ''}<Button size="small" onClick={() => void q.refetch()}>重新读取正文</Button>
       </div>
     )
   }
@@ -72,7 +72,7 @@ export function TurnDrawer({ turnId, onClose }: { turnId: string; onClose: () =>
             {t.chat_id_masked ? <span className="w-mono">{t.chat_id_masked}</span> : null}
             <span>{fmtTime(t.created_at)}</span>
             <span>耗时 {fmtMs(t.elapsed_ms)}</span>
-            <span>{t.detail?.usage_status === 'missing' ? 'token 用量：服务商未报告' : `token ${t.prompt_tokens ?? 0}/${t.completion_tokens ?? 0}`}</span>
+            <span>{t.detail?.usage_status === 'missing' ? 'token 用量：服务商未报告' : `token ${fmtTokens(t.prompt_tokens, t.completion_tokens, t.detail?.usage_status)}`}</span>
           </div>
 
           <Title>意图</Title>

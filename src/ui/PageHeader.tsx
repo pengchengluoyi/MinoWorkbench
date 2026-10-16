@@ -14,13 +14,13 @@ export function PageHeader({
 }) {
   return (
     <header
-      className="flex flex-wrap items-start justify-between gap-4"
+      className="w-page-header flex flex-wrap items-start justify-between gap-4"
       style={{ marginBottom: 'var(--w-gap)' }}
     >
       <div className="min-w-0">
         <div className="flex items-center gap-3">
           <h2
-            className="m-0 truncate"
+            className="m-0"
             style={{
               fontSize: 'var(--w-font-h2)',
               fontWeight: 'var(--w-weight-heavy)' as any,
@@ -40,7 +40,7 @@ export function PageHeader({
             style={{
               marginTop: 4,
               fontSize: 'var(--w-font-sm)',
-              color: 'var(--w-text-quaternary)',
+              color: 'var(--w-text-tertiary)',
               fontWeight: 'var(--w-weight-medium)' as any,
             }}
           >

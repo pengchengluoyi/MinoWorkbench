@@ -1,3 +1,4 @@
+import { screenshotSource } from '@/lib/screenshot'
 import { bagOf as recordOf, integerOf, stepRefsOf, turnOf } from '../sessions/executionLinks'
 import { parseInteraction, type TraceInteraction } from './interaction'
 
@@ -8,6 +9,8 @@ export interface TraceStep {
   sessionId?: string
   eventSeq?: number
   source?: 'session' | 'trace'
+  phase?: string
+  timestamp?: number
   title: string
   /** 给人看的事件名，例如「点击」。 */
   event: string
@@ -32,26 +35,9 @@ export interface TraceView {
   steps: TraceStep[]
 }
 
-const thumbOf = (raw: unknown) => {
-  if (raw && typeof raw === 'object') {
-    const bag = raw as Record<string, unknown>
-    return thumbOf(bag.url || bag.src || bag.thumb || bag.data || bag.base64 || bag.image_base64)
-  }
-  const text = String(raw || '').trim()
-  if (!text || text.includes('(+')) return ''
-  if (text.startsWith('data:image/')) return text.length > 64 ? text : ''
-  if (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('/')) return text
-  if (text.startsWith('iVBOR')) return `data:image/png;base64,${text}`
-  if (text.startsWith('/9j/')) return `data:image/jpeg;base64,${text}`
-  if (text.length > 80 && /^[A-Za-z0-9+/=\s]+$/.test(text.slice(0, 120))) {
-    return `data:image/png;base64,${text.replace(/\s/g, '')}`
-  }
-  return ''
-}
-
 const thumbFrom = (event: Record<string, unknown>) => {
   for (const key of ['thumb', 'screenshot_thumb', 'result_thumb', 'image_base64', 'screenshot', 'image']) {
-    const hit = thumbOf(event[key])
+    const hit = screenshotSource(event[key])
     if (hit) return hit
   }
   return ''
@@ -156,11 +142,15 @@ export function parseTrace(raw: Record<string, unknown> | null | undefined, fall
     if (ms == null) return earliest
     return earliest == null || ms < earliest ? ms : earliest
   }, null)
-  const byStep = new Map<number, TraceStep>()
+  const byStep = new Map<string, TraceStep>()
   events.forEach((event, index) => {
     const step = Number(event.seq ?? event.step ?? index + 1)
     if (!Number.isFinite(step)) return
-    const prev = byStep.get(step)
+    const sessionId = String(event.session_id || recordOf(event.payload).session_id || data.session_id || context.sessionId || '')
+    const eventSeq = integerOf(event.event_seq ?? recordOf(event.payload).event_seq)
+    // Resource records can share a projected step but refer to different raw events.
+    const key = `${sessionId}:${step}${eventSeq != null ? `:event:${eventSeq}` : ''}`
+    const prev = byStep.get(key)
     const compared = compareOf(event)
     const bag = bagOf(event)
     const rawTitle = titleOf(event) || prev?.title || ''
@@ -174,13 +164,15 @@ export function parseTrace(raw: Record<string, unknown> | null | undefined, fall
     const elapsed = event.elapsed_ms ?? event.elapsed
     const fromClock = secondsLabel(epochMs(event.ts || event.timestamp || event.time), origin)
     const seconds = fromClock || (elapsed != null && elapsed !== '' ? (Number(elapsed) / 1000).toFixed(1) : prev?.seconds || '')
-    byStep.set(step, {
+    byStep.set(key, {
       step,
-      id: `${context.source || 'legacy'}:${context.sessionId || ''}:${step}`,
+      id: `${context.source || 'legacy'}:${key}`,
       source: context.source,
-      sessionId: String(event.session_id || recordOf(event.payload).session_id || context.sessionId || ''),
+      sessionId,
+      phase: textOf(event, ['phase']) || prev?.phase,
+      timestamp: epochMs(event.ts || event.timestamp || event.time) ?? prev?.timestamp,
       turn: turnOf(event) ?? prev?.turn,
-      eventSeq: integerOf(event.event_seq ?? recordOf(event.payload).event_seq) ?? prev?.eventSeq,
+      eventSeq: eventSeq ?? prev?.eventSeq,
       title: rawTitle || `步骤 ${step}`,
       event: eventLabel(rawTitle, event) || prev?.event || `步骤 ${step}`,
       param,
@@ -204,34 +196,61 @@ export function parseTrace(raw: Record<string, unknown> | null | undefined, fall
   return { summary, steps: [...byStep.values()].sort((a, b) => a.step - b.step) }
 }
 
-/** 两条轨迹按步骤号合并，截图留在有图的那一条上。 */
+/** A stable key for selection; source-local IDs alone cannot identify overlapping projections. */
 export const traceKey = (step: TraceStep) => step.id || `${step.source || 'legacy'}:${step.sessionId || ''}:${step.step}`
 
-export function mergeTraceSteps(left: TraceStep[], right: TraceStep[]) {
-  const merged = new Map<string, TraceStep>()
-  for (const step of [...left, ...right]) {
-    const key = step.eventSeq != null && step.sessionId ? `event:${step.sessionId}:${step.eventSeq}` : traceKey(step)
-    const prev = merged.get(key)
-    if (!prev) { merged.set(key, step); continue }
-    const compatible = (prev.turn == null || step.turn == null || prev.turn === step.turn)
-      && (!prev.stepRef || !step.stepRef || prev.stepRef === step.stepRef)
-    if (!compatible) { merged.set(`${key}:${traceKey(step)}`, step); continue }
-    merged.set(key, {
-      ...prev,
-      turn: step.turn ?? prev.turn,
-      eventSeq: step.eventSeq ?? prev.eventSeq,
-      event: step.event || prev.event,
-      param: step.param || prev.param,
-      attrs: step.attrs || prev.attrs,
-      stepRef: step.stepRef || prev.stepRef,
-      seconds: step.seconds || prev.seconds,
-      status: step.status || prev.status,
-      summary: step.summary || prev.summary,
-      thumb: step.thumb || prev.thumb,
-      expected: step.expected || prev.expected,
-      actual: step.actual || prev.actual,
-      interaction: step.interaction || prev.interaction,
-    })
+const compatibleReference = (left: TraceStep, right: TraceStep) =>
+  (!left.sessionId || !right.sessionId || left.sessionId === right.sessionId)
+  && (left.turn == null || right.turn == null || left.turn === right.turn)
+  && (!left.stepRef || !right.stepRef || left.stepRef === right.stepRef)
+
+function sameProjection(left: TraceStep, right: TraceStep) {
+  if (!left.source || !right.source || left.source === right.source) return false
+  if (!left.sessionId || left.sessionId !== right.sessionId || left.step !== right.step) return false
+  if (!compatibleReference(left, right) || left.event !== right.event) return false
+  if (left.eventSeq != null && right.eventSeq != null && left.eventSeq !== right.eventSeq) return false
+  if (left.timestamp != null && right.timestamp != null && left.timestamp !== right.timestamp) return false
+  if (left.phase && right.phase && left.phase !== right.phase) return false
+  // Match content as well as position: identical operations at different positions remain separate.
+  return (['param', 'attrs', 'summary', 'expected', 'actual', 'status'] as const).every(field =>
+    !left[field] || !right[field] || left[field] === right[field])
+}
+
+function enrichStep(previous: TraceStep, incoming: TraceStep): TraceStep {
+  return {
+    ...previous,
+    turn: incoming.turn ?? previous.turn,
+    eventSeq: incoming.eventSeq ?? previous.eventSeq,
+    phase: incoming.phase || previous.phase,
+    timestamp: incoming.timestamp ?? previous.timestamp,
+    event: incoming.event || previous.event,
+    param: incoming.param || previous.param,
+    attrs: incoming.attrs || previous.attrs,
+    stepRef: incoming.stepRef || previous.stepRef,
+    seconds: incoming.seconds || previous.seconds,
+    status: incoming.status || previous.status,
+    summary: incoming.summary || previous.summary,
+    thumb: incoming.thumb || previous.thumb,
+    expected: incoming.expected || previous.expected,
+    actual: incoming.actual || previous.actual,
+    interaction: incoming.interaction || previous.interaction,
   }
-  return [...merged.values()].sort((a, b) => a.step - b.step)
+}
+
+/** Reconcile overlapping session/run projections without collapsing retries within either source. */
+export function mergeTraceSteps(left: TraceStep[], right: TraceStep[]) {
+  const merged: TraceStep[] = []
+  for (const step of [...left, ...right]) {
+    const index = merged.findIndex(previous => {
+      if (!compatibleReference(previous, step)) return false
+      const sameEvent = step.eventSeq != null && step.sessionId
+        && previous.eventSeq === step.eventSeq && previous.sessionId === step.sessionId
+      const sameLocalRecord = previous.source === step.source && traceKey(previous) === traceKey(step)
+        && (previous.eventSeq == null || step.eventSeq == null || previous.eventSeq === step.eventSeq)
+      return Boolean(sameEvent || sameLocalRecord || sameProjection(previous, step))
+    })
+    if (index < 0) merged.push(step)
+    else merged[index] = enrichStep(merged[index], step)
+  }
+  return merged.sort((a, b) => a.step - b.step)
 }

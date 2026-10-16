@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useSession } from '@/lib/session'
-import { NavLink, Outlet, useMatch, useSearchParams } from 'react-router-dom'
+import { NavLink, Outlet, useMatch, useLocation, useSearchParams } from 'react-router-dom'
 import { Bot, ChevronRight, Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Button, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
 import { CommandPalette } from './CommandPalette'
@@ -27,6 +27,7 @@ const GLOBAL_NAV = [
  * 屏幕上出现两条左导航。现在应用内导航嵌进这一条里，整条可折叠。
  */
 export function WorkShell() {
+  const location = useLocation()
   const uid = useSession((state) => state.user?.user_id || '')
   const appMatch = useMatch('/testing/:appId')
   const appId = appMatch?.params.appId || ''
@@ -119,7 +120,7 @@ export function WorkShell() {
         {/* 外观入口已并入左下角 UserMenu，顶部那条 48px 的 header 就没必要留了 */}
         <main className="flex flex-1 min-h-0 overflow-hidden" style={{ padding: 'var(--w-space-4)' }}>
           <div className="flex min-h-0 flex-1 flex-col">
-            <ErrorBoundary key={uid} label="页面">
+            <ErrorBoundary key={uid} resetKey={location.pathname + location.search} label="页面">
               <Outlet />
             </ErrorBoundary>
           </div>

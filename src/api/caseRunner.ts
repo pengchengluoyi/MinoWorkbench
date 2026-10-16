@@ -24,7 +24,7 @@ export const getCaseLastResults = (appId: string, caseIds: string[]) =>
   })
 
 export const getTestingTask = (taskId: string) =>
-  request<unknown>({ url: `/case-runner/tasks/${taskId}`, method: 'get' })
+  request<unknown>({ url: `/case-runner/tasks/${encodeURIComponent(taskId)}`, method: 'get' })
 
 export const getSessionTrajectory = (sessionId: string) =>
   request<Record<string, unknown>>({ url: `/case-runner/sessions/${encodeURIComponent(sessionId)}/trajectory`, method: 'get' })
@@ -33,10 +33,10 @@ export const getCaseRunnerTraceDetail = (runId: string) =>
   request<Record<string, unknown>>({ url: `/case-runner/traces/${encodeURIComponent(runId)}`, method: 'get' })
 
 export const cancelTestingTask = (taskId: string) =>
-  request({ url: `/case-runner/tasks/${taskId}/cancel`, method: 'post' })
+  request({ url: `/case-runner/tasks/${encodeURIComponent(taskId)}/cancel`, method: 'post' })
 
 export const retryFailedTestingTask = (taskId: string) =>
-  request({ url: `/case-runner/tasks/${taskId}/retry`, method: 'post' })
+  request({ url: `/case-runner/tasks/${encodeURIComponent(taskId)}/retry-failed`, method: 'post' })
 
 /** 应用卡片上的任务计数。appIds 为空时不带参数，避免拉全量。 */
 export const listTestingTaskSummary = (appIds: string[] = []) =>
@@ -48,3 +48,13 @@ export const listTestingTaskSummary = (appIds: string[] = []) =>
 
 export const listCaseRunnerDevices = (onlyOnline = true) =>
   request<unknown>({ url: '/case-runner/devices', method: 'get', params: { only_online: onlyOnline } })
+
+export const recheckTaskWriteSafety = (taskId: string) =>
+  request<{
+    resource_isolated: boolean
+    business_result_unchanged: boolean
+    actions?: { recovered: boolean; mode?: string; reason_code: string }[]
+    baseline_required?: { sn: string; package_id: string; session: string }[]
+  }>({
+    url: `/case-runner/tasks/${encodeURIComponent(taskId)}/write-safety/recheck`, method: 'post', timeout: 120_000,
+  })

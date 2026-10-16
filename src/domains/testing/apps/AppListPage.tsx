@@ -32,7 +32,7 @@ export function AppListPage() {
   const [cursor, setCursor] = useState(0)
   const searchRef = useRef<any>(null)
 
-  const projectList = projects.data || []
+  const projectList = useMemo(() => projects.data || [], [projects.data])
   const appIds = useMemo(
     () => projectList.flatMap((p) => (p.apps || []).map((a) => a.id)).filter(Boolean),
     [projectList],

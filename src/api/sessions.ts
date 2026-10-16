@@ -18,6 +18,7 @@ export interface SessionMeta {
   started_at?: string
   finished_at?: string
   summary?: string
+  binding_record?: { status: string; message?: string; schema_version?: number; binding_id?: string }
   runtime_context?: Record<string, unknown>
   verdict?: Record<string, unknown>
   finalization_id?: string
@@ -101,7 +102,7 @@ export const listSessions = async (params: {
 
 export const getSessionBundle = async (sessionId: string) => {
   const id = encodeURIComponent(sessionId)
-  const [eventsRes, llmRes, metricsRes, turnsRes] = await Promise.all([
+  const [eventsRes, llmRes, metricsRes, turnsRes] = await Promise.allSettled([
     request<SessionEventsData>({
       url: `/case-runner/sessions/${id}/events`,
       method: 'get',
@@ -111,23 +112,29 @@ export const getSessionBundle = async (sessionId: string) => {
     request<SessionMetrics>({ url: `/case-runner/sessions/${id}/metrics`, method: 'get' }),
     request<{ turns?: SessionTurn[] }>({ url: `/case-runner/sessions/${id}/turns`, method: 'get' }),
   ])
-  const events = dataOf(eventsRes)
+  const labels = ['事件流', '模型调用', '统计指标', '回合']
+  const results = [eventsRes, llmRes, metricsRes, turnsRes]
+  const sourceErrors = results.flatMap((result, index) => result.status === 'rejected' ? [{ source: labels[index], error: result.reason as unknown }] : [])
+  if (sourceErrors.length === results.length) throw new AggregateError(sourceErrors.map((item) => item.error), '执行日志的所有来源均读取失败，请重试。')
+  const events = eventsRes.status === 'fulfilled' ? dataOf(eventsRes.value) : undefined
   return {
-    meta: events.meta || null,
-    events: events.events || [],
-    eventTotal: Number(events.total ?? events.meta?.event_count ?? events.events?.length ?? 0),
-    hasMore: Boolean(events.has_more),
-    llm: dataOf(llmRes).items || [],
-    metrics: eventsRes ? dataOf(metricsRes) : null,
-    turns: dataOf(turnsRes).turns || [],
+    meta: events?.meta || null,
+    events: events?.events || [],
+    eventTotal: Number(events?.total ?? events?.meta?.event_count ?? events?.events?.length ?? 0),
+    hasMore: Boolean(events?.has_more),
+    llm: llmRes.status === 'fulfilled' ? dataOf(llmRes.value).items || [] : [],
+    metrics: metricsRes.status === 'fulfilled' ? dataOf(metricsRes.value) : null,
+    turns: turnsRes.status === 'fulfilled' ? dataOf(turnsRes.value).turns || [] : [],
+    sourceErrors,
   }
 }
 
-export const getSessionEventsPage = async (sessionId: string, fromSeq: number) => {
+export const getSessionEventsPage = async (sessionId: string, fromSeq: number, signal?: AbortSignal) => {
   const res = await request<SessionEventsData>({
     url: `/case-runner/sessions/${encodeURIComponent(sessionId)}/events`,
     method: 'get',
     params: { from_seq: fromSeq, limit: 100 },
+    signal,
   })
   const data = dataOf(res)
   return {

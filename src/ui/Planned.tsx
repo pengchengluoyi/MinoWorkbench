@@ -1,50 +1,6 @@
+import { Link } from 'react-router-dom'
 import { PageHeader } from './PageHeader'
 import { EmptyState } from './EmptyState'
-import { Hammer } from 'lucide-react'
-
-/**
- * 还没重建的页面占位。
- * 骨架期让两套导航都能走通，同时把该页排在哪个阶段写明，避免"点进去是空白"。
- */
-export function Planned({
-  title,
-  phase,
-  note,
-  source,
-}: {
-  title: string
-  phase: string
-  note?: string
-  source?: string
-}) {
-  return (
-    <div className="flex flex-col" style={{ minHeight: 0 }}>
-      <PageHeader title={title} count={phase} />
-      <div
-        style={{
-          background: 'var(--w-surface)',
-          border: '1px dashed var(--w-border-strong)',
-          borderRadius: 'var(--w-radius-lg)',
-        }}
-      >
-        <EmptyState
-          icon={<Hammer size={30} strokeWidth={1.5} />}
-          title="这个页面还没重建"
-          hint={
-            <>
-              {note || '按重建方案排期，尚未开工。'}
-              {source && (
-                <>
-                  <br />
-                  <span className="w-mono" style={{ fontSize: 'var(--w-font-meta)' }}>
-                    需求来源：{source}
-                  </span>
-                </>
-              )}
-            </>
-          }
-        />
-      </div>
-    </div>
-  )
+export function Planned({ title }: { title: string; phase: string; note?: string; source?: string }) {
+ return <div className="flex flex-col"><PageHeader title={title} count="暂未提供" /><div className="w-surface-card"><EmptyState title="当前版本暂未提供此页面" hint="此入口目前没有可操作功能。你可以返回应用工作台处理测试任务，或查看当前运行状态。" action={<div className="flex gap-3"><Link to="/testing">返回应用工作台</Link><Link to="/settings/runtime">查看 Scout 节点</Link></div>} /></div></div>
 }

@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { DataTable, EmptyState, PageHeader, Segmented, Skeleton, StatusPill, errText, type DataColumn } from '@/ui'
 import { getCaseResourceCatalog, getTransitionRules, type ResourceKeyEntry, type TransitionRule } from '@/api/adminCatalog'
+import { useUrlState } from '@/hooks/useUrlState'
 import { unwrapOne } from '@/lib/unwrap'
 
 const LAYER: Record<string, string> = {
@@ -32,8 +33,8 @@ export function CaseResourcePage() {
     const rows = keys.data?.entries || []
     return [...rows].sort((a, b) => String(a.key_layer).localeCompare(String(b.key_layer)) || String(a.key_ref).localeCompare(String(b.key_ref)))
   }, [keys.data])
-  const [picked, setPicked] = useState('')
-  const current = entries.find((row) => row.key_ref === picked) || entries[0]
+  const [picked, setPicked] = useUrlState<string>('key', '')
+  const current = picked ? entries.find((row) => row.key_ref === picked) : entries[0]
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -64,7 +65,8 @@ export function CaseResourcePage() {
                   rowKey={(row) => row.key_ref || row.write_category || ''}
                   dataSource={entries}
                   columns={keyColumns}
-                  onRowClick={(row) => setPicked(row.key_ref || '')}
+                  activeRowKey={current?.key_ref}
+                onRowClick={(row) => setPicked(row.key_ref || '')}
                   emptyTitle="目录是空的"
                 />
                 <aside style={{ background: 'var(--w-surface)', border: '1px solid var(--w-border)', borderRadius: 'var(--w-radius-lg)', padding: 16, overflow: 'auto' }}>
@@ -99,7 +101,7 @@ function KeyDetail({ row }: { row: ResourceKeyEntry }) {
       <p style={{ margin: 0, color: 'var(--w-text-secondary)' }}>
         {LAYER[row.key_layer || ''] || row.key_layer || '未分层'}
         {row.kind ? ` · ${row.kind}` : ''}
-        {row.block_id ? ` · 块 ${row.block_id}` : ''}
+        {row.block_id ? <Link to={`/flow-blocks?block=${encodeURIComponent(row.block_id)}`}> · 查看逻辑块 {row.block_id}</Link> : null}
       </p>
       <p style={{ margin: 0, color: 'var(--w-text-tertiary)', fontSize: 12 }}>
         端 {(row.platforms || []).join('、') || '不限'}
@@ -108,9 +110,10 @@ function KeyDetail({ row }: { row: ResourceKeyEntry }) {
       </p>
       {(row.write_examples || []).length ? (
         <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--w-text-secondary)' }}>
-          {(row.write_examples || []).slice(0, 6).map((line) => <li key={line}>{line}</li>)}
+          {(row.write_examples || []).map((line) => <li key={line}>{line}</li>)}
         </ul>
       ) : <p style={{ margin: 0, color: 'var(--w-text-quaternary)' }}>这条没有句式示例。</p>}
+      <pre className="w-read-detail">{JSON.stringify(row, null, 2)}</pre>
     </div>
   )
 }
@@ -143,7 +146,7 @@ const ruleColumns: DataColumn<TransitionRule>[] = [
     key: 'enabled',
     title: '启用',
     width: 88,
-    render: (_: unknown, row) => <StatusPill status={row.enabled ? 'pass' : 'muted'}>{row.enabled ? '启用' : '停用'}</StatusPill>,
+    render: (_: unknown, row) => <StatusPill status={row.enabled === true ? 'pass' : 'muted'}>{row.enabled === true ? '启用' : row.enabled === false ? '停用' : '状态未返回'}</StatusPill>,
   },
   {
     key: 'effects',

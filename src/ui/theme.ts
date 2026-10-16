@@ -7,8 +7,8 @@ import type { ThemeConfig } from 'antd'
  */
 const shared = {
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-  fontSize: 13,
-  fontSizeSM: 12,
+  fontSize: 14,
+  fontSizeSM: 13,
   fontSizeLG: 14,
   borderRadius: 10,
   borderRadiusSM: 8,
@@ -43,12 +43,12 @@ export const lightTheme: ThemeConfig = {
       borderColor: '#eef2f7',
       headerBorderRadius: 0,
     },
-    Button: { fontWeight: 600, controlHeight: 32 },
-    Input: { controlHeight: 32 },
-    Select: { controlHeight: 32 },
+    Button: { fontWeight: 600, controlHeight: 36 },
+    Input: { controlHeight: 36 },
+    Select: { controlHeight: 36 },
     Modal: { borderRadiusLG: 14 },
     Drawer: { paddingLG: 20 },
-    Tabs: { horizontalItemPadding: '10px 14px', titleFontSize: 13 },
+    Tabs: { horizontalItemPadding: '10px 14px', titleFontSize: 14 },
   },
 }
 
@@ -80,11 +80,11 @@ export const darkTheme: ThemeConfig = {
       borderColor: '#222b38',
       headerBorderRadius: 0,
     },
-    Button: { fontWeight: 600, controlHeight: 32 },
-    Input: { controlHeight: 32 },
-    Select: { controlHeight: 32 },
+    Button: { fontWeight: 600, controlHeight: 36 },
+    Input: { controlHeight: 36 },
+    Select: { controlHeight: 36 },
     Modal: { borderRadiusLG: 14 },
     Drawer: { paddingLG: 20 },
-    Tabs: { horizontalItemPadding: '10px 14px', titleFontSize: 13 },
+    Tabs: { horizontalItemPadding: '10px 14px', titleFontSize: 14 },
   },
 }

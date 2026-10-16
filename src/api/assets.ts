@@ -48,7 +48,7 @@ export const getProjectAccounts = (projectId: string, env = '') =>
   })
 
 export const getResourceLogs = (projectId: string, params: { page?: number; page_size?: number } = {}) =>
-  request<{ logs?: ResourceLogRow[] }>({
+  request<{ logs?: ResourceLogRow[]; total?: number }>({
     url: `/project/${projectId}/resource-allocation-logs`,
     method: 'get',
     params: { page: params.page ?? 1, page_size: params.page_size ?? 50 },

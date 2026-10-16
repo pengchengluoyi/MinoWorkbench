@@ -1,8 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
-import { DataTable, EmptyState, StatusPill, type DataColumn } from '@/ui'
+import { Button, Select, DataTable, EmptyState, StatusPill, type DataColumn } from '@/ui'
 import {
   getDeviceAppSessions, getProjectAccounts, getResourceLogs,
   type AccountRow, type DeviceAppSessionRow, type ResourceLogRow,
@@ -15,9 +15,8 @@ type Section = 'accounts' | 'logs' | 'device-apps'
  * 测试资源。三段共用一个面板，由 URL 的 section 参数切换
  * （左栏导航已经负责切 section，这里不再重复画一层 tab —— 省一层嵌套和一行高度）。
  */
-export function AssetsPanel() {
+export function AssetsPanel({ projectId }: { projectId: string }) {
   const [params] = useSearchParams()
-  const projectId = params.get('projectId') || ''
   const section = (params.get('section') || 'accounts') as Section
 
   if (!projectId) {
@@ -72,8 +71,8 @@ function Accounts({ projectId }: { projectId: string }) {
       width: 150,
       render: (_: unknown, r) => (
         <span className="flex items-center gap-1.5">
-          {r.locked ? <StatusPill status="warn">占用中</StatusPill> : <StatusPill status="pass">可用</StatusPill>}
-          {r.registered === false && <StatusPill status="muted">未登记</StatusPill>}
+          {r.locked === true ? <StatusPill status="warn">占用中</StatusPill> : <StatusPill status="muted">{r.locked === false ? '未占用' : '占用未知'}</StatusPill>}
+          <StatusPill status="muted">{r.registered === true ? '已登记' : r.registered === false ? '未登记' : '登记未知'}</StatusPill>
         </span>
       ),
     },
@@ -87,25 +86,26 @@ function Accounts({ projectId }: { projectId: string }) {
     <DataTable<AccountRow>
       viewId="assets.accounts"
       columns={columns}
-      dataSource={q.data}
-      rowKey={(r) => String(r.account_id || r.account_ident || r.username || Math.random())}
+      dataSource={q.data ? withDisplayKeys(q.data) : undefined}
+      rowKey={r => String(r.__viewKey)}
       loading={q.isLoading}
       error={q.isError ? q.error : undefined}
+      onRetry={() => void q.refetch()}
       fill
       emptyTitle="这个项目还没有测试账号"
-      emptyHint="账号可以从号池模板分配，或手工登记。"
+      emptyHint="当前页面仅查看服务端账号目录；账号补齐需通过项目现有资源管理流程，Workbench 尚未提供登记或分配接口。"
     />
   )
 }
 
 function ResourceLogs({ projectId }: { projectId: string }) {
+  const [page, setPage] = useState(1)
   const q = useQuery({
-    queryKey: ['assets', projectId, 'logs'],
-    queryFn: async () =>
-      unwrapList<ResourceLogRow>(await getResourceLogs(projectId), {
-        keys: ['logs'],
-        label: 'GET /project/:id/resource-allocation-logs',
-      }),
+    queryKey: ['assets', projectId, 'logs', page],
+    queryFn: async () => {
+      const response = await getResourceLogs(projectId, { page, page_size: 50 })
+      return { items: unwrapList<ResourceLogRow>(response, { keys: ['logs'], label: '资源日志' }), total: response.data?.total }
+    },
   })
 
   const columns = useMemo<DataColumn<ResourceLogRow>[]>(() => [
@@ -129,11 +129,13 @@ function ResourceLogs({ projectId }: { projectId: string }) {
   return (
     <DataTable<ResourceLogRow>
       viewId="assets.logs"
+      toolbar={<><span>服务端第 {page} 页，每页最多 50 条{q.data?.total != null ? ` · 共 ${q.data.total} 条` : ' · 总量未返回'}</span><Button disabled={page === 1 || q.isFetching} onClick={() => setPage(prev => prev - 1)}>上一页</Button><Button disabled={q.isFetching || (q.data?.items.length || 0) < 50} onClick={() => setPage(prev => prev + 1)}>下一页</Button></>}
       columns={columns}
-      dataSource={q.data}
-      rowKey={(r) => String(r.id || `${r.created_at}-${r.action}`)}
+      dataSource={q.data?.items ? withDisplayKeys(q.data.items) : undefined}
+      rowKey={r => String(r.__viewKey)}
       loading={q.isLoading}
       error={q.isError ? q.error : undefined}
+      onRetry={() => void q.refetch()}
       fill
       emptyTitle="还没有资源日志"
       emptyHint="账号的分配、归还、转移会记录在这里。"
@@ -142,10 +144,11 @@ function ResourceLogs({ projectId }: { projectId: string }) {
 }
 
 function DeviceApps({ projectId }: { projectId: string }) {
+  const [limit, setLimit] = useState(200)
   const q = useQuery({
-    queryKey: ['assets', projectId, 'device-apps'],
+    queryKey: ['assets', projectId, 'device-apps', limit],
     queryFn: async () =>
-      unwrapList<DeviceAppSessionRow>(await getDeviceAppSessions(projectId), {
+      unwrapList<DeviceAppSessionRow>(await getDeviceAppSessions(projectId, limit), {
         keys: ['sessions'],
         label: 'GET /project/:id/device-app-sessions',
       }),
@@ -163,7 +166,7 @@ function DeviceApps({ projectId }: { projectId: string }) {
     },
     { key: 'pkg', title: '包名', dataIndex: 'package_id', ellipsis: true, render: (v: string) => <span className="w-mono">{v || '—'}</span> },
     { key: 'ver', title: '版本', width: 130, render: (_: unknown, r) => r.app_version_display || r.app_version || '—' },
-    { key: 'session', title: '绑定账号', width: 190, render: (_: unknown, r) => r.session_display || r.session_id || '—' },
+    { key: 'session', title: '当时观察的身份', width: 190, render: (_: unknown, r) => r.session_display || '身份未返回' },
     {
       key: 'time',
       title: '观测时间',
@@ -180,11 +183,13 @@ function DeviceApps({ projectId }: { projectId: string }) {
   return (
     <DataTable<DeviceAppSessionRow>
       viewId="assets.deviceApps"
+      toolbar={<><span>历史机态观察 · 最近最多 {limit} 条，不能代表当前登录或准入状态</span><Select aria-label="机态窗口" value={limit} onChange={setLimit} options={[200, 500, 1000].map(value => ({ value, label: `最近 ${value} 条` }))} /></>}
       columns={columns}
-      dataSource={q.data}
-      rowKey={(r) => String(`${r.sn}-${r.package_id}-${r.created_at}`)}
+      dataSource={q.data ? withDisplayKeys(q.data) : undefined}
+      rowKey={r => String(r.__viewKey)}
       loading={q.isLoading}
       error={q.isError ? q.error : undefined}
+      onRetry={() => void q.refetch()}
       fill
       emptyTitle="还没有机态记录"
       emptyHint="执行时观察到的「设备上装了哪个版本、登的哪个账号」会记录在这里。"
@@ -199,3 +204,7 @@ function Card({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
+
+function stableRowKey(row: object) { return JSON.stringify(Object.entries(row).sort(([a], [b]) => a.localeCompare(b))) }
+
+function withDisplayKeys<T extends object>(rows: T[]): (T & { __viewKey: string })[] { const seen = new Map<string, number>(); return rows.map(row => { const id = String((row as Record<string, unknown>).account_id || (row as Record<string, unknown>).id || stableRowKey(row)); const occurrence = seen.get(id) || 0; seen.set(id, occurrence + 1); return { ...row, __viewKey: `${id}:${occurrence}` } }) }

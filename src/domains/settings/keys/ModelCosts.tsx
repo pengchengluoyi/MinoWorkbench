@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { getTestingTask } from '@/api/caseRunner'
+import { unwrapOne } from '@/lib/unwrap'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Input, InputNumber, Select, Skeleton, Alert, errText } from '@/ui'
 import { getModelCosts, type CostFilters, type CostRow } from '@/api/ai'
@@ -9,11 +12,18 @@ const tokens = (value: number | null) => value == null ? '未知' : value.toLoca
 
 export function ModelCosts() {
   const owner = useSession((s) => s.user?.user_id || '')
-  const [draft, setDraft] = useState<CostFilters>({ group_by: 'task' })
-  const [filters, setFilters] = useState<CostFilters>({ group_by: 'task', offset: 0, limit: 100 })
+  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
+  const readFilters = () => parseCostFilters(params)
+  const [draft, setDraft] = useState<CostFilters>(readFilters)
+  const [navigationError, setNavigationError] = useState('')
+  const [filters, setFilters] = useState<CostFilters>(readFilters)
   const query = useQuery({ queryKey: ['account', owner, 'ai', 'costs', filters], queryFn: async () => (await getModelCosts(filters)).data })
   const patch = (values: Partial<CostFilters>) => setDraft((old) => ({ ...old, ...values }))
-  const apply = (values = draft) => { setDraft(values); setFilters({ ...values, offset: 0, limit: 100 }) }
+  const apply = (values = draft) => { setDraft(values); setFilters({ ...values, offset: 0, limit: 100 }); const next = new URLSearchParams(params); next.set('costGroup', values.group_by || 'task'); for (const key of ['task_id','case_id','session_id','start','end'] as const) { if (values[key]) next.set(`cost_${key}`, values[key]!); else next.delete(`cost_${key}`) } if (values.step_index != null) next.set('costStep', String(values.step_index)); else next.delete('costStep'); setParams(next, { replace: false }) }
+  const costRangeKey = new URLSearchParams([...params.entries()].filter(([key]) => key.startsWith('cost'))).toString()
+  useEffect(() => { const incoming = parseCostFilters(new URLSearchParams(costRangeKey)); setDraft(incoming); setFilters(incoming) }, [costRangeKey])
+  const openEvidence = async (row: CostRow) => { setNavigationError(''); try { if (!row.task_id) throw new Error('此记录缺少任务归属，无法定位执行页面'); const task = unwrapOne<{ app_id?: string }>(await getTestingTask(row.task_id)); if (!task?.app_id) throw new Error('任务未返回应用归属'); const query = new URLSearchParams(row.session_id ? { tab: 'session-log', session: row.session_id, logView: 'llm' } : { tab: 'tasks', run: row.task_id }); navigate(`/testing/${encodeURIComponent(task.app_id)}?${query}`) } catch(error) { setNavigationError(errText(error, '读取执行归属失败')) } }
   const data = query.data
   return <section style={{ padding: 20, overflow: 'auto' }}>
     <h2>模型用量与费用</h2>
@@ -26,11 +36,13 @@ export function ModelCosts() {
         { value: 'user', label: '当前用户总计' }, { value: 'task', label: '按任务' }, { value: 'case', label: '按用例' },
         { value: 'step', label: '按步骤' }, { value: 'model', label: '按模型' },
       ]} onChange={(v) => patch({ group_by: v })} style={{ width: 160 }} />
-      <Input aria-label="开始时间" placeholder="开始时间 ISO（含时区）" value={draft.start || ''} onChange={(e) => patch({ start: e.target.value })} style={{ width: 240 }} />
-      <Input aria-label="结束时间" placeholder="结束时间 ISO（含时区）" value={draft.end || ''} onChange={(e) => patch({ end: e.target.value })} style={{ width: 240 }} />
+      <Input aria-label="开始时间" type="datetime-local" value={localDate(draft.start)} onChange={(e) => patch({ start: isoDate(e.target.value) })} style={{ width: 240 }} />
+      <Input aria-label="结束时间" type="datetime-local" value={localDate(draft.end)} onChange={(e) => patch({ end: isoDate(e.target.value) })} style={{ width: 240 }} />
+      <span>时间采用浏览器时区：{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
       <Button type="primary" onClick={() => apply()}>查询费用</Button>
       <Button onClick={() => apply({ group_by: 'task' })}>重置筛选</Button>
     </div>
+    {navigationError && <p role="alert">{navigationError}</p>}
     {query.isError && <Alert type="error" message={errText(query.error, '用量查询失败')} action={<Button onClick={() => void query.refetch()}>重试</Button>} />}
     {query.isFetching && <Skeleton active paragraph={{ rows: 4 }} />}
     {data && !query.isFetching && <>
@@ -41,8 +53,8 @@ export function ModelCosts() {
         <tbody>{data.items.map((row, index) => <tr key={`${row.task_id}/${row.case_id}/${row.session_id}/${row.step_index}/${row.model}/${index}`}>
           <td style={{ padding: 10, maxWidth: 450, overflowWrap: 'anywhere' }}>{[row.task_id || (filters.group_by === 'user' ? '当前用户' : filters.group_by === 'model' ? row.provider_id : '未关联任务'), row.case_id, row.session_id, row.step_index != null ? `步骤 ${row.step_index}` : '', row.model].filter(Boolean).join(' / ')}</td>
           <td>{row.attempts}</td><td>{tokens(row.prompt_tokens)}</td><td>{tokens(row.completion_tokens)}</td><td>{tokens(row.total_tokens)}{row.unknown_usage_attempts > 0 ? '（部分）' : ''}</td><td>{money(row)}</td>
-          <td>{row.task_id && filters.group_by === 'task' && <Button size="small" onClick={() => apply({ ...draft, task_id: row.task_id, group_by: 'case' })}>查看用例</Button>}
-            {row.case_id && filters.group_by === 'case' && <Button size="small" onClick={() => apply({ ...draft, task_id: row.task_id, case_id: row.case_id, group_by: 'step' })}>查看步骤</Button>}</td>
+          <td>{row.task_id && filters.group_by === 'task' && <Button size="small" onClick={() => apply({ ...filters, task_id: row.task_id, group_by: 'case' })}>查看用例</Button>}
+            {row.case_id && filters.group_by === 'case' && <Button size="small" onClick={() => apply({ ...filters, task_id: row.task_id, case_id: row.case_id, group_by: 'step' })}>查看步骤</Button>}{row.task_id && <Button size="small" onClick={() => void openEvidence(row)}>查看执行证据</Button>}</td>
         </tr>)}</tbody>
       </table></div>
       {!data.items.length && <p>该范围暂无已记录调用。历史没有用量账本的请求不自动补估。</p>}
@@ -54,3 +66,8 @@ export function ModelCosts() {
     </>}
   </section>
 }
+
+function localDate(value?: string) { if (!value) return ''; const date = new Date(value); if (!Number.isFinite(date.getTime())) return ''; return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0,16) }
+function isoDate(value: string) { const date = new Date(value); return value && Number.isFinite(date.getTime()) ? date.toISOString() : undefined }
+
+function parseCostFilters(params: URLSearchParams): CostFilters { const result: CostFilters = { group_by: ['user','task','case','step','model'].includes(params.get('costGroup') || '') ? params.get('costGroup')! : 'task', limit: 100, offset: 0 }; for (const key of ['task_id','case_id','session_id','start','end'] as const) if (params.get(`cost_${key}`)) result[key] = params.get(`cost_${key}`)!; const step = Number(params.get('costStep')); if (params.has('costStep') && Number.isSafeInteger(step) && step >= 0) result.step_index = step; return result }

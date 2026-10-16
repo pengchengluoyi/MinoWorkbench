@@ -10,12 +10,14 @@ import { connectRealtime, disconnectRealtime } from '@/lib/realtime'
 interface SessionState {
   user: AuthStatus | null
   role: string
-  /** null = 本地有票据、还没向 Nexus 核对；true/false = 已有结论 */
+  /** null = 尚未核验；false + confirmationError = 核验暂时失败。 */
   loggedIn: boolean | null
   loading: boolean
+  confirmationError: string | null
   refresh: () => Promise<boolean>
   logout: () => Promise<void>
   clear: () => void
+  syncFromStorage: () => void
 }
 
 const clearAccountState = () => {
@@ -25,55 +27,78 @@ const clearAccountState = () => {
   disconnectRealtime()
 }
 
+let pendingRefresh: { epoch: number; promise: Promise<boolean> } | null = null
+
 export const useSession = create<SessionState>((set, get) => ({
   user: null,
   role: '',
-  // 没有票据就不必打 /auth/status。Nexus 不可达时那次请求会挂很久，
-  // 门禁会一直停在「正在确认登录状态」。
   loggedIn: hasToken() ? null : false,
   loading: false,
+  confirmationError: null,
 
   refresh: async () => {
     if (!hasToken()) {
       clearAccountState()
-      set({ loading: false, loggedIn: false, user: null, role: '' })
+      set({ loading: false, loggedIn: false, user: null, role: '', confirmationError: null })
       return false
     }
     const startedEpoch = accountEpoch()
-    set({ loading: true })
-    try {
-      const res = await getAuthStatus()
-      if (startedEpoch !== accountEpoch()) return get().loggedIn === true
-      const data = res?.data || {}
-      // /auth/status 也会顺带下发票据，刷新一下
-      persistAuthTokens(data)
-      const ok = data.logged_in !== false
-      if (get().user?.user_id !== (ok ? data.user_id : undefined)) clearAccountState()
-      set({ user: ok ? data : null, role: normalizeRole(data.role), loggedIn: ok, loading: false })
-      if (ok) connectRealtime(data.ws_token)
-      return ok
-    } catch {
-      if (startedEpoch !== accountEpoch()) return get().loggedIn === true
-      clearAccountState()
-      set({ loading: false, loggedIn: false, user: null, role: '' })
-      return false
+    if (pendingRefresh?.epoch === startedEpoch) return pendingRefresh.promise
+    const promise = (async () => {
+      set({ loading: true, confirmationError: null })
+      try {
+        const res = await getAuthStatus()
+        if (startedEpoch !== accountEpoch()) return get().loggedIn === true
+        const data = res?.data
+        if (!data || typeof data.logged_in !== 'boolean' || (data.logged_in && (typeof data.user_id !== 'string' || !data.user_id.trim()))) {
+          throw new Error('登录状态返回不完整，暂时无法确认身份。')
+        }
+        if (!data.logged_in) {
+          clearAccountState()
+          clearTokens()
+          set({ user: null, role: '', loggedIn: false, loading: false, confirmationError: null })
+          return false
+        }
+        if (get().user?.user_id !== data.user_id) clearAccountState()
+        persistAuthTokens(data)
+        set({ user: data, role: normalizeRole(data.role), loggedIn: true, loading: false, confirmationError: null })
+        connectRealtime(data.ws_token)
+        return true
+      } catch (error) {
+        if (startedEpoch !== accountEpoch()) return get().loggedIn === true
+        const status = (error as { response?: { status?: number } })?.response?.status
+        const expired = status === 401 || status === 403
+        clearAccountState()
+        if (expired) clearTokens()
+        set({ loading: false, loggedIn: false, user: null, role: '', confirmationError: expired ? null : error instanceof Error ? error.message : '登录状态核验失败，请重试。' })
+        return false
+      }
+    })()
+    pendingRefresh = { epoch: startedEpoch, promise }
+    try { return await promise } finally {
+      if (pendingRefresh?.promise === promise) pendingRefresh = null
     }
   },
 
   logout: async () => {
     clearAccountState()
     const startedEpoch = accountEpoch()
-    set({ user: null, role: '', loggedIn: false })
-    try { await logoutAccount() } catch { /* 本地也要清掉 */ }
+    set({ user: null, role: '', loggedIn: false, loading: false, confirmationError: null })
+    try { await logoutAccount() } catch { /* 本地也要退出 */ }
     if (startedEpoch !== accountEpoch()) return
     clearTokens()
-    set({ user: null, role: '', loggedIn: false })
+    set({ user: null, role: '', loggedIn: false, loading: false, confirmationError: null })
   },
 
   clear: () => {
     clearAccountState()
     clearTokens()
-    set({ user: null, role: '', loggedIn: false })
+    set({ user: null, role: '', loggedIn: false, loading: false, confirmationError: null })
+  },
+
+  syncFromStorage: () => {
+    clearAccountState()
+    set({ user: null, role: '', loggedIn: hasToken() ? null : false, loading: false, confirmationError: null })
   },
 }))
 

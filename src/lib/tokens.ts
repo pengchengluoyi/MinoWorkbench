@@ -19,6 +19,7 @@ export const getWsToken = () => safeGet(WS_TOKEN)
 export const setWsToken = (v: string) => safeSet(WS_TOKEN, v)
 export const clearTokens = () => { safeDel(TOKEN); safeDel(WS_TOKEN) }
 export const hasToken = () => !!getToken()
+export const isAuthStorageKey = (key: string | null) => key === TOKEN || key === null
 
 /**
  * 从 /auth/login 或 /auth/status 的返回体里落票据。

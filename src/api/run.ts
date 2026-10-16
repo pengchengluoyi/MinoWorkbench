@@ -1,3 +1,4 @@
+import { usesDesktopExecutor } from '@/constants/platformContract'
 import { request } from '@/lib/request'
 
 export interface RunDevice {
@@ -28,7 +29,7 @@ export interface RunPayload {
   platform?: string
   env_profile?: string
   env_surface?: string
-  action_scheme?: 'visual' | 'dom'
+  action_scheme?: 'visual' | 'dom_preferred'
   async_exec?: boolean
   use_cache?: boolean
   run_type?: string
@@ -48,7 +49,7 @@ export interface RunDeviceContext {
   app_id?: string
   env_surface?: string
   env_profile?: string
-  action_scheme?: 'visual' | 'dom'
+  action_scheme?: 'visual' | 'dom_preferred'
   playwright_headless?: boolean
 }
 
@@ -65,6 +66,6 @@ export const isExecutable = (d: RunDevice): boolean => {
 }
 
 export const deviceFamilyLabel = (d: RunDevice) =>
-  d.platform === 'desktop' ? `PC 桌面 · ${d.os || '系统未知'}` : d.platform === 'web' ? 'Web 浏览器' : `移动设备 · ${d.platform || '平台未知'}`
+  d.platform === 'mac' ? 'Mac 桌面' : d.platform === 'win' ? 'Windows 桌面' : d.platform === 'desktop' ? `PC 桌面 · ${d.os || '系统未知'}` : d.platform === 'web' ? 'Web 浏览器' : `移动设备 · ${d.platform || '平台未知'}`
 
-export const deviceLabel = (d: RunDevice) => `${d.node_name || d.node_id || 'Scout'} / ${deviceFamilyLabel(d)}${d.model && d.platform !== 'desktop' ? ` · ${d.model}` : ''}`
+export const deviceLabel = (d: RunDevice) => `${d.node_name || d.node_id || 'Scout'} / ${deviceFamilyLabel(d)}${d.model && !usesDesktopExecutor(d.platform) ? ` · ${d.model}` : ''}`

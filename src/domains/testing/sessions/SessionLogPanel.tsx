@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Button, DataTable, Select, StatusPill, toStatusKind, type DataColumn } from '@/ui'
 import type { SessionRow } from '@/api/sessions'
@@ -7,11 +7,11 @@ import { SessionDetail } from './SessionDetail'
 
 const DEFAULT_PAGE_SIZE = 20
 const STATUS_OPTIONS = [
-  { value: 'running', label: 'running' },
-  { value: 'pass', label: 'pass' },
-  { value: 'fail', label: 'fail' },
-  { value: 'blocked', label: 'blocked' },
-  { value: 'cancelled', label: 'cancelled' },
+  { value: 'running', label: '执行中' },
+  { value: 'pass', label: '通过' },
+  { value: 'fail', label: '失败' },
+  { value: 'blocked', label: '受阻' },
+  { value: 'cancelled', label: '已取消' },
 ]
 
 /**
@@ -20,9 +20,11 @@ const STATUS_OPTIONS = [
  */
 export function SessionLogPanel({ appId }: { appId: string }) {
   const [params, setParams] = useSearchParams()
-  const status = params.get('sstatus') || ''
-  const page = Math.max(1, Number(params.get('spage') || 1) || 1)
-  const pageSize = Math.max(1, Number(params.get('sps') || DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE)
+  const requestedStatus = params.get('sstatus') || ''
+  const status = STATUS_OPTIONS.some(option => option.value === requestedStatus) ? requestedStatus : ''
+  const pageRaw = Number(params.get('spage'))
+  const page = Number.isFinite(pageRaw) ? Math.min(100000, Math.max(1, Math.trunc(pageRaw) || 1)) : 1
+  const pageSize = [20, 50, 100, 200].includes(Number(params.get('sps'))) ? Number(params.get('sps')) : DEFAULT_PAGE_SIZE
   const sessionId = params.get('session') || ''
 
   const list = useSessionList(appId, status, page, pageSize)
@@ -33,13 +35,21 @@ export function SessionLogPanel({ appId }: { appId: string }) {
       if (v) next.set(k, v)
       else next.delete(k)
     }
-    setParams(next, { replace: true })
+    setParams(next, { replace: !Object.hasOwn(patch, 'session') })
   }
+
+  useEffect(() => {
+    if (!list.isSuccess || list.isFetching) return
+    const lastPage = Math.max(1, Math.ceil(list.data.total / pageSize))
+    if (page > lastPage) {
+      const next = new URLSearchParams(params); next.set('spage', String(lastPage)); setParams(next, { replace: true })
+    }
+  }, [list.data, list.isSuccess, list.isFetching, page, pageSize, params, setParams])
 
   const columns = useMemo<DataColumn<SessionRow>[]>(() => [
     {
       key: 'session_id',
-      title: 'session',
+      title: '执行会话',
       alwaysVisible: true,
       ellipsis: true,
       render: (_: unknown, row) => (
@@ -51,7 +61,7 @@ export function SessionLogPanel({ appId }: { appId: string }) {
       key: 'status',
       title: '状态',
       width: 100,
-      render: (_: unknown, row) => <StatusPill status={toStatusKind(row.status)}>{row.status || '—'}</StatusPill>,
+      render: (_: unknown, row) => <StatusPill status={toStatusKind(row.status)}>{sessionStatusLabel(row.status)}</StatusPill>,
     },
     { key: 'event_count', title: '事件', dataIndex: 'event_count', width: 72, render: (v: number) => v ?? '—' },
     { key: 'started_at', title: '开始', dataIndex: 'started_at', width: 168, ellipsis: true, render: (v: string) => v || '—' },
@@ -89,7 +99,8 @@ export function SessionLogPanel({ appId }: { appId: string }) {
         rowKey="session_id"
         loading={list.isLoading}
         error={list.isError ? list.error : undefined}
-        emptyTitle="还没有 session"
+        onRetry={() => void list.refetch()}
+        emptyTitle="还没有执行会话"
         emptyHint="下发用例之后，每次执行会在这里留下一条记录。点一行查看回合和事件。"
         onRowClick={(row) => setQuery({ session: row.session_id })}
         toolbar={(
@@ -115,4 +126,9 @@ export function SessionLogPanel({ appId }: { appId: string }) {
       />
     </div>
   )
+}
+
+function sessionStatusLabel(status?: string) {
+ const labels: Record<string, string> = { running: '执行中', pass: '通过', fail: '失败', blocked: '受阻', cancelled: '已取消', canceled: '已取消', done: '已结束，结果待核验', completed: '已结束，结果待核验' }
+ return status ? labels[status.toLowerCase()] || `未知状态 · ${status}` : '状态未报告'
 }

@@ -4,6 +4,9 @@ import { Skeleton } from 'antd'
 import { GuestOnly, RequireAdmin, RequireAuth } from './guards'
 import { WorkShell } from '@/layouts/WorkShell'
 import { AdminLayout } from '@/layouts/AdminLayout'
+import { DraftNavigationGuard } from '@/hooks/useUnsavedChanges'
+import { Outlet } from 'react-router-dom'
+import { UnavailableRoute } from '@/ui/UnavailableRoute'
 import { Planned } from '@/ui/Planned'
 
 /** 页面级懒加载。新增真实页面一律走这里，不要直接 import。 */
@@ -36,7 +39,7 @@ const lazyPage = (node: ReactNode) => (
  * 两套导航独立，原 URL 全部保留，不加前缀（方案 §5.1）。
  * Studio 用 /testing /settings，Console 用 /dashboard /catalog 等，实测零冲突。
  */
-export const router = createBrowserRouter([
+export const router = createBrowserRouter([{ element: <><DraftNavigationGuard /><Outlet /></>, children: [
   {
     path: '/login',
     element: <GuestOnly>{lazyPage(<LoginPage />)}</GuestOnly>,
@@ -72,7 +75,7 @@ export const router = createBrowserRouter([
       // 已下线功能的旧 URL：不保留页面，收敛回落地页
       { path: '/dialogue', element: <Navigate to="/testing" replace /> },
       { path: '/agents', element: <Navigate to="/testing" replace /> },
-      { path: '/report/*', element: <Navigate to="/testing" replace /> },
+      { path: '/report/*', element: <UnavailableRoute /> },
       { path: '/settings/schedule', element: <Navigate to="/testing" replace /> },
       { path: '/timeline', element: <Navigate to="/settings/runtime" replace /> },
     ],
@@ -82,7 +85,7 @@ export const router = createBrowserRouter([
   {
     element: <RequireAuth><RequireAdmin><AdminLayout /></RequireAdmin></RequireAuth>,
     children: [
-      { path: '/dashboard', element: <Planned title="工作台" phase="阶段 2" source="Dashboard/index.vue 195 行" /> },
+      { path: '/dashboard', element: <Navigate to="/health" replace /> },
       { path: '/health', element: lazyPage(<HealthPage />) },
       { path: '/audit', element: lazyPage(<AuditPage />) },
       { path: '/catalog', element: <Planned title="项目与应用" phase="阶段 2" source="Catalog/index.vue 121 行" /> },
@@ -112,5 +115,5 @@ export const router = createBrowserRouter([
     ],
   },
 
-  { path: '*', element: <Navigate to="/testing" replace /> },
-])
+  { path: '*', element: <UnavailableRoute /> },
+] }])

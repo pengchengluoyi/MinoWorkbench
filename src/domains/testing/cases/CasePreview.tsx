@@ -1,10 +1,15 @@
+import { normalizePlatforms, type PlatformInput } from '@/constants/appPlatforms'
 import { Button } from '@/ui'
 import type { CaseRow } from '@/api/projectCases'
 import { CasePreviewLegend, CaseScriptSections } from './CaseScriptSections'
 import { V5Publication } from './V5Publication'
+import { CaseVersionChain } from './CaseVersionChain'
+import { CaseReview } from './CaseReview'
 
 /** 点开一条用例。三栏从左到右是前置、操作、预期，和列表同一套原文/预览。 */
-export function CasePreview({ row, projectId, onBack }: { row: CaseRow; projectId: string; onBack: () => void }) {
+export function CasePreview({ row, projectId, platforms, onBack }: { row: CaseRow; projectId: string; platforms?: PlatformInput; onBack: () => void }) {
+  const scope = normalizePlatforms(row.platform || platforms).map(value => value.toLowerCase())
+  const strictWeb = scope.length > 0 && scope.every(value => value === 'web')
   const meta = [row.module, row.platform].filter(Boolean).join(' · ')
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ gap: 12 }}>
@@ -16,8 +21,10 @@ export function CasePreview({ row, projectId, onBack }: { row: CaseRow; projectI
       </div>
       <CasePreviewLegend />
       <div className="min-h-0 flex-1 overflow-y-auto">
+        <CaseVersionChain row={row} projectId={projectId} strictWeb={strictWeb} />
+        <CaseReview projectId={projectId} caseId={row.case_id} />
         <CaseScriptSections row={row} />
-        <V5Publication projectId={projectId} row={row} />
+        <V5Publication projectId={projectId} row={row} enabled={strictWeb} />
       </div>
     </div>
   )

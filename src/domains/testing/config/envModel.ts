@@ -1,9 +1,10 @@
+import { environmentChannel } from '@/constants/platformContract'
 /** 项目环境文档。应用（channel）不是写死的三列，每个环境各自有启动标识和登录配置。 */
 
 export interface EnvChannel {
   id: string
   kind: string
-  platform: string
+  platform?: string
   alias: string
   app_identifier: string
   third_party: boolean
@@ -30,6 +31,7 @@ export interface SeqSlot { start: string; next: string }
 export interface EnvEntry { key: string; label: string }
 
 export interface EnvDocument {
+  [key: string]: unknown
   default_profile: string
   environments: EnvEntry[]
   channels: EnvChannel[]
@@ -48,21 +50,23 @@ export const CHANNEL_KINDS = [
 
 export const APP_PLATFORMS = [
   { id: 'android', label: '安卓', field: 'package', placeholder: 'com.example.app' },
-  { id: 'ios', label: 'iOS', field: 'bundle', placeholder: 'com.example.app' },
-  { id: 'pc', label: 'PC', field: 'path', placeholder: '完整 EXE 路径或 AUMID' },
+  { id: 'win', label: 'Windows', field: 'path', placeholder: '完整 EXE 路径或 AUMID' },
   { id: 'mac', label: 'Mac', field: 'bundle', placeholder: 'com.example.desktop' },
 ]
 
 const PRESETS: EnvChannel[] = [
   { id: 'android', kind: 'app', platform: 'android', alias: '', app_identifier: '', third_party: false, label: '安卓', field: 'package', placeholder: 'com.example.app' },
-  { id: 'ios', kind: 'app', platform: 'ios', alias: '', app_identifier: '', third_party: false, label: 'iOS', field: 'bundle', placeholder: 'com.example.app' },
   { id: 'web', kind: 'web', platform: 'web', alias: '', app_identifier: '', third_party: false, label: 'Web', field: 'base_url', placeholder: 'https://test.example.com' },
-  { id: 'pc', kind: 'app', platform: 'pc', alias: '', app_identifier: '', third_party: false, label: 'PC', field: 'path', placeholder: '完整 EXE 路径或 AUMID' },
+  { id: 'win', kind: 'app', platform: 'win', alias: '', app_identifier: '', third_party: false, label: 'Windows', field: 'path', placeholder: '完整 EXE 路径或 AUMID' },
   { id: 'mac', kind: 'app', platform: 'mac', alias: '', app_identifier: '', third_party: false, label: 'Mac', field: 'bundle', placeholder: 'com.example.desktop' },
-  { id: 'server', kind: 'server', platform: 'server', alias: '', app_identifier: '', third_party: false, label: 'Server', field: 'base_url', placeholder: 'https://api.example.com' },
+  { id: 'server', kind: 'server', alias: '', app_identifier: '', third_party: false, label: 'Server', field: 'base_url', placeholder: 'https://api.example.com' },
 ]
 
-const PRESET_BY_ID = Object.fromEntries(PRESETS.map((c) => [c.id, c]))
+const PRESET_BY_ID: Record<string, Partial<EnvChannel>> = {
+  ...Object.fromEntries(PRESETS.map((c) => [c.id, c])),
+  ios: { id: 'ios', kind: 'app', platform: 'ios', label: 'iOS', field: 'bundle' },
+  pc: { id: 'pc', kind: 'app', platform: 'pc', label: 'PC', field: 'path' },
+}
 const ENV_LABELS: Record<string, string> = { dev: '开发', test: '测试', pre: '预发', prod: '正式' }
 const OTP_MODES = new Set(['auto', 'fixed', 'gmail', 'hitl'])
 const LOGIN_MODES = new Set(['auto', 'pool', 'hitl'])
@@ -106,7 +110,9 @@ export function normalizeSecrets(raw: unknown): EnvSecrets {
   const loginMode = modeOf(loginSrc.mode ?? phone.mode, LOGIN_MODES, 'auto')
   const kind = LOGIN_KINDS.has(String(loginSrc.kind || '').toLowerCase()) ? String(loginSrc.kind).toLowerCase() : 'phone'
   return {
+    ...src,
     otp: {
+      ...otp,
       mode: modeOf(otp.mode, OTP_MODES, 'auto'),
       fixed: String(otp.fixed || '').slice(0, 32),
       from_allowlist: (allow as unknown[]).slice(0, 20).map((s) => String(s).slice(0, 120)),
@@ -114,8 +120,8 @@ export function normalizeSecrets(raw: unknown): EnvSecrets {
       poll_interval_ms: Math.min(30000, Math.max(1000, Number(otp.poll_interval_ms) || 3000)),
       max_wait_ms: Math.min(180000, Math.max(5000, Number(otp.max_wait_ms) || 90000)),
     },
-    login: { mode: loginMode, kind },
-    phone: { mode: loginMode },
+    login: { ...loginSrc, mode: loginMode, kind },
+    phone: { ...phone, mode: loginMode },
   }
 }
 
@@ -127,7 +133,7 @@ export function normalizeSlot(raw: unknown, fallback = ''): SeqSlot {
   let next = digits(src.next)
   if (!start && fallback) start = fallback
   if (!next && start) next = start
-  return { start, next }
+  return { ...src, start, next }
 }
 
 export const usesPhone = (s: EnvSecrets) => s.login.kind === 'phone'
@@ -160,11 +166,11 @@ export function channelConfigVar(ch: EnvChannel) {
 function normalizeChannel(raw: unknown, seen: Set<string>): EnvChannel | null {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const alias = String(src.alias || '').trim().slice(0, 24)
-  let id = slugEnvKey(String(src.id || src.key || ''), '')
+  let id = String(src.id || src.key || '')
   const preset = PRESET_BY_ID[String(src.platform || id || '')] || PRESET_BY_ID[id]
-  const kind = String(src.kind || preset?.kind || 'web')
-  const platform = String(src.platform || preset?.platform || (kind === 'app' ? 'android' : kind))
-  if (!id && preset && !seen.has(preset.id)) id = preset.id
+  const kind = String(src.kind || preset?.kind || '')
+  const platform = String(Object.hasOwn(src, 'platform') ? src.platform : (src.kind ? '' : preset?.platform || ''))
+  if (!id && preset?.id && !seen.has(preset.id)) id = preset.id
   if (!id) {
     const stem = slugEnvKey(alias, platform)
     id = stem === platform ? platform : `${platform}.${stem}`
@@ -178,7 +184,7 @@ function normalizeChannel(raw: unknown, seen: Set<string>): EnvChannel | null {
   return {
     id,
     kind,
-    platform,
+    ...(kind !== 'server' || Object.hasOwn(src, 'platform') ? { platform } : {}),
     alias,
     app_identifier: String(src.app_identifier || '').trim() || (alias ? appIdentifierFromAlias(alias) : ''),
     third_party: src.third_party == null ? Boolean(alias) : Boolean(src.third_party),
@@ -206,7 +212,7 @@ export function normalizeEnvDoc(raw: unknown): EnvDocument {
     Object.values(profileMap || {}).forEach((snap) => {
       if (snap && typeof snap === 'object') Object.keys(snap).forEach((k) => inferred.add(k))
     })
-    const want = inferred.size ? [...inferred] : ['android', 'ios', 'web']
+    const want = inferred.size ? [...inferred] : ['mac', 'win', 'android', 'web', 'server']
     channels = want.map((id) => normalizeChannel(PRESET_BY_ID[id] || { id, label: id, field: 'value' }, seen)).filter(Boolean) as EnvChannel[]
   }
 
@@ -235,10 +241,11 @@ export function normalizeEnvDoc(raw: unknown): EnvDocument {
   const profiles: EnvDocument['profiles'] = {}
   for (const env of ordered) {
     const snap = (profileMap?.[env.key] && typeof profileMap[env.key] === 'object' ? profileMap[env.key] : {}) as Record<string, Record<string, string>>
-    profiles[env.key] = {}
+    profiles[env.key] = { ...snap }
     for (const ch of channels) {
       const block = (snap[ch.id] && typeof snap[ch.id] === 'object' ? snap[ch.id] : {}) as Record<string, string>
       profiles[env.key][ch.id] = {
+        ...block,
         [ch.field]: String(block[ch.field] || block.value || block.package || block.bundle || block.base_url || block.path || '').trim(),
       }
     }
@@ -260,7 +267,8 @@ export function normalizeEnvDoc(raw: unknown): EnvDocument {
   }
 
   return {
-    default_profile: ordered[0]?.key || 'test',
+    ...(looksWrapped ? src : {}),
+    default_profile: envSet.has(String(src.default_profile)) ? String(src.default_profile) : ordered[0]?.key || 'test',
     environments: ordered,
     channels,
     pipeline: ordered.map((e) => e.key),
@@ -275,9 +283,9 @@ export function buildPayload(doc: EnvDocument): EnvDocument {
   const keys = doc.environments.map((e) => e.key)
   const profiles: EnvDocument['profiles'] = {}
   for (const env of doc.environments) {
-    profiles[env.key] = {}
+    profiles[env.key] = { ...doc.profiles[env.key] }
     for (const ch of doc.channels) {
-      profiles[env.key][ch.id] = { [ch.field]: String(doc.profiles[env.key]?.[ch.id]?.[ch.field] || '').trim() }
+      profiles[env.key][ch.id] = { ...doc.profiles[env.key]?.[ch.id], [ch.field]: String(doc.profiles[env.key]?.[ch.id]?.[ch.field] || '').trim() }
     }
   }
   const secrets: EnvDocument['channel_secrets'] = {}
@@ -299,7 +307,8 @@ export function buildPayload(doc: EnvDocument): EnvDocument {
     }
   }
   return {
-    default_profile: keys[0] || 'test',
+    ...doc,
+    default_profile: keys.includes(doc.default_profile) ? doc.default_profile : keys[0] || 'test',
     environments: doc.environments.map((e) => ({ key: e.key, label: e.label || e.key })),
     channels: doc.channels,
     pipeline: keys,
@@ -308,4 +317,25 @@ export function buildPayload(doc: EnvDocument): EnvDocument {
     channel_gmail_alias: gmail,
     channel_phone_seq: phone,
   }
+}
+
+
+export function environmentWriteIssues(doc: EnvDocument): string[] {
+  const seen = new Set<string>()
+  const issues: string[] = []
+  if (!doc.channels.length) issues.push('至少需要一个渠道')
+  for (const ch of doc.channels) {
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(ch.id) || seen.has(ch.id)) issues.push(`渠道 ID 无效或重复：${ch.id}`)
+    seen.add(ch.id)
+    try { environmentChannel({ ...ch }) } catch {
+      issues.push(`渠道「${channelTitle(ch)}」的平台需迁移确认（${ch.platform ?? '未设置'}）；目标平台限 mac / win / android / web，服务渠道不设平台`)
+    }
+  }
+  return issues
+}
+
+export function buildWritePayload(doc: EnvDocument): EnvDocument {
+  const issues = environmentWriteIssues(doc)
+  if (issues.length) throw new Error(issues.join('；'))
+  return buildPayload(doc)
 }

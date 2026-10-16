@@ -48,7 +48,7 @@ export const useAppTaskStats = (appIds: string[]) =>
         const res = await listTestingTaskSummary(appIds)
         const raw = (res?.data as any)?.items ?? res?.data
         const list: any[] = Array.isArray(raw) ? raw : []
-        if (list.length) {
+        if (Array.isArray(raw)) {
           const byId: Record<string, AppTaskStat> = {}
           for (const row of list) {
             const id = row.app_id || row.appId
@@ -62,8 +62,10 @@ export const useAppTaskStats = (appIds: string[]) =>
           }
           return { byId, degraded: false }
         }
-      } catch {
-        // 落到 runs 兜底
+        return { byId: {}, degraded: true }
+      } catch (error) {
+        if (![404, 405].includes(Number((error as { response?: { status?: number } }).response?.status))) return { byId: {}, degraded: true }
+        // 旧接口明确不支持时才读取最近运行窗口
       }
 
       try {
@@ -82,7 +84,7 @@ export const useAppTaskStats = (appIds: string[]) =>
             total: prev.total ?? run.total,
           }
         }
-        return { byId, degraded: false }
+        return { byId, degraded: true }
       } catch {
         return { byId: {}, degraded: true }
       }

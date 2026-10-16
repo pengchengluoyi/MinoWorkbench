@@ -1,20 +1,25 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { PlatformInput } from '@/constants/appPlatforms'
+import { useSession } from '@/lib/session'
 import { usePersistedFlag } from '@/hooks/usePersistedFlag'
 import { useSearchParams } from 'react-router-dom'
 import { CircleSlash, ExternalLink, Search, TriangleAlert, Upload } from 'lucide-react'
 import {
-  Button, DataTable, EmptyState, Input, Segmented, Skeleton, StatusPill, errText, useFeedback,
+  Button, DataTable, EmptyState, Input, Modal, Segmented, Skeleton, StatusPill, errText, useFeedback,
   type DataColumn,
 } from '@/ui'
 import { deleteProjectCases, type CaseRow } from '@/api/projectCases'
 import { ModuleFilter } from './ModuleFilter'
 import { SavedScriptField } from './SavedScriptField'
 import { RunBar, type DispatchedRun } from './RunBar'
-import { CaseImportDialog } from './CaseImportDialog'
 import { CasePreview } from './CasePreview'
+import { CaseVersionStatus } from './CaseVersionChain'
 import { caseKeys, useCaseModules, useCasePage, useLastResults, useProjectCase, type LastResult } from './queries'
 import { beginListNavigation, useListPerformance } from '../workbench/performance'
+
+const CaseImportDialog = lazy(() => import('./CaseImportDialog').then(module => ({ default: module.CaseImportDialog })))
 
 type ResultFilter = 'all' | 'failed' | 'never'
 
@@ -29,7 +34,20 @@ const EMPTY_CASES: CaseRow[] = []
  * 2. 模块树降级为筛选器，不当导航
  * 3. 下发后**不跳页**，就地出现执行条
  */
-export function CasesPanel({ appId, projectId }: { appId: string; projectId: string }) {
+type CasesPanelProps = { appId: string; projectId: string; platforms?: PlatformInput }
+export function CasesPanel(props: CasesPanelProps) {
+  const accountId = useSession(state => state.user?.user_id || '')
+  const [importOpen, setImportOpen] = useState(false)
+  const [importLoaded, setImportLoaded] = useState(false)
+  useEffect(() => { setImportOpen(false); setImportLoaded(false) }, [props.projectId, accountId])
+  return <>
+    <CasesPanelContent {...props} onImport={() => { setImportLoaded(true); setImportOpen(true) }} />
+    {importLoaded && <Suspense fallback={importOpen ? <Modal open title="正在打开用例导入" footer={null} onCancel={() => setImportOpen(false)}><Skeleton active paragraph={{ rows: 3 }} /></Modal> : null}>
+      <CaseImportDialog key={`${props.projectId}:${accountId}`} projectId={props.projectId} open={importOpen} onClose={() => setImportOpen(false)} />
+    </Suspense>}
+  </>
+}
+function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanelProps & { onImport: () => void }) {
   const fb = useFeedback()
   const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
@@ -42,7 +60,8 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
   const page = Number.isFinite(pageValue) ? Math.max(1, Math.trunc(pageValue) || 1) : 1
   const sizeValue = Number(params.get('caseSize'))
   const size = [20, 50, 100, 200].includes(sizeValue) ? sizeValue : 50
-  const cases = useCasePage(projectId, { appId, page, size, search: kw, module: moduleKey, result: resultFilter })
+  const settledSearch = useDebouncedValue(kw)
+  const cases = useCasePage(projectId, { appId, page, size, search: settledSearch, module: moduleKey, result: resultFilter })
   const modules = useCaseModules(projectId)
   const rows = cases.data?.items ?? EMPTY_CASES
   useListPerformance(appId, 'cases', cases.isSuccess && !params.get('case'), cases.isError, !!cases.data,
@@ -61,17 +80,19 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
     setParams(next, { replace: true })
   }
   useEffect(() => {
-    if (cases.isSuccess && page > 1 && !rows.length && cases.data.total > 0) {
+    if (cases.isSuccess && !cases.isFetching && page > Math.max(1, Math.ceil(cases.data.total / size))) {
       const next = new URLSearchParams(params)
-      next.set('casePage', String(Math.ceil(cases.data.total / size)))
+      next.set('casePage', String(Math.max(1, Math.ceil(cases.data.total / size))))
       setParams(next, { replace: true })
     }
-  }, [cases.isSuccess, cases.data, page, rows.length, size, params, setParams])
+  }, [cases.isSuccess, cases.isFetching, cases.data, page, size, params, setParams])
   const [selected, setSelected] = useState<React.Key[]>([])
+  const [selectionLabels, setSelectionLabels] = useState<Record<string, string>>({})
+  useEffect(() => { if (rows.length) setSelectionLabels(prev => ({ ...prev, ...Object.fromEntries(rows.map(row => [row.case_id, row.title || row.case_id])) })) }, [rows])
   const remove = useMutation({
     mutationFn: (ids: string[]) => deleteProjectCases(projectId, ids),
     onSuccess: (_res, ids) => {
-      setSelected([])
+      setSelected(prev => prev.filter(id => !ids.includes(String(id))))
       void qc.invalidateQueries({ queryKey: caseKeys.list(projectId) })
       fb.ok(`已删除 ${ids.length} 条用例`)
     },
@@ -82,14 +103,13 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
     if (!ids.length) return
     const ok = await fb.confirm({
       title: `删除选中的 ${ids.length} 条用例？`,
-      content: '删除后不能从这里恢复。',
+      content: <div><p>删除后不能从这里恢复。包含不在当前页的已选用例，请核对完整清单。</p><ul style={{ maxHeight: 280, overflow: 'auto', paddingLeft: 20 }}>{ids.map(id => <li key={id} style={{ overflowWrap: 'anywhere' }}>{selectionLabels[id] || '名称未读取'} · {id}</li>)}</ul></div>,
       okText: '删除',
       danger: true,
     })
     if (ok) remove.mutate(ids)
   }
   const [dispatched, setDispatched] = useState<DispatchedRun | null>(null)
-  const [importOpen, setImportOpen] = useState(false)
   const previewId = params.get('case') || ''
   const preview = useProjectCase(projectId, previewId)
 
@@ -109,6 +129,7 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
           <div className="case-identity-meta"><span>{row.module || '未分组'}</span>{row.platform ? <span>{row.platform}</span> : null}</div>
           <div className="case-identity-result">{result || <StatusPill status={last?.status === 'pass' ? 'pass' : last?.status === 'fail' ? 'fail' : 'muted'}>{last?.status === 'pass' ? '通过' : last?.status === 'fail' ? '失败' : '其他'}</StatusPill>}</div>
           {last?.status === 'fail' && last.reason ? <div className="case-identity-reason">{last.reason}</div> : null}
+          <CaseVersionStatus row={row} />
         </div>
       },
     },
@@ -143,18 +164,6 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
 
   if (cases.isLoading) return <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
 
-  if (cases.isError) {
-    return (
-      <Card>
-        <EmptyState
-          icon={<TriangleAlert size={28} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
-          title="读取用例失败"
-          hint={errText(cases.error, '确认 Nexus 可达，以及这个项目下确实有用例。')}
-          action={<Button size="small" onClick={() => void cases.refetch()}>重试</Button>}
-        />
-      </Card>
-    )
-  }
 
   if (previewId) {
     if (preview.isPending) return <Skeleton active paragraph={{ rows: 8 }} />
@@ -166,14 +175,14 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
         setParams(next, { replace: true })
       }}>返回列表</Button>
     </>} /></Card>
-    return <CasePreview row={preview.data!} projectId={projectId} onBack={() => {
+    return <CasePreview row={preview.data!} projectId={projectId} platforms={platforms} onBack={() => {
       const next = new URLSearchParams(params)
       next.delete('case')
       setParams(next, { replace: true })
     }} />
   }
 
-  if (!cases.data?.total && !kw && !moduleKey && resultFilter === 'all') {
+  if (cases.isSuccess && !cases.data?.total && !kw && !moduleKey && resultFilter === 'all') {
     return (
       <>
         <Card>
@@ -181,10 +190,10 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
             icon={<CircleSlash size={28} strokeWidth={1.5} />}
             title="这个项目还没有用例"
             hint="从表格导入。导入前会先预览，冲突的行默认跳过。"
-            action={<Button size="small" icon={<Upload size={13} />} onClick={() => setImportOpen(true)}>导入用例</Button>}
+            action={<Button size="small" icon={<Upload size={13} />} onClick={onImport}>导入用例</Button>}
           />
         </Card>
-        <CaseImportDialog key={projectId} projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
+
       </>
     )
   }
@@ -239,6 +248,8 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
             dataSource={rows}
             rowKey="case_id"
             loading={cases.isFetching && !cases.data}
+            error={cases.isError ? cases.error : undefined}
+            onRetry={() => void cases.refetch()}
             pagination={{ page, pageSize: size, total: cases.data?.total || 0,
               onChange: (next, nextSize) => updateFilters({ casePage: String(next), caseSize: String(nextSize) }, false) }}
             fill
@@ -266,7 +277,7 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
                 <span style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
                   {rows.length} / {cases.data?.total || 0}
                 </span>
-                <Button size="small" icon={<Upload size={13} />} onClick={() => setImportOpen(true)}>导入</Button>
+                <Button size="small" icon={<Upload size={13} />} onClick={onImport}>导入</Button>
               </>
             }
             selection={{
@@ -279,16 +290,20 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
             onRowClick={(row) => {
               const next = new URLSearchParams(params)
               next.set('case', row.case_id)
-              setParams(next, { replace: true })
+              setParams(next, { replace: false })
             }}
           />
           {lastResults.isError ? <span role="alert" style={{ color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)' }}>上次结果读取失败。<Button size="small" type="text" onClick={() => void lastResults.refetch()}>重试</Button></span> : null}
+          <p style={{ margin: '4px 0', color: 'var(--w-text-tertiary)', fontSize: 12 }}>用例列表为当前应用范围；左侧模块统计为项目范围，筛选结果以本列表为准。</p>
           {modules.isError ? <span role="alert" style={{ color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)' }}>模块统计读取失败。<Button size="small" type="text" onClick={() => void modules.refetch()}>重试</Button></span> : null}
 
           <RunBar
             appId={appId}
             projectId={projectId}
             selected={selected.map(String)}
+            labels={selectionLabels}
+            currentPageIds={rows.map(row => row.case_id)}
+            onRemove={id => setSelected(prev => prev.filter(key => String(key) !== id))}
             onClear={() => setSelected([])}
             deleting={remove.isPending}
             onDelete={() => void removeSelected()}
@@ -296,7 +311,7 @@ export function CasesPanel({ appId, projectId }: { appId: string; projectId: str
           />
         </div>
       </div>
-      <CaseImportDialog key={projectId} projectId={projectId} open={importOpen} onClose={() => setImportOpen(false)} />
+
     </div>
   )
 }

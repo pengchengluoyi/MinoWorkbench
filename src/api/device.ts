@@ -1,4 +1,5 @@
 import { request, type NexusEnvelope } from '@/lib/request'
+import { unwrapList } from '@/lib/unwrap'
 
 export interface DeviceRow {
   sn: string
@@ -12,22 +13,11 @@ export interface DeviceRow {
   [key: string]: unknown
 }
 
-const asList = (res: NexusEnvelope<unknown>): DeviceRow[] => {
-  const data = res?.data
-  if (Array.isArray(data)) return data as DeviceRow[]
-  if (data && typeof data === 'object') {
-    const obj = data as Record<string, unknown>
-    for (const key of ['devices', 'list', 'items']) {
-      if (Array.isArray(obj[key])) return obj[key] as DeviceRow[]
-    }
-  }
-  return []
-}
 
 /** 设备列表。密码只留「已配置」标记，不把明文放进界面状态。 */
 export const listDevices = async (): Promise<DeviceRow[]> => {
   const res = await request({ url: '/device/list', method: 'get' })
-  return asList(res).map((item) => {
+  return unwrapList<DeviceRow>(res, { keys: ['devices', 'list', 'items'], label: 'GET /device/list' }).map((item) => {
     const next = { ...item }
     if (next.password) next.password_configured = true
     delete next.password

@@ -1,29 +1,26 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import * as XLSX from 'xlsx'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, InputNumber, Modal, Select, StatusPill, errText, useFeedback } from '@/ui'
-import { cancelImportPreview, commitCaseImport, getImportPreview, listImportRequirements, previewCaseImport, retryImportPreviewRow, type ImportPreviewRow } from '@/api/projectCases'
+import { cancelImportPreview, commitCaseImport, getCaseImportReceipt, resumeCaseImportReceipt, getImportPreview, listImportRequirements, previewCaseImport, retryImportPreviewRow, type ImportPreviewRow } from '@/api/projectCases'
 import { getProjectEnv } from '@/api/projectEnv'
 import { unwrapOne } from '@/lib/unwrap'
 import { channelTitle, normalizeEnvDoc } from '../config/envModel'
 import { caseKeys } from './queries'
 import {
-  FIELD_OPTS, FLAG_LABELS, detectHeaderRow, headerRowLooksValid, suggestColumnMap, suggestSkipRows,
+  FIELD_OPTS, FLAG_LABELS, detectHeaderRow, headerRowLooksValid, suggestColumnMap,
 } from './caseImportTable'
+import { importSheetGrid, workbookSheets, resolveSkipRows, MAX_IMPORT_FILE_BYTES, MAPPING_PAGE_SIZE, type ImportSheet } from './caseImportWorkbook'
+import { CaseImportResult } from './CaseImportResult'
+import { ImportConflictReview } from './ImportConflictReview'
+import { buildImportReceipt, type ImportReceipt } from './caseImportReceipt'
+import { useSession } from '@/lib/session'
+import { decodeImportRecovery, importRecoveryKey, restoreImportDecisions, type ImportRecovery } from './importRecovery'
 import { CasePreviewLegend, CaseScriptSections } from './CaseScriptSections'
 import { importDecision, mergePreviewRows, recordOf, rowAttention } from './caseUnderstanding'
 import './CaseImportDialog.css'
 
-type Step = 'file' | 'map' | 'preview'
-
-function cellText(value: unknown) {
-  if (value == null) return ''
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 10)
-  return String(value)
-    .replace(/_x([0-9A-Fa-f]{4})_/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-}
+type Step = 'file' | 'sheet' | 'map' | 'preview' | 'result'
 
 function remarkOf(row: ImportPreviewRow) {
   const remark = String(row.remark || '').trim()
@@ -37,19 +34,35 @@ function selectable(row: ImportPreviewRow) {
 }
 
 /**
- * 导入分三步：选文件、核对列名并跳过表头、看解析结果再写入。
+ * 导入按文件、工作表、字段映射、解析审阅逐层推进。单表文件可直接映射。
  * 列对错了就不能直接进库，所以解析之前必须能改列名行和字段映射。
  */
 export function CaseImportDialog({ projectId, open, onClose }: { projectId: string; open: boolean; onClose: () => void }) {
   const fb = useFeedback()
   const qc = useQueryClient()
+  const owner = useSession(state => state.user?.user_id || '')
+  const storageKey = importRecoveryKey(owner, projectId)
+  const [recovery, setRecovery] = useState(() => {
+    try { return decodeImportRecovery(sessionStorage.getItem(storageKey), owner, projectId) }
+    catch { return null }
+  })
+  const [storageError, setStorageError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const commitStarted = useRef(false)
+  const requestId = useRef('')
+  const [receipt, setReceipt] = useState<ImportReceipt | null>(null)
+  const [cancelState, setCancelState] = useState<'active' | 'stopped' | 'unknown'>('active')
   const [step, setStep] = useState<Step>('file')
   const [busy, setBusy] = useState(false)
   const [fileName, setFileName] = useState('')
   const [table, setTable] = useState<string[][]>([])
   const [headerRow, setHeaderRow] = useState(0)
-  const [skip, setSkip] = useState<number[]>([])
+  const [skipOverrides, setSkipOverrides] = useState<Record<number, boolean>>({})
+  const workbook = useRef<XLSX.WorkBook | null>(null)
+  const [sheets, setSheets] = useState<ImportSheet[]>([])
+  const [sheetName, setSheetName] = useState('')
+  const [readPhase, setReadPhase] = useState('')
+  const [tablePage, setTablePage] = useState(0)
   const [columnMap, setColumnMap] = useState<Record<string, number>>({})
   const [rows, setRows] = useState<ImportPreviewRow[]>([])
   const [token, setToken] = useState('')
@@ -61,6 +74,77 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   const [progress, setProgress] = useState({ parsed: 0, total: 0, done: true })
   const [pollError, setPollError] = useState('')
   const [pollVersion, setPollVersion] = useState(0)
+
+  const persist = useCallback((record: ImportRecovery) => {
+    try {
+      if (!owner) throw new Error('当前账号身份未确认')
+      sessionStorage.setItem(storageKey, JSON.stringify(record))
+      setStorageError('')
+      return true
+    } catch {
+      setStorageError('浏览器未能保存恢复记录，请勿刷新；提交结果可在结果页导出。')
+      return false
+    }
+  }, [owner, storageKey])
+  const recoveryRecord = useCallback((phase: ImportRecovery['phase'], result?: ImportReceipt): ImportRecovery => ({
+    version: 1, owner, projectId, updatedAt: Date.now(), phase, token, fileName, sheetName, requirementId: reqId, platform,
+    decisions: rows.map(row => ({ row_index: row.row_index, selected: row.selected !== false, on_conflict: row.on_conflict === 'overwrite' ? 'overwrite' : 'skip' })),
+    receipt: result, requestId: requestId.current || undefined,
+  }), [owner, projectId, token, fileName, sheetName, reqId, platform, rows])
+  useEffect(() => {
+    if (recovery || busy || !owner) return
+    if (step === 'preview' && token) persist(recoveryRecord('preview'))
+    if (step === 'result' && receipt) persist(recoveryRecord('result', receipt))
+  }, [recovery, busy, owner, step, token, receipt, persist, recoveryRecord])
+
+  const restore = async () => {
+    if (!recovery || busy) return
+    setBusy(true)
+    setError('')
+    try {
+      if (recovery.owner !== useSession.getState().user?.user_id) throw new Error('账号已切换，不能恢复其他账号的记录')
+      const saved = recovery
+      const source = { fileName: saved.fileName, sheetName: saved.sheetName, requirement: saved.requirementId, platform: saved.platform }
+      let restored: ImportPreviewRow[] = []
+      let previewData: Awaited<ReturnType<typeof getImportPreview>>['data']
+      if (saved.phase === 'preview') {
+        previewData = (await getImportPreview(projectId, saved.token)).data
+        if (!Array.isArray(previewData?.rows)) throw new Error('未返回可恢复的预览行；记录可能已过期，请核对用例列表。')
+        restored = restoreImportDecisions(previewData.rows, saved)
+      }
+      let recoveredReceipt: ImportReceipt | undefined
+      if (saved.phase !== 'preview' && saved.requestId) {
+        requestId.current = saved.requestId
+        const data = (await getCaseImportReceipt(projectId, saved.requestId)).data
+        if (!data?.receipt_id) throw new Error('服务端没有返回持久收据，请重试查询；不会自动重发提交。')
+        restored = data.rows || []
+        recoveredReceipt = buildImportReceipt(restored, source, data)
+      }
+      if (saved.owner !== useSession.getState().user?.user_id) return
+      setFileName(saved.fileName); setSheetName(saved.sheetName); setReqId(saved.requirementId); setPlatform(saved.platform)
+      setRows(restored)
+      if (saved.phase === 'preview') {
+        setToken(saved.token)
+        setProgress({ parsed: previewData!.parsed || 0, total: previewData!.total || restored.length, done: previewData!.done === true })
+        setCancelState(previewData!.cancelled ? 'stopped' : 'active')
+        setStep('preview')
+      } else {
+        commitStarted.current = true
+        setToken('')
+        setReceipt(recoveredReceipt || saved.receipt || buildImportReceipt(saved.decisions.map(item => ({ ...item, parse_status: 'done' })), source, undefined, '浏览器在提交期间离开，服务端写入结果未知；请先核对列表，不自动重发。'))
+        setStep('result')
+      }
+      setRecovery(null)
+    } catch (exception) { setError(errText(exception, '恢复失败，请重试读取；不会重新提交导入。')) }
+    finally { setBusy(false) }
+  }
+
+  const forgetRecovery = async () => {
+    const confirmed = await fb.confirm({ title: '仅清除当前浏览器的导入恢复记录？', content: '这不会取消服务端解析，也不会撤销已写入的用例。请先确认已有任务和导入结果。', okText: '清除本地记录' })
+    if (!confirmed) return
+    try { sessionStorage.removeItem(storageKey); setRecovery(null); setError('') }
+    catch { setError('无法清除本地记录，请检查浏览器存储权限。') }
+  }
 
   const requirements = useQuery({
     queryKey: ['project', projectId, 'import-requirements'],
@@ -83,12 +167,22 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   }, [platform, platforms])
 
   const labels = useMemo(
-    () => (table[headerRow] || []).map((cell, index) => cell.trim() || `列${index + 1}`),
+    () => Array.from({ length: table.reduce((count, line) => Math.max(count, line.length), 0) }, (_, index) => table[headerRow]?.[index]?.trim() || `列${index + 1}`),
     [table, headerRow],
   )
   const headerOk = headerRowLooksValid(labels)
   const mapped = new Set(Object.values(columnMap))
-  const colCount = Math.max(0, ...table.map((row) => row.length))
+  const colCount = table.reduce((count, row) => Math.max(count, row.length), 0)
+  const skip = useMemo(() => resolveSkipRows(table, headerRow, skipOverrides), [table, headerRow, skipOverrides])
+  const skipSet = useMemo(() => new Set(skip), [skip])
+  const sheet = sheets.find(item => item.name === sheetName)
+  const gridStats = useMemo(() => ({
+    empty: table.filter((line, index) => index > headerRow && !line.some(cell => cell.trim())).length,
+    skipped: table.filter((line, index) => index > headerRow && skipSet.has(index) && line.some(cell => cell.trim())).length,
+    candidates: table.filter((line, index) => index > headerRow && !skipSet.has(index) && line.some(cell => cell.trim())).length,
+  }), [table, headerRow, skipSet])
+  const tableStart = tablePage * MAPPING_PAGE_SIZE
+  const tableWindow = table.slice(tableStart, tableStart + MAPPING_PAGE_SIZE)
   const requiredFields = FIELD_OPTS.filter((field) => ['name', 'steps', 'expected'].includes(field.key))
   const missingFields = requiredFields.filter((field) => columnMap[field.key] == null)
   const duplicateMapping = mapped.size !== Object.keys(columnMap).length
@@ -104,11 +198,22 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   const writeCount = createCount + overwriteCount
 
   const reset = () => {
+    try { sessionStorage.removeItem(storageKey) } catch { setStorageError('本地恢复记录未能清除，请保留并核对导入结果。') }
+    setRecovery(null)
+    commitStarted.current = false
+    requestId.current = ''
+    setReceipt(null)
+    setCancelState('active')
     setStep('file')
     setFileName('')
     setTable([])
     setHeaderRow(0)
-    setSkip([])
+    setSkipOverrides({})
+    workbook.current = null
+    setSheets([])
+    setSheetName('')
+    setReadPhase('')
+    setTablePage(0)
     setColumnMap({})
     setRows([])
     setToken('')
@@ -120,38 +225,62 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
     if (inputRef.current) inputRef.current.value = ''
   }
 
+  const selectSheet = (name: string, preparedGrid?: string[][]) => {
+    const book = workbook.current
+    if (!book) return
+    const grid = preparedGrid || importSheetGrid(book, name)
+    const head = detectHeaderRow(grid)
+    commitStarted.current = false
+    setReceipt(null)
+    setCancelState('active')
+    setSheetName(name)
+    setTable(grid)
+    setHeaderRow(head)
+    setSkipOverrides({})
+    setTablePage(Math.floor(head / MAPPING_PAGE_SIZE))
+    setColumnMap(suggestColumnMap((grid[head] || []).map((cell, index) => cell.trim() || `列${index + 1}`)))
+    setRows([])
+    setToken('')
+    setError('')
+    setStep('map')
+  }
+
   const onFile = async (file: File) => {
     setBusy(true)
     setError('')
+    setReadPhase('正在读取文件…')
     try {
-      const book = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
-      const names = book.SheetNames || []
-      const sheetName = names.find((name) => /测试用例|用例/.test(name)) || names[0]
-      if (!sheetName) throw new Error('Excel 里没有工作表')
-      const grid = (XLSX.utils.sheet_to_json(book.Sheets[sheetName], { header: 1, defval: '', raw: false }) as unknown[][])
-        .map((line) => (Array.isArray(line) ? line : []).map(cellText))
-      if (!grid.some((line) => line.some((cell) => cell.trim()))) throw new Error('工作表是空的')
-      const head = detectHeaderRow(grid)
+      if (file.size > MAX_IMPORT_FILE_BYTES) throw new Error('文件超过 20 MB，请拆分文件后导入；已有映射和内容已保留。')
+      const buffer = await file.arrayBuffer()
+      setReadPhase('正在识别工作表…')
+      await new Promise<void>(resolve => window.setTimeout(resolve, 20))
+      const book = XLSX.read(buffer, { type: 'array', cellDates: true })
+      const choices = workbookSheets(book)
+      if (!choices.length || choices.every(item => item.empty)) throw new Error('文件中没有包含内容的工作表。')
+      const recommended = choices.find(item => !item.empty && /测试用例|用例/.test(item.name)) || choices.find(item => !item.empty)!
+      const grid = choices.length === 1 ? importSheetGrid(book, recommended.name) : undefined
+      workbook.current = book
       setFileName(file.name)
-      setTable(grid)
-      setHeaderRow(head)
-      setSkip([...suggestSkipRows(grid, head)])
-      setColumnMap(suggestColumnMap((grid[head] || []).map((cell, index) => cell.trim() || `列${index + 1}`)))
+      setSheets(choices)
+      setSheetName(recommended.name)
       setRows([])
       setToken('')
-      setStep('map')
-    } catch (e) {
-      setError(errText(e, '读取文件失败'))
-      fb.fail(errText(e, '读取文件失败'))
+      if (choices.length > 1) setStep('sheet')
+      else selectSheet(recommended.name, grid)
+    } catch (exception) {
+      const message = errText(exception, '读取文件失败')
+      setError(message)
+      fb.fail(message)
     } finally {
       setBusy(false)
+      setReadPhase('')
     }
   }
 
   const changeHeader = (value: number) => {
     const next = Math.max(0, Math.min(table.length - 1, value))
     setHeaderRow(next)
-    setSkip((previous) => [...new Set([...previous, ...suggestSkipRows(table, next)])].filter((index) => index !== next))
+    setTablePage(Math.floor(next / MAPPING_PAGE_SIZE))
     setColumnMap(suggestColumnMap((table[next] || []).map((cell, index) => cell.trim() || `列${index + 1}`)))
   }
 
@@ -171,6 +300,8 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
     setBusy(true)
     setError('')
     setPollError('')
+    setCancelState('active')
+    commitStarted.current = false
     try {
       const res = await previewCaseImport(projectId, {
         requirement_id: requirementId,
@@ -183,6 +314,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
       const data = res.data || {}
       if (!data.preview_token) throw new Error('未返回预览标识，请重新解析')
       setToken(data.preview_token)
+      persist({ ...recoveryRecord('preview'), token: data.preview_token, requirementId, decisions: [] })
       setProgress({ parsed: data.parsed || 0, total: data.total || data.rows?.length || 0, done: Boolean(data.done) })
       setRows(mergePreviewRows([], data.rows || []))
       setActiveRow(null)
@@ -198,7 +330,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   }
 
   useEffect(() => {
-    if (!open || step !== 'preview' || !token || progress.done) return
+    if (!open || step !== 'preview' || !token || busy) return
     let stop = false
     let failures = 0
     let timer: number | undefined
@@ -208,6 +340,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
         if (stop) return
         const data = res.data || {}
         failures = 0
+        if (typeof data.cancelled === 'boolean') setCancelState(data.cancelled ? 'stopped' : 'active')
         setPollError('')
         setProgress({ parsed: data.parsed || 0, total: data.total || 0, done: Boolean(data.done) })
         if (data.rows) setRows((previous) => mergePreviewRows(previous, data.rows || []))
@@ -221,7 +354,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
     }
     void poll()
     return () => { stop = true; window.clearTimeout(timer) }
-  }, [open, step, token, progress.done, projectId, pollVersion])
+  }, [open, step, token, busy, projectId, pollVersion])
 
   const retryRow = async (rowIndex: number) => {
     setBusy(true)
@@ -229,6 +362,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
       const res = await retryImportPreviewRow(projectId, token, rowIndex)
       const data = res.data || {}
       if (data.rows) setRows((previous) => mergePreviewRows(previous, data.rows || []))
+      if (typeof data.cancelled === 'boolean') setCancelState(data.cancelled ? 'stopped' : 'active')
       setProgress({ parsed: data.parsed || 0, total: data.total || 0, done: Boolean(data.done) })
       setPollError('')
       setPollVersion((value) => value + 1)
@@ -239,53 +373,106 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
     }
   }
 
+  const receiptContext = () => ({ fileName, sheetName, requirement: reqs.find(item => item.id === reqId)?.title || reqId, platform })
   const commit = async () => {
+    if (busy || commitStarted.current || cancelState !== 'active') return
     if (!progress.done) return fb.warn('解析完成后才能导入')
     if (!token || !writeCount) return fb.warn('请选择可导入的用例；同名冲突需要选择覆盖才会写入')
+    commitStarted.current = true
+    requestId.current = 'import-' + crypto.randomUUID()
+    const submitted = rows.map(row => ({ ...row }))
+    const context = receiptContext()
+    persist(recoveryRecord('committing'))
     setBusy(true)
     try {
       const res = await commitCaseImport(projectId, {
-        requirement_id: reqId || reqs[0]?.id || '',
-        preview_token: token,
-        default_on_conflict: 'skip',
-        default_platform: platform,
-        rows: rows.map((row) => ({
-          row_index: row.row_index,
-          selected: row.selected !== false && selectable(row),
-          on_conflict: String(row.on_conflict || 'skip'),
-        })),
+        requirement_id: reqId || reqs[0]?.id || '', preview_token: token,
+        client_request_id: requestId.current,
+        default_on_conflict: 'skip', default_platform: platform,
+        rows: submitted.map(row => ({ row_index: row.row_index, selected: row.selected !== false && selectable(row), on_conflict: String(row.on_conflict || 'skip') })),
       })
-      const data = res.data || {}
-      fb.ok(`新增 ${data.created || 0}，更新 ${data.updated || 0}，跳过 ${data.skipped || 0}${recordOf(data).blocked ? `，未写入 ${recordOf(data).blocked}` : ''}`)
-      await qc.invalidateQueries({ queryKey: caseKeys.list(projectId) })
-      reset()
-      onClose()
-    } catch (e) {
-      fb.fail(errText(e, '写入失败'))
+      const data = res.data
+      if (!data || !(['created', 'updated', 'skipped', 'blocked'].some(key => typeof recordOf(data)[key] === 'number') || Array.isArray(data.results))) throw new Error('提交响应没有返回可核对的导入结果')
+      const received = buildImportReceipt(submitted, context, data)
+      persist(recoveryRecord('result', received))
+      setReceipt(received)
+      setToken('')
+    } catch (exception) {
+      const uncertain = { ...buildImportReceipt(submitted, context, undefined, errText(exception, '提交响应未收到，写入结果未知')), requestId: requestId.current }
+      persist(recoveryRecord('result', uncertain))
+      setReceipt(uncertain)
     } finally {
+      setStep('result')
       setBusy(false)
     }
   }
 
-  const leavePreview = async (close: boolean) => {
-    if (busy) return
+  const queryReceipt = async (resume = false) => {
+    const identity = receipt?.requestId || requestId.current
+    if (busy || !identity) return
+    const capturedOwner = owner
+    setError('')
     setBusy(true)
     try {
-      if (token) await cancelImportPreview(projectId, token)
-      if (close) { reset(); onClose() }
-      else { setToken(''); setRows([]); setPollError(''); setStep('map') }
+      const data = (await (resume && receipt?.receiptId
+        ? resumeCaseImportReceipt(projectId, receipt.receiptId)
+        : getCaseImportReceipt(projectId, identity))).data
+      if (capturedOwner !== useSession.getState().user?.user_id) return
+      if (!data?.receipt_id) throw new Error('服务端未返回提交收据，请继续查询；不会重新提交原预览。')
+      const sourceRows = data.rows || rows
+      const received = buildImportReceipt(sourceRows, receipt?.source || receiptContext(), data)
+      setRows(sourceRows)
+      setReceipt(received)
+      persist(recoveryRecord('result', received))
+    } catch (exception) { setError(errText(exception, '收据查询失败，请重试查询；已提交行不会重新写入。')) }
+    finally { setBusy(false) }
+  }
+
+  const requestStop = async () => {
+    if (busy || !token) return false
+    setBusy(true)
+    try {
+      const response = await cancelImportPreview(projectId, token)
+      if (response.data?.cancelled !== true) throw new Error('服务端未确认停止，请重新读取解析状态')
+      setCancelState('stopped')
+      setPollError('')
+      setPollVersion(value => value + 1)
+      return true
     } catch (exception) {
-      const message = errText(exception, '停止旧预览失败，请重试')
-      if (close) { reset(); onClose(); fb.warn(`${message}；窗口已关闭，后台解析可能仍在继续`) }
-      else { setPollError(message); fb.fail(message) }
+      setCancelState('unknown')
+      setPollError(errText(exception, '停止请求未得到确认，请重新读取状态'))
+      return false
     } finally { setBusy(false) }
   }
+  const returnToMapping = async () => {
+    if (busy) return
+    if (!workbook.current) {
+      const confirmed = await fb.confirm({ title: '重新选择原表格？', content: '恢复记录不保存表格原文。返回后需要重新选择文件并核对映射；当前尚在解析时会先请求停止此次解析。', okText: '重新选择表格' })
+      if (!confirmed) return
+      if (token && !progress.done && cancelState !== 'stopped' && !await requestStop()) return
+      reset()
+      return
+    }
+    if (token && (!progress.done || cancelState === 'unknown') && cancelState !== 'stopped' && !await requestStop()) return
+    setToken(''); setRows([]); setPollError(''); setCancelState('active'); setStep('map')
+  }
+  const closeResult = () => { reset(); onClose(); void qc.invalidateQueries({ queryKey: caseKeys.list(projectId) }) }
+  const refreshCases = () => qc.invalidateQueries({ queryKey: caseKeys.list(projectId) }, { throwOnError: true })
+
+  if (recovery) return <Modal title="恢复上次导入" open={open} onCancel={onClose} footer={null} closable={!busy} maskClosable={!busy} keyboard={!busy}>
+    <div className="case-import-recovery"><h3>{recovery.fileName || '上次导入'} · {recovery.sheetName || '工作表未记录'}</h3>
+      <p>记录于 {new Date(recovery.updatedAt).toLocaleString()}，仅属于当前账号和项目；保留24小时，不保存表格原文。</p>
+      <p>{recovery.phase === 'preview' ? '恢复会重新读取同一次服务端预览，保留已选行和冲突决策，不重新创建解析任务。' : recovery.requestId ? '恢复会凭原提交身份查询服务端持久收据，不重新提交导入；待处理行可在结果页明确续交。' : '查看本浏览器已收到的历史结果；未记录持久提交身份，请核对用例列表。'}</p>
+      {error ? <p role="alert">{error}</p> : null}
+      <div className="case-import-footer-actions"><Button type="primary" loading={busy} onClick={() => void restore()}>恢复上次导入</Button><Button disabled={busy} onClick={() => void forgetRecovery()}>仅清除本地记录</Button></div>
+    </div>
+  </Modal>
 
   return (
     <Modal
       title="导入用例"
       open={open}
-      onCancel={() => void leavePreview(true)}
+      onCancel={() => { if (!busy) { onClose(); if (step === 'result') void qc.invalidateQueries({ queryKey: caseKeys.list(projectId) }) } }}
       closable={!busy}
       maskClosable={!busy}
       keyboard={!busy}
@@ -294,14 +481,18 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
       destroyOnHidden
       className="case-import-dialog"
     >
-      <div className="case-import-stages" aria-label="导入进度">{(['file', 'map', 'preview'] as Step[]).map((item, index) => <span key={item} data-active={step === item}><b>{index + 1}</b>{item === 'file' ? '选择表格' : item === 'map' ? '核对字段' : '审阅解析'}</span>)}</div>
+      <div className="case-import-stages" aria-label="导入进度">{(['file', 'sheet', 'map', 'preview', 'result'] as Step[]).map((item, index) => <span key={item} data-active={step === item}><b>{index + 1}</b>{item === 'file' ? '选择表格' : item === 'sheet' ? '选择工作表' : item === 'map' ? '核对字段' : item === 'preview' ? '审阅解析' : '导入结果'}</span>)}</div>
+      {storageError ? <p role="alert" className="case-import-error">{storageError}</p> : token || receipt ? <p className="case-import-source-summary">此标签页按当前账号和项目保留24小时恢复记录；不保存表格原文，刷新后可读取同一次预览或已收到的结果。</p> : null}
       <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => {
         const file = e.target.files?.[0]
+        e.currentTarget.value = ''
         if (file) void onFile(file)
       }} />
+      {['file', 'sheet', 'map'].includes(step) && requirements.isError && <p role="alert">需求分组读取失败：{errText(requirements.error)}<Button size="small" onClick={() => void requirements.refetch()}>重试分组</Button></p>}
+      {['file', 'sheet', 'map'].includes(step) && requirements.isSuccess && !reqs.length && <p role="status">当前项目没有需求分组，现有导入接口必须引用已有分组。Workbench 尚未提供创建分组接口；文件和映射可以核对，开始解析前需要补齐合法分组。</p>}
       {step === 'file' ? (
         <p style={{ margin: '0 0 12px', color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)', lineHeight: 1.55 }}>
-          先选表格。下一页核对哪一行是列名、哪些列对应字段，确认后再看解析结果。
+          先选表格。多工作表文件会先选择工作表，再核对哪一行是列名、哪些列对应字段，确认后再看解析结果。
         </p>
       ) : null}
 
@@ -310,21 +501,31 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
           {reqs.length > 1 ? (
             <Select value={reqId || undefined} placeholder="挂到哪条需求" style={{ width: '100%' }} options={reqs.map((req) => ({ value: req.id, label: req.title || req.id }))} onChange={setReqId} />
           ) : reqs[0] ? <span style={{ color: 'var(--w-text-tertiary)' }}>写入需求：{reqs[0].title || reqs[0].id}</span> : null}
-          <span style={{ color: 'var(--w-text-quaternary)', fontSize: 'var(--w-font-sm)' }}>多级表头时，第 0 行可能是「回归」，下一行才是列名。</span>
+          <span style={{ color: 'var(--w-text-quaternary)', fontSize: 'var(--w-font-sm)' }}>多级表头时，第 1 行可能是「回归」，下一行才是列名。文件最大 20 MB，单张工作表最多 200,000 个单元格。</span>
           {error ? <span style={{ color: 'var(--w-fail)' }}>{error}</span> : null}
           <Button type="primary" loading={busy} onClick={() => inputRef.current?.click()}>选择表格</Button>
         </div>
       )}
 
+      {readPhase ? <p role="status" className="case-import-read-status">{readPhase}</p> : null}
+      {error && step !== 'file' ? <div className="case-import-mapping-notice" role="alert">{error}</div> : null}
+      {step === 'sheet' ? <div className="case-import-sheet-picker">
+        <div><h2>选择要导入的工作表</h2><p>{fileName} · {sheets.length} 张工作表。推荐项仅作建议，请核对名称、规模和内容。</p></div>
+        <div className="case-import-sheet-list">{sheets.map(item => <button key={item.name} type="button" disabled={busy || item.empty} aria-pressed={sheetName === item.name} onClick={() => { setSheetName(item.name); setError('') }}><strong>{item.name}</strong><span>{item.rows.toLocaleString()} 行 · {item.columns} 列{item.empty ? ' · 空工作表' : ''}{item.merges ? ` · ${item.merges} 处合并` : ''}</span></button>)}</div>
+        {sheet ? <div className="case-import-sheet-sample"><strong>内容样本 · {sheet.name}</strong>{Object.entries(workbook.current?.Sheets[sheet.name] || {}).filter(([key]) => !key.startsWith('!')).map(([cell, value]) => ({ cell, text: String((value as XLSX.CellObject).w ?? (value as XLSX.CellObject).v ?? '') })).filter(item => item.text.trim()).slice(0, 8).map(item => <p key={item.cell}><span>{item.cell}</span>{item.text}</p>)}</div> : null}
+        <div className="case-import-footer-actions"><Button disabled={busy} onClick={() => inputRef.current?.click()}>更换文件</Button><Button type="primary" disabled={busy || !sheetName} onClick={() => { try { selectSheet(sheetName) } catch (exception) { setError(errText(exception)) } }}>使用此工作表</Button></div>
+      </div> : null}
       {step === 'map' && (
         <div className="flex flex-col" style={{ gap: 12 }}>
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2" style={{ fontSize: 'var(--w-font-sm)' }}>
-              列名行（0 起）
-              <InputNumber min={0} max={Math.max(0, table.length - 1)} value={headerRow} onChange={(value) => changeHeader(Number(value) || 0)} />
+              Excel 列名行
+              <InputNumber disabled={busy} aria-label="Excel 列名行" min={1} max={Math.max(1, table.length)} value={headerRow + 1} onChange={(value) => changeHeader((Number(value) || 1) - 1)} />
             </label>
-            <span className="min-w-0 truncate" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>{fileName} · {labels.filter(Boolean).slice(0, 8).join(' · ') || '—'}</span>
+            <span className="min-w-0 truncate" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>{fileName} / {sheetName} · {labels.filter(Boolean).slice(0, 8).join(' · ') || '—'}</span>
           </div>
+          <div className="case-import-source-summary"><span>完整工作表 {table.length.toLocaleString()} 行</span><strong>可解析 {gridStats.candidates.toLocaleString()} 行</strong><span>表头及前文 {headerRow + 1} 行 · 空行 {gridStats.empty} 行 · 跳过非空行 {gridStats.skipped} 行</span><div><Button size="small" disabled={busy} onClick={() => inputRef.current?.click()}>更换文件</Button>{sheets.length > 1 ? <Button size="small" disabled={busy} onClick={() => { setError(''); setStep('sheet') }}>切换工作表</Button> : null}</div></div>
+          {sheet?.merges || sheet?.uncachedFormulas ? <p className="case-import-sheet-warning">{sheet.merges ? `${sheet.merges} 处合并单元格：保留原始值，不自动填充到其他行。` : ''}{sheet.uncachedFormulas ? ` ${sheet.uncachedFormulas} 个公式没有缓存结果，请在表格软件中重新计算后再导入。` : ''}</p> : null}
           {!headerOk ? (
             <p style={{ margin: 0, color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)' }}>
               未自动识别这一行的列名。请确认表头位置，并手动对应名称、操作和预期；其它说明行勾选跳过。
@@ -345,11 +546,12 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
                   <span style={{ fontWeight: 650 }}>{field.label}</span>
                   <Select
                     allowClear
+                    disabled={busy}
                     size="small"
                     placeholder="未对应"
                     style={{ width: '100%' }}
                     value={picked}
-                    options={labels.map((label, index) => ({ value: index, label: `${index} ${label}` }))}
+                    options={labels.map((label, index) => ({ value: index, label: `${XLSX.utils.encode_col(index)} · ${label}` }))}
                     onChange={(value) => setColumnMap((prev) => {
                       const next = { ...prev }
                       if (value == null) delete next[field.key]
@@ -374,28 +576,30 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
               <thead>
                 <tr>
                   <th style={th}>跳过</th>
-                  <th style={th}>#</th>
+                  <th style={th}>行号</th>
                   {Array.from({ length: colCount }, (_, index) => {
                     const field = FIELD_OPTS.find((item) => columnMap[item.key] === index)
-                    return <th key={index} style={{ ...th, color: field ? 'var(--w-primary)' : undefined, boxShadow: field ? 'inset 0 -2px 0 var(--w-primary)' : undefined }}>{field ? field.label : `列${index}`}</th>
+                    return <th key={index} style={{ ...th, color: field ? 'var(--w-primary)' : undefined, boxShadow: field ? 'inset 0 -2px 0 var(--w-primary)' : undefined }}>{field ? `${XLSX.utils.encode_col(index)} · ${field.label}` : XLSX.utils.encode_col(index)}</th>
                   })}
                 </tr>
               </thead>
               <tbody>
-                {table.map((line, rowIndex) => {
+                {tableWindow.map((line, windowIndex) => {
+                  const rowIndex = tableStart + windowIndex
                   const isHead = rowIndex === headerRow
-                  const isSkip = skip.includes(rowIndex)
+                  const isSkip = rowIndex < headerRow || skipSet.has(rowIndex)
                   return (
                     <tr key={rowIndex}>
                       <td style={sheetCell(isHead, isSkip)}>
                         <input
                           type="checkbox"
-                          disabled={isHead}
+                          disabled={busy || isHead || rowIndex < headerRow}
                           checked={isSkip}
-                          onChange={(e) => setSkip((prev) => e.target.checked ? [...prev, rowIndex] : prev.filter((item) => item !== rowIndex))}
+                          aria-label={`跳过 Excel 第 ${rowIndex + 1} 行`}
+                          onChange={(e) => setSkipOverrides((previous) => ({ ...previous, [rowIndex]: e.target.checked }))}
                         />
                       </td>
-                      <td style={sheetCell(isHead, isSkip)}>{rowIndex}</td>
+                      <td style={sheetCell(isHead, isSkip)}>{rowIndex + 1}</td>
                       {Array.from({ length: colCount }, (_, col) => (
                         <td key={col} style={{ ...sheetCell(isHead, isSkip), whiteSpace: 'pre-wrap' }}>
                           {line[col] || ''}
@@ -407,6 +611,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
               </tbody>
             </table>
           </div>
+          <div className="case-import-grid-pages"><span>映射样本：第 {tableStart + 1}–{Math.min(tableStart + MAPPING_PAGE_SIZE, table.length)} 行 / 共 {table.length} 行。解析提交完整工作表，原文不截断。</span><Button size="small" disabled={tablePage === 0} onClick={() => setTablePage(value => value - 1)}>上一页</Button><Button size="small" disabled={tableStart + MAPPING_PAGE_SIZE >= table.length} onClick={() => setTablePage(value => value + 1)}>下一页</Button></div>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setStep('file')}>上一步</Button>
             <Button type="primary" loading={busy} disabled={!!missingFields.length || duplicateMapping || !hasDataRows} onClick={() => void preview()}>解析预览</Button>
@@ -414,8 +619,10 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
         </div>
       )}
 
+      {step === 'result' && receipt ? <CaseImportResult receipt={receipt} rows={rows} onRefresh={refreshCases} onQuery={() => queryReceipt()} onResume={() => queryReceipt(true)} busy={busy} onClose={closeResult} onNew={reset} /> : null}
       {step === 'preview' && (
         <div className="case-import-preview">
+          <div className="case-import-session-note"><span>{cancelState === 'stopped' ? '服务端已确认取消预览，本次预览不能提交；进行中的解析可能仍在结束，可返回映射重新解析。' : cancelState === 'unknown' ? '停止状态尚未确认，暂不提交；重新读取可核对当前状态。' : '关闭窗口只暂停前台查看，后台解析可能继续；恢复记录保存成功时，同一标签页刷新后可读取原预览，不重复创建解析任务。'}</span><div>{cancelState !== 'stopped' && !progress.done ? <Button size="small" disabled={busy} onClick={() => void requestStop()}>请求停止解析</Button> : null}<Button size="small" disabled={busy} onClick={onClose}>暂时关闭</Button></div></div>
           {pollError ? <div role="alert" className="case-import-error">{pollError} <Button size="small" onClick={() => { setPollError(''); setPollVersion((value) => value + 1) }}>重新读取进度</Button></div> : null}
           <div className="case-import-summary">
             <div><strong>{progress.parsed} / {progress.total || rows.length}</strong><span>{progress.done ? '解析已结束' : '正在逐条解析'}</span></div>
@@ -442,17 +649,17 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
             </aside>
             <main className="case-import-review" aria-label="导入解析审阅">
               {current ? <>
-                <div className="case-import-review-header"><div><span className="case-import-eyebrow">原文与解析 · 表格第 {Number(current.row_index) + 1} 行</span><h2>{String(current.name || current.title || '未命名用例')}</h2><span className="case-import-identifiers">{String(current.case_id || '保存时生成用例编号')} · {String(current.platform || platform || '未指定端')}</span></div>
+                <div className="case-import-review-header"><div><span className="case-import-eyebrow">原文与解析 · {sheetName} / Excel 第 {Number(current.row_index) + 1} 行</span><h2>{String(current.name || current.title || '未命名用例')}</h2><span className="case-import-identifiers">{String(current.case_id || '保存时生成用例编号')} · {String(current.platform || platform || '未指定端')}</span></div>
                   {current.parse_status === 'error' ? <Button size="small" loading={busy} onClick={() => void retryRow(current.row_index)}>重新解析本条</Button> : null}
                 </div>
-                {current.conflict ? <div className="case-import-conflict"><div><strong>存在同名用例</strong><span>跳过会保留现有用例；覆盖会以本次解析结果更新。</span></div><Select aria-label="同名冲突处理" size="small" disabled={busy} value={String(current.on_conflict || 'skip')} options={[{ value: 'skip', label: '跳过本条' }, { value: 'overwrite', label: '覆盖现有用例' }]} onChange={(value) => setRows((previous) => previous.map((row) => row.row_index === current.row_index ? { ...row, on_conflict: value } : row))} /></div> : null}
+                {current.conflict ? <ImportConflictReview key={current.row_index} projectId={projectId} row={current} busy={busy} onChange={(value) => setRows(previous => previous.map(row => row.row_index === current.row_index ? { ...row, on_conflict: value } : row))} /> : null}
                 {remarkOf(current) && current.parse_status !== 'pending' ? <div className="case-import-remark" role={current.parse_status === 'error' ? 'alert' : 'status'}>{remarkOf(current)}</div> : null}
                 <CasePreviewLegend />
                 <CaseScriptSections row={current} status={current.parse_status === 'pending' ? 'pending' : current.parse_status === 'error' ? 'error' : current.parse_status === 'incomplete' ? 'incomplete' : current.parse_status === 'cancelled' ? 'cancelled' : 'ready'} />
               </> : null}
             </main>
           </div>
-          <div className="case-import-footer"><div><strong>将写入 {writeCount} 条</strong><span>新增 {createCount} · 覆盖 {overwriteCount} · 冲突跳过 {skipCount}</span>{!progress.done ? <span>解析完成后可确认导入</span> : null}</div><div className="case-import-footer-actions"><Button disabled={busy} onClick={() => void leavePreview(false)}>返回字段映射</Button><Button type="primary" loading={busy} disabled={!progress.done || !writeCount} onClick={() => void commit()}>确认导入（{writeCount}）</Button></div></div>
+          <div className="case-import-footer"><div><strong>将写入 {writeCount} 条</strong><span>新增 {createCount} · 覆盖 {overwriteCount} · 冲突跳过 {skipCount}</span>{!progress.done ? <span>解析完成后可确认导入</span> : null}</div><div className="case-import-footer-actions"><Button disabled={busy} onClick={() => void returnToMapping()}>返回字段映射</Button><Button type="primary" loading={busy} disabled={!progress.done || !writeCount || cancelState !== 'active'} onClick={() => void commit()}>确认导入（{writeCount}）</Button></div></div>
         </div>
       )}
     </Modal>

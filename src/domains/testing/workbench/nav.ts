@@ -1,4 +1,4 @@
-import { FlaskConical, ListChecks, Share2, Settings2, Boxes } from 'lucide-react'
+import { FlaskConical, ListChecks, Settings2, Boxes } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 /**
@@ -6,7 +6,7 @@ import type { LucideIcon } from 'lucide-react'
  * tab 从原实现的 11 项减到 6 项：单据 / 知识 / 文档 / 信息基座已砍，
  * 调用记录（dispatch）本期也不做。
  */
-export const VALID_TABS = ['cases', 'tasks', 'session-log', 'navigation', 'assets', 'config'] as const
+export const VALID_TABS = ['cases', 'issues', 'tasks', 'session-log', 'navigation', 'assets', 'config'] as const
 export type Tab = (typeof VALID_TABS)[number]
 
 /** 原默认是 process，该 tab 已砍 —— 不改默认值会白屏。 */
@@ -35,6 +35,7 @@ export interface NavItem {
 
 export const APP_NAV: NavItem[] = [
   { id: 'cases', label: '用例', icon: FlaskConical },
+  { id: 'issues', label: '问题清单', icon: ListChecks },
   {
     id: 'tasks',
     label: '任务',
@@ -44,12 +45,6 @@ export const APP_NAV: NavItem[] = [
       { label: '执行批次', tab: 'tasks' },
       { label: 'Session Log', tab: 'session-log' },
     ],
-  },
-  {
-    id: 'navigation',
-    label: '导航',
-    icon: Share2,
-    children: [{ label: '架构', param: { key: 'nview', value: 'arch' } }],
   },
   {
     id: 'assets',

@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight } from 'lucide-react'
 import { Button, Form, Input, Modal, errText, useFeedback } from '@/ui'
 import { createAppInProject, createProject } from '@/api/project'
-import { APP_PLATFORM_OPTIONS, APP_PLATFORM_OPTIONS_ADVANCED } from '@/constants/appPlatforms'
+import { APP_PLATFORM_OPTIONS } from '@/constants/appPlatforms'
 import { projectKeys } from './queries'
 
 export type CreateProjectRef = { id: string; name: string }
@@ -22,18 +21,16 @@ export function CreateDialog({
   const [form] = Form.useForm()
   const fb = useFeedback()
   const qc = useQueryClient()
-  const [advanced, setAdvanced] = useState(false)
 
   const isProject = target?.kind === 'project'
   const projects = target?.kind === 'app' ? target.projects : []
 
   useEffect(() => {
     if (!target) return
-    setAdvanced(false)
     form.setFieldsValue({
       name: '',
       description: '',
-      platform: 'Mobile',
+      platform: 'android',
       projectId: target.kind === 'app' ? target.projects[0]?.id : undefined,
     })
   }, [target, form])
@@ -54,7 +51,7 @@ export function CreateDialog({
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: projectKeys.all })
-      fb.ok(target?.kind === 'project' ? '项目已创建' : '应用已创建')
+      fb.ok(target?.kind === 'project' ? '项目已创建，可在项目中添加应用' : '应用已创建，进入应用后先配置环境与渠道，再导入用例')
       onClose()
     },
     onError: (e) => fb.fail(errText(e, '创建失败')),
@@ -66,10 +63,13 @@ export function CreateDialog({
     <Modal
       open={!!target}
       title={isProject ? '新建项目' : sole ? `在「${sole.name}」下新建应用` : '新建应用'}
-      onCancel={onClose}
+      onCancel={() => { if (!mutation.isPending) onClose() }}
+      closable={!mutation.isPending}
+      maskClosable={!mutation.isPending}
+      keyboard={!mutation.isPending}
       destroyOnHidden
       footer={[
-        <Button key="cancel" onClick={onClose}>取消</Button>,
+        <Button key="cancel" disabled={mutation.isPending} onClick={onClose}>取消</Button>,
         <Button key="ok" type="primary" loading={mutation.isPending} onClick={() => form.submit()}>
           创建
         </Button>,
@@ -77,6 +77,7 @@ export function CreateDialog({
     >
       <Form
         form={form}
+        disabled={mutation.isPending}
         layout="vertical"
         requiredMark={false}
         onFinish={(v) => mutation.mutate(v)}
@@ -89,7 +90,7 @@ export function CreateDialog({
         <Form.Item
           name="name"
           label="名称"
-          rules={[{ required: true, message: isProject ? '请输入项目名称' : '请输入应用名称' }]}
+          rules={[{ required: true, whitespace: true, message: isProject ? '请输入项目名称' : '请输入应用名称' }]}
         >
           <Input placeholder={isProject ? '例如：电商主站' : '例如：买家 App'} autoFocus autoComplete="off" />
         </Form.Item>
@@ -98,7 +99,7 @@ export function CreateDialog({
         </Form.Item>
         {!isProject && (
           <Form.Item name="platform" label="覆盖端" rules={[{ required: true, message: '请选择覆盖端' }]}>
-            <PlatformPicker advanced={advanced} onToggleAdvanced={() => setAdvanced((v) => !v)} />
+            <PlatformPicker />
           </Form.Item>
         )}
       </Form>
@@ -151,51 +152,7 @@ function ChoiceGrid({
   )
 }
 
-function PlatformPicker({
-  value,
-  onChange,
-  advanced,
-  onToggleAdvanced,
-}: {
-  value?: string
-  onChange?: (next: string) => void
-  advanced: boolean
-  onToggleAdvanced: () => void
-}) {
-  const common = APP_PLATFORM_OPTIONS.map((o) => ({
-    value: o.value,
-    label: o.label,
-    hint: o.value === 'Mobile' ? 'Android 与 iOS' : o.value === 'Web' ? '浏览器' : '桌面',
-  }))
-  const extra = APP_PLATFORM_OPTIONS_ADVANCED.map((o) => ({ value: o.value, label: o.label }))
-
-  return (
-    <div>
-      <ChoiceGrid value={value} onChange={onChange} options={common} />
-      <button
-        type="button"
-        className="w-hit flex items-center gap-1"
-        aria-expanded={advanced}
-        onClick={onToggleAdvanced}
-        style={{
-          marginTop: 8,
-          border: 'none',
-          background: 'transparent',
-          padding: '4px 2px',
-          cursor: 'pointer',
-          color: 'var(--w-text-secondary)',
-          fontWeight: 650,
-          fontSize: 'var(--w-font-sm)',
-        }}
-      >
-        <ChevronRight size={13} aria-hidden className="w-fold-chevron" data-open={advanced ? 'true' : 'false'} />
-        仅单端
-      </button>
-      {advanced && (
-        <div style={{ marginTop: 8 }}>
-          <ChoiceGrid value={value} onChange={onChange} options={extra} />
-        </div>
-      )}
-    </div>
-  )
+function PlatformPicker({ value, onChange }: { value?: string; onChange?: (next: string) => void }) {
+  return <ChoiceGrid value={value} onChange={onChange}
+    options={APP_PLATFORM_OPTIONS.map(o => ({ value: o.value, label: o.label, hint: o.desc }))} />
 }

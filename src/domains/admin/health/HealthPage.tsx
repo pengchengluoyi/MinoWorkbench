@@ -1,4 +1,4 @@
-import { Button, DataTable, PageHeader, StatusPill, toStatusKind, type DataColumn } from '@/ui'
+import { Button, DataTable, PageHeader, StatusPill, toStatusKind, errText, type DataColumn } from '@/ui'
 import { RefreshCw } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { nexusOrigin, usesDevProxy } from '@/lib/config'
@@ -44,7 +44,9 @@ export function HealthPage() {
   const runtime = useRuntimeStatus()
 
   const origin = usesDevProxy() ? window.location.origin : nexusOrigin()
-  const reachable = !info.isError || !health.isError
+  const reachable = info.isSuccess || health.isSuccess
+  const checking = !reachable && (info.isPending || health.isPending)
+  const connectionLabel = reachable ? (info.isError || health.isError ? '部分连接正常' : '已连接') : checking ? '正在连接' : '无法连接'
   const version = info.data?.data?.version || health.data?.nexus_version || '—'
   const service = info.data?.data?.service || 'MinoNexus'
 
@@ -85,12 +87,17 @@ export function HealthPage() {
           marginBottom: 'var(--w-gap)',
         }}
       >
-        <StatCard label="连通性" value={reachable ? '已连接' : '无法连接'} kind={reachable ? 'pass' : 'fail'} />
+        <StatCard label="连通性" value={connectionLabel} kind={reachable ? 'pass' : checking ? undefined : 'fail'} />
         <StatCard label="服务" value={service} />
         <StatCard label="版本" value={version} />
         <StatCard label="节点" value={`${nodeAlive} / ${nodeTotal}`} note="在线 / 总数" />
       </div>
 
+      {info.isError || health.isError ? <div role="alert" style={{ marginBottom: 12, padding: '10px 14px', border: '1px solid var(--w-border)', borderRadius: 'var(--w-radius-lg)', background: 'var(--w-warn-bg)', color: 'var(--w-warn)', overflowWrap: 'anywhere' }}>
+        {info.isError ? <div>服务信息读取失败：{errText(info.error)}</div> : null}
+        {health.isError ? <div>健康检查失败：{errText(health.error)}</div> : null}
+        <Button size="small" onClick={refreshAll}>重试连接检查</Button>
+      </div> : null}
       <DataTable<RuntimeEndpoint>
         viewId="admin.health.endpoints"
         columns={columns}

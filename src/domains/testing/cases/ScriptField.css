@@ -55,3 +55,16 @@
 .case-library .case-identity-result { margin-top: 5px; }
 .case-library .case-identity-reason { margin-top: 4px; color: var(--w-fail); font-size: 11px; }
 @media (max-width: 900px) { .case-script-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.case-task-select, .case-task-inspect { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.case-task-inspect { margin-left: 6px; font-size: 11px; font-weight: 650; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+.case-task-select:focus-visible, .case-task-inspect:focus-visible { outline: 2px solid var(--w-primary); outline-offset: 2px; border-radius: 3px; }
+.case-task-annotation[data-selected=true] { box-shadow: 0 0 0 1px var(--w-primary); }
+.case-task-annotation[data-result=fail] { --task-color: var(--w-fail); --task-bg: var(--w-fail-bg); }
+.case-task-annotation[data-result=blocked], .case-task-annotation[data-result=retry] { --task-color: var(--w-warn); --task-bg: var(--w-warn-bg); }
+.case-parameter-origin, .case-task-origin { font-size: 10px; color: var(--w-text-tertiary); }
+.case-parameter-origin { margin-left: 4px; }
+.case-execution-script { flex-shrink: 0; min-width: 0; max-height: 55%; overflow: auto; }
+.case-execution-script .case-script-grid { grid-template-columns: minmax(150px, .8fr) repeat(2, minmax(220px, 1fr)); }
+.case-execution-reading { margin: 0 0 8px; color: var(--w-text-tertiary); font-size: var(--w-font-sm); line-height: 1.7; }
+@media (max-width: 1100px) { .case-execution-script .case-script-grid { grid-template-columns: minmax(0, 1fr); } }

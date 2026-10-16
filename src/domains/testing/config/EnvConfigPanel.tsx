@@ -1,14 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { LoginEvidencePolicyPanel } from './LoginEvidencePolicyPanel'
+import { recordAudit } from '@/domains/admin/audit/auditLog'
+import { useEffect, useMemo, useState, useRef } from 'react'
+import { useUrlState } from '@/hooks/useUrlState'
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Save, TriangleAlert } from 'lucide-react'
-import { Button, EmptyState, Input, Modal, Select, Segmented, Skeleton, errText, useFeedback } from '@/ui'
+import { Alert, Button, EmptyState, Input, Modal, Select, Segmented, Skeleton, errText, useFeedback } from '@/ui'
 import { ControlRegistry } from './ControlRegistry'
+import { MaintainersPanel } from './MaintainersPanel'
 import { getProjectEnv, updateProjectEnv } from '@/api/projectEnv'
 import { unwrapOne } from '@/lib/unwrap'
+import { copyToClipboard } from '@/lib/clipboard'
 import { AppEnvCard } from './AppEnvCard'
 import {
-  APP_PLATFORMS, CHANNEL_KINDS, appIdentifierFromAlias, buildPayload, channelConfigVar, channelTitle,
+  APP_PLATFORMS, CHANNEL_KINDS, appIdentifierFromAlias, buildPayload, buildWritePayload, environmentWriteIssues, channelConfigVar, channelTitle,
   emptySecrets, normalizeEnvDoc, normalizeSecrets, normalizeSlot, slugEnvKey,
   type EnvChannel, type EnvDocument, type EnvSecrets,
 } from './envModel'
@@ -18,25 +23,25 @@ import {
  * 左边是上线顺序。中间是这个环境下的应用清单，一行看清启动地址和登录方式。
  * 右边只编辑当前选中的应用，避免两张完整表单叠在一起上下翻。
  */
-export function EnvConfigPanel() {
-  const [params] = useSearchParams()
-  const [view, setView] = useState('environment')
-  return <div className="flex min-h-0 flex-1 flex-col" style={{ gap: 12 }}>
-    <Segmented value={view} onChange={value => setView(String(value))} options={[{ value: 'environment', label: '项目环境' }, { value: 'controls', label: '控件定位' }]} />
-    <div className="min-h-0 flex-1" style={{ display: view === 'environment' ? 'flex' : 'none' }}><EnvironmentSettings /></div>
-    {view === 'controls' && <ControlRegistry projectId={params.get('projectId') || ''} />}
+export function EnvConfigPanel({ projectId }: { projectId: string }) {
+  const [view, setView] = useUrlState<string>('configView', 'environment', ['environment', 'login-evidence', 'controls', 'maintainers'])
+  return <div className="w-workspace flex min-h-0 flex-1 flex-col" style={{ gap: 12 }}>
+    <Segmented value={view} onChange={value => setView(String(value))} options={[{ value: 'environment', label: '项目环境' }, { value: 'login-evidence', label: '登录校验' }, { value: 'controls', label: '控件定位' }, { value: 'maintainers', label: '项目维护者' }]} />
+    <div className="min-h-0 flex-1" style={{ display: view === 'environment' ? 'flex' : 'none' }}><EnvironmentSettings projectId={projectId} /></div>
+    {view === 'login-evidence' && <LoginEvidencePolicyPanel />}
+    {view === 'controls' && <ControlRegistry projectId={projectId} />}
+    {view === 'maintainers' && <MaintainersPanel projectId={projectId} />}
   </div>
 }
 
-function EnvironmentSettings() {
-  const [params] = useSearchParams()
-  const projectId = params.get('projectId') || ''
+function EnvironmentSettings({ projectId }: { projectId: string }) {
   const fb = useFeedback()
   const qc = useQueryClient()
   const [doc, setDoc] = useState<EnvDocument | null>(null)
   const [active, setActive] = useState('')
   const [appId, setAppId] = useState('')
   const [saved, setSaved] = useState('')
+  const [incomingChanged, setIncomingChanged] = useState(false)
   const [addEnv, setAddEnv] = useState(false)
   const [envLabel, setEnvLabel] = useState('')
   const [addApp, setAddApp] = useState(false)
@@ -51,28 +56,37 @@ function EnvironmentSettings() {
     queryFn: async () => normalizeEnvDoc(unwrapOne(await getProjectEnv(projectId))),
   })
 
+  const draftSnapshot = useRef({ doc, saved })
+  draftSnapshot.current = { doc, saved }
   useEffect(() => {
+    const { doc, saved } = draftSnapshot.current
     if (!query.data) return
+    const incoming = JSON.stringify(buildPayload(query.data))
+    if (doc && JSON.stringify(buildPayload(doc)) !== saved) { setIncomingChanged(incoming !== saved); return }
     setDoc(query.data)
-    setActive(query.data.environments[0]?.key || '')
-    setSaved(JSON.stringify(buildPayload(query.data)))
+    setActive(current => query.data.environments.some(row => row.key === current) ? current : query.data.default_profile)
+    setSaved(incoming)
+    setIncomingChanged(false)
   }, [query.data])
 
   const dirty = useMemo(() => (doc ? JSON.stringify(buildPayload(doc)) !== saved : false), [doc, saved])
+  useUnsavedChanges(dirty)
+  const platformIssues = doc ? environmentWriteIssues(doc) : []
   const env = doc?.environments.find((e) => e.key === active) || doc?.environments[0]
   const channel = doc?.channels.find((c) => c.id === appId) || doc?.channels[0]
 
   const save = useMutation({
-    mutationFn: () => updateProjectEnv(projectId, buildPayload(doc!)),
-    onSuccess: () => {
-      setSaved(JSON.stringify(buildPayload(doc!)))
+    mutationFn: (snapshot: EnvDocument) => updateProjectEnv(projectId, snapshot),
+    onSuccess: (_response, snapshot) => {
+      setSaved(JSON.stringify(snapshot))
       void qc.invalidateQueries({ queryKey: ['project', projectId, 'env'] })
+      recordAudit('环境配置保存')
       fb.ok('环境配置已保存')
     },
     onError: (e) => fb.fail(errText(e, '保存失败')),
   })
 
-  const patch = (next: EnvDocument) => setDoc({ ...next, pipeline: next.environments.map((e) => e.key), default_profile: next.environments[0]?.key || 'test' })
+  const patch = (next: EnvDocument) => { if (save.isPending) return; setDoc({ ...next, pipeline: next.environments.map((e) => e.key), default_profile: next.environments.some(row => row.key === next.default_profile) ? next.default_profile : next.environments[0]?.key || 'test' }) }
 
   const move = (index: number, dir: number) => {
     if (!doc) return
@@ -114,7 +128,7 @@ function EnvironmentSettings() {
     let id = appIdent === plat ? plat : `${plat}.${appIdent}`
     if (doc.channels.some((c) => c.id === id)) id = `${id}${doc.channels.length + 1}`
     const ch: EnvChannel = {
-      id, kind, platform: plat, alias: name, app_identifier: appIdent, third_party: true,
+      id, kind, ...(kind === 'server' ? {} : { platform: plat }), alias: name, app_identifier: appIdent, third_party: true,
       label: name, field: preset && 'field' in preset ? preset.field : 'value',
       placeholder: preset && 'placeholder' in preset ? String(preset.placeholder || '') : '',
     }
@@ -150,16 +164,19 @@ function EnvironmentSettings() {
   if (!projectId) {
     return <EmptyState icon={<TriangleAlert size={28} />} title="缺少项目信息" hint="从应用列表重新进入，链接里需要带 projectId。" />
   }
-  if (query.isLoading || !doc || !env) return <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
-  if (query.isError) {
+  if (query.isError && !doc) {
     return <EmptyState title="读取环境配置失败" hint={errText(query.error)} action={<Button size="small" onClick={() => void query.refetch()}>重试</Button>} />
   }
+  if (query.isLoading || !doc || !env) return <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
 
   return (
-    <div className="flex h-full min-h-0" style={{ gap: 'var(--w-space-3)' }}>
-      <aside className="shrink-0 overflow-y-auto" style={{ width: 'clamp(148px, 16%, 220px)' }}>
-        <div style={{ fontSize: 'var(--w-font-sm)', fontWeight: 700, marginBottom: 4 }}>上线顺序</div>
-        <p style={{ margin: '0 0 8px', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>从上到下依次上线</p>
+    <div className="w-env-layout">
+      <aside className="w-env-nav">
+        {query.isError && <p role="alert">环境刷新失败，当前草稿已保留。{errText(query.error)}<Button disabled={save.isPending} onClick={() => void query.refetch()}>重试读取</Button></p>}
+        {incomingChanged && <p role="alert">服务端配置已更新，未覆盖你的草稿。<Button disabled={save.isPending} onClick={() => { if (query.data) { setDoc(query.data); setSaved(JSON.stringify(buildPayload(query.data))); setIncomingChanged(false) } }}>放弃草稿并读取新配置</Button></p>}
+        <label className="w-form-field" style={{ marginBottom: 24 }}>默认运行环境<Select aria-label="默认运行环境" value={doc.default_profile} disabled={save.isPending} onChange={value => patch({ ...doc, default_profile: value })} options={doc.environments.map(row => ({ value: row.key, label: row.label }))} /></label>
+        <div style={{ fontSize: 'var(--w-font-sm)', fontWeight: 700, marginBottom: 4 }}>环境顺序</div>
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>顺序与默认运行环境独立</p>
         {doc.environments.map((row, index) => (
           <div key={row.key} className="flex items-center" style={{ marginBottom: 4 }}>
             <button
@@ -170,10 +187,10 @@ function EnvironmentSettings() {
               style={{ border: 'none', cursor: 'pointer', borderRadius: 'var(--w-radius-sm)', padding: '8px 8px', textAlign: 'left', color: 'var(--w-text)' }}
             >
               <span style={{ width: 18, color: 'var(--w-text-quaternary)', fontSize: 'var(--w-font-meta)' }}>{index + 1}</span>
-              <span className="truncate" style={{ fontWeight: row.key === env.key ? 700 : 600 }}>{row.label}</span>
+              <span className="min-w-0" style={{ overflowWrap: 'anywhere', fontWeight: row.key === env.key ? 700 : 600 }}>{row.label}{row.key === doc.default_profile && <span className="w-form-hint"> · 默认</span>}</span>
             </button>
-            <Button size="small" type="text" disabled={index === 0} onClick={() => move(index, -1)} aria-label="上移">↑</Button>
-            <Button size="small" type="text" disabled={index === doc.environments.length - 1} onClick={() => move(index, 1)} aria-label="下移">↓</Button>
+            <Button size="small" type="text" disabled={save.isPending || index === 0} onClick={() => move(index, -1)} aria-label="上移">↑</Button>
+            <Button size="small" type="text" disabled={save.isPending || index === doc.environments.length - 1} onClick={() => move(index, 1)} aria-label="下移">↓</Button>
           </div>
         ))}
         <Button size="small" icon={<Plus size={13} />} onClick={() => setAddEnv(true)}>新增环境</Button>
@@ -192,8 +209,8 @@ function EnvironmentSettings() {
           />
           <span style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-quaternary)' }}>第 {doc.environments.findIndex((e) => e.key === env.key) + 1} 步 · {env.key}</span>
           <span style={{ flex: 1 }} />
-          {dirty && <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-warn)' }}>有未保存的改动</span>}
-          <Button size="small" danger disabled={doc.environments.length <= 1} onClick={() => {
+          {dirty && <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-warn)' }}>有未保存修改 · 保存范围为全部环境</span>}
+          <Button size="small" danger disabled={save.isPending || doc.environments.length <= 1} onClick={() => {
             void fb.confirm({ title: `删除环境「${env.label}」？`, content: '各应用在这个环境下的配置会一起丢掉。', danger: true, okText: '删除' }).then((ok) => {
               if (!ok) return
               const environments = doc.environments.filter((row) => row.key !== env.key)
@@ -202,13 +219,16 @@ function EnvironmentSettings() {
             })
           }}
           >删除环境</Button>
-          <Button type="primary" size="small" icon={<Save size={13} />} disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>保存</Button>
+          <Button size="small" disabled={save.isPending || query.isFetching} onClick={() => void query.refetch()}>检查新配置</Button>
+          <Button type="primary" size="small" icon={<Save size={13} />} disabled={!dirty || incomingChanged || query.isError || platformIssues.length > 0} loading={save.isPending} onClick={() => { try { save.mutate(buildWritePayload(doc!)) } catch (e) { fb.fail(errText(e)) } }}>保存全部配置</Button>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-wrap content-start overflow-y-auto" style={{ gap: 12 }}>
-          <aside className="flex flex-col" style={{ flex: '1 1 240px', maxWidth: 300, gap: 6 }}>
+        {platformIssues.length > 0 && <Alert type="warning" showIcon message="历史平台配置需要迁移确认，暂不可保存" description={platformIssues.join("；")} />}
+        {save.isError && <Alert type="error" showIcon message="保存失败，所有环境草稿均已保留" description={errText(save.error)} />}
+        <div className="w-env-editor">
+          <aside className="w-env-channels" aria-label="环境内渠道">
             <div className="flex items-center gap-2">
-              <strong style={{ fontSize: 'var(--w-font-sm)' }}>应用</strong>
+              <strong style={{ fontSize: 'var(--w-font-sm)' }}>渠道</strong>
               <span style={{ flex: 1 }} />
               <Button size="small" icon={<Plus size={13} />} onClick={() => setAddApp(true)}>新增</Button>
             </div>
@@ -220,7 +240,7 @@ function EnvironmentSettings() {
                   key={ch.id}
                   type="button"
                   onClick={() => setAppId(ch.id)}
-                  className="w-hit text-left"
+                  className="w-hit text-left" aria-current={on ? 'true' : undefined}
                   style={{
                     border: `1px solid ${on ? 'var(--w-primary)' : 'var(--w-border)'}`,
                     borderRadius: 'var(--w-radius)',
@@ -229,7 +249,7 @@ function EnvironmentSettings() {
                     cursor: 'pointer',
                   }}
                 >
-                  <div className="truncate" style={{ fontWeight: 700 }}>{channelTitle(ch)}</div>
+                  <div style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{channelTitle(ch)}</div>
                   <div className="truncate" style={{ marginTop: 4, fontSize: 'var(--w-font-meta)', color: fact.launch ? 'var(--w-text-secondary)' : 'var(--w-warn)' }}>
                     {fact.launch || '未填启动地址'}
                   </div>
@@ -240,9 +260,10 @@ function EnvironmentSettings() {
               )
             })}
           </aside>
-          <div className="min-w-0" style={{ flex: '3 1 420px', paddingBottom: 28 }}>
+          <div className="w-env-form">
             {channel ? (
               <AppEnvCard
+                disabled={save.isPending}
                 channel={channel}
                 value={doc.profiles[env.key]?.[channel.id]?.[channel.field] || ''}
                 inheritHint=""
@@ -250,7 +271,7 @@ function EnvironmentSettings() {
                 phone={normalizeSlot(doc.channel_phone_seq[channel.id]?.[env.key], '17000000000')}
                 gmail={normalizeSlot(doc.channel_gmail_alias[channel.id]?.[env.key], '10000')}
                 onValue={(v) => {
-                  const profiles = { ...doc.profiles, [env.key]: { ...doc.profiles[env.key], [channel.id]: { [channel.field]: v } } }
+                  const profiles = { ...doc.profiles, [env.key]: { ...doc.profiles[env.key], [channel.id]: { ...doc.profiles[env.key]?.[channel.id], [channel.field]: v } } }
                   patch({ ...doc, profiles })
                 }}
                 onSecrets={(next) => {
@@ -270,7 +291,7 @@ function EnvironmentSettings() {
                 onRemove={() => void removeApp(channel.id)}
                 onCopy={() => {
                   const text = channelConfigVar(channel)
-                  void navigator.clipboard.writeText(text).then(() => fb.ok('已复制占位符')).catch(() => fb.info(text))
+                  void copyToClipboard(text).then(() => fb.ok('已复制占位符')).catch(() => fb.info(text))
                 }}
               />
             ) : (

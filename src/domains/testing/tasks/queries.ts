@@ -7,7 +7,7 @@ import { verdictOf } from './types'
 
 export const taskKeys = {
   list: (appId: string) => ['tasks', appId, useSession.getState().user?.user_id || ''] as const,
-  detail: (id: string) => ['task', id] as const,
+  detail: (id: string) => ['account', useSession.getState().user?.user_id || '', 'task', id] as const,
 }
 
 /** 批次列表只用来做顶部选择器，所以只要最近若干条。 */

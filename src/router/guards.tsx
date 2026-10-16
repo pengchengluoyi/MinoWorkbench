@@ -38,15 +38,18 @@ function Confirming({ onLeave }: { onLeave: () => void }) {
   )
 }
 
-/**
- * 登录门禁。
- *
- * 原两个项目各写了一份 router.beforeEach，逻辑还不一致
- * （Studio 401 时若本地有 token 就放行，Console 同样条件下也放行但多一层角色校验）。
- * 这里只留一份：状态未知先探测，探测失败但本地有票据则放行（容忍 Nexus 短暂不可达）。
- */
+function ConfirmationFailed({ message, loading, onRetry, onLeave }: { message: string; loading: boolean; onRetry: () => void; onLeave: () => void }) {
+  return <AuthShell>
+    <h1 style={{ margin: 0, fontSize: 'var(--w-font-h2)', color: 'var(--w-text)' }}>暂时无法确认登录状态</h1>
+    <p role="alert" style={{ color: 'var(--w-text-secondary)', lineHeight: 'var(--w-line-relaxed)', overflowWrap: 'anywhere' }}>{message}</p>
+    <p style={{ color: 'var(--w-text-tertiary)' }}>本地凭证已保留。连接恢复后可以重新核验。</p>
+    <div className="flex gap-2"><Button type="primary" loading={loading} onClick={onRetry}>重新核验</Button><Button onClick={onLeave}>去登录</Button></div>
+  </AuthShell>
+}
+
+/** 只有 Nexus 明确确认的身份可以进入受保护页面。 */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { loggedIn, refresh, clear } = useSession()
+  const { loggedIn, loading, confirmationError, refresh, clear } = useSession()
   const location = useLocation()
 
   useEffect(() => {
@@ -54,23 +57,17 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }, [loggedIn, refresh])
 
   if (loggedIn === null) return <Confirming onLeave={clear} />
-
-  if (!loggedIn) {
-    // Nexus 不可达但本地有票据时放行，避免一断网就被踢出去
-    if (hasToken()) return <>{children}</>
-    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
-  }
-
+  if (!loggedIn && hasToken() && (confirmationError || loading)) return <ConfirmationFailed message={confirmationError || '正在重新核验身份…'} loading={loading} onRetry={() => void refresh()} onLeave={clear} />
+  if (!loggedIn) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
   return <>{children}</>
 }
 
-/** 管理后台要求 admin 角色。普通用户访问 /dashboard 这类路径时跳回测试工作台。 */
+/** 管理页面必须有已确认的管理员身份，不能依据本地票据放行。 */
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const { loggedIn, role, clear } = useSession()
-
   if (loggedIn === null) return <Confirming onLeave={clear} />
-  if (loggedIn && !isAdmin(role)) return <Navigate to="/testing" replace />
-
+  if (loggedIn !== true) return <Navigate to="/login" replace />
+  if (!isAdmin(role)) return <Navigate to="/testing" replace />
   return <>{children}</>
 }
 

@@ -28,7 +28,7 @@ export function useUrlState<T extends string = string>(
       if (!next || next === fallback) p.delete(key)
       else p.set(key, next)
       return p
-    }, { replace: true })
+    }, { replace: ['q', 'search'].includes(key) })
   }, [setParams, key, fallback])
 
   return [value, set]

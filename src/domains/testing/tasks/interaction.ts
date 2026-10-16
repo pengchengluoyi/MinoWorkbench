@@ -48,9 +48,11 @@ export function parseInteraction(event: string, raw: Record<string, unknown>): T
   const space = String(fields.coordinate_space || fields.coordinate_unit || '').toLowerCase()
   const screen = record(fields.screen_size ?? fields.viewport)
   const pixels = space === 'pixel' || space === 'pixels'
-  const extent = /^(relative|ratio|fraction)$/.test(space) ? 1 : space === 'percent' ? 100 : 1000
+  const extent = /^(relative|ratio|fraction)$/.test(space) ? 1 : space === 'percent' ? 100 : ['normalized', 'normalized_1000', '1000'].includes(space) ? 1000 : undefined
   const width = numeric(fields.coordinate_width ?? fields.screen_width ?? fields.image_width ?? screen.width)
   const height = numeric(fields.coordinate_height ?? fields.screen_height ?? fields.image_height ?? screen.height)
+  const boundW = pixels ? width : extent, boundH = pixels ? height : extent
+  if (!boundW || !boundH || boundW <= 0 || boundH <= 0 || points.some(point => point.x < 0 || point.y < 0 || point.x > boundW || point.y > boundH)) return undefined
   return {
     kind: moving ? 'path' : 'point',
     points,

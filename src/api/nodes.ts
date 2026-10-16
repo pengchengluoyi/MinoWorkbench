@@ -1,3 +1,4 @@
+import { usesDesktopExecutor } from '@/constants/platformContract'
 import { request } from '@/lib/request'
 import type { ImChannelStatus } from '@/types/im'
 
@@ -234,7 +235,7 @@ export const connectedNodeDevices = (n: ScoutNode): NodeDevice[] => {
   return (n.devices || []).filter((d) => {
     if (d.node_id !== n.node_id || (d.current_scout_id && d.current_scout_id !== n.node_id)) return false
     if (d.node_alive === false) return false
-    if (d.platform === 'desktop' || d.platform === 'web') return true
+    if (usesDesktopExecutor(d.platform) || d.platform === 'web') return true
     return Object.values(d.channels || {}).some((value) => {
       const state = typeof value === 'object' && value !== null
         ? String((value as { state?: string; status?: string }).state || (value as { status?: string }).status || '')
@@ -263,25 +264,34 @@ export interface ScoutRelease {
 export const getScoutRelease = (os: string, arch: string) =>
   request<ScoutRelease>({ url: '/releases/scout/meta', method: 'get', params: { os, arch } })
 
-/** 把 0.1.57 / v0.1.57 这类写法比出大小。返回 -1/0/1。 */
-export const compareVersion = (a: string, b: string): number => {
-  const norm = (v: string) => String(v || '').trim().replace(/^v/i, '').split('.').map((n) => Number(n) || 0)
-  const x = norm(a)
-  const y = norm(b)
-  for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
-    const d = (x[i] ?? 0) - (y[i] ?? 0)
-    if (d !== 0) return d > 0 ? 1 : -1
+/** 严格比较常规版本与 SemVer 预发布版本；无法比较时不作升级判断。 */
+export const compareVersion = (a: string, b: string): number | null => {
+  const parse = (value: string) => /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/i.exec(String(value || '').trim())
+  const x = parse(a), y = parse(b)
+  if (!x || !y) return null
+  for (let i = 1; i <= 3; i++) {
+    const left = BigInt(x[i]), right = BigInt(y[i])
+    if (left !== right) return left > right ? 1 : -1
+  }
+  if (!x[4] || !y[4]) return x[4] === y[4] ? 0 : x[4] ? -1 : 1
+  const left = x[4].split('.'), right = y[4].split('.')
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    if (left[i] === right[i]) continue
+    if (left[i] == null || right[i] == null) return left[i] == null ? -1 : 1
+    const numericLeft = /^\d+$/.test(left[i]), numericRight = /^\d+$/.test(right[i])
+    if (numericLeft && numericRight) return BigInt(left[i]) > BigInt(right[i]) ? 1 : -1
+    if (numericLeft !== numericRight) return numericLeft ? -1 : 1
+    return left[i] > right[i] ? 1 : -1
   }
   return 0
 }
 
-/** 节点平台 → manifest 的 os/arch 取值。 */
+/** 仅映射已上报的平台，不能把未知系统猜成 Linux、未知架构猜成 x64。 */
 export const releaseTargetOf = (n: ScoutNode): { os: string; arch: string } => {
-  const p = String(n.platform || '').toLowerCase()
-  const os = p.includes('darwin') || p.includes('mac') ? 'darwin'
-    : p.includes('win') ? 'win32'
-      : 'linux'
-  const arch = String(n.arch || '').toLowerCase().includes('arm') ? 'arm64' : 'x64'
+  const platform = String(n.host?.os || n.platform || '').toLowerCase()
+  const rawArch = String(n.arch || n.host?.arch || '').toLowerCase()
+  const os = /darwin|mac/.test(platform) ? 'darwin' : /win/.test(platform) ? 'win32' : /linux/.test(platform) ? 'linux' : ''
+  const arch = /^(arm64|aarch64)$/.test(rawArch) ? 'arm64' : /^(x64|amd64|x86_64)$/.test(rawArch) ? 'x64' : ''
   return { os, arch }
 }
 

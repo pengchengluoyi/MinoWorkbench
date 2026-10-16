@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Input, Skeleton, errText, useFeedback } from '@/ui'
 import { getReportSettings, saveReportSettings } from '@/api/assistant'
 import { assistantKeys } from './queries'
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { QueryProblem } from './AssistantNotReady'
 
 export function ReportSettings() {
@@ -11,16 +12,19 @@ export function ReportSettings() {
   const queryKey = [...assistantKeys.all, 'report-settings']
   const settings = useQuery({ queryKey, queryFn: getReportSettings })
   const [address, setAddress] = useState('')
+  const [baseline, setBaseline] = useState('')
+  const dirty = address !== baseline
+  useUnsavedChanges(dirty)
   useEffect(() => {
-    if (settings.data) setAddress(settings.data.workbench_url || settings.data.effective_url)
-  }, [settings.data])
+    if (settings.data && !dirty) { const value = settings.data.workbench_url || settings.data.effective_url; setAddress(value); setBaseline(value) }
+  }, [settings.data, dirty])
   const save = useMutation({
     mutationFn: saveReportSettings,
-    onSuccess: (value) => { qc.setQueryData(queryKey, value); feedback.ok('报告地址已更新') },
+    onSuccess: (value) => { const current = value.workbench_url || value.effective_url; setAddress(current); setBaseline(current); qc.setQueryData(queryKey, value); feedback.ok('报告地址已更新') },
     onError: (error) => feedback.fail(errText(error)),
   })
   const host = window.location.hostname
-  const currentIsLan = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
+  const currentIsLan = !['localhost', '127.0.0.1', '[::1]'].includes(host) && ['http:', 'https:'].includes(window.location.protocol)
   return <section className="w-surface-card" style={{ padding: 18 }}>
     <strong>测试报告链接</strong>
     <p style={{ color: 'var(--w-text-tertiary)', fontSize: 13 }}>任务结果通知会链接到对应任务或用例详情，打开后沿用 Workbench 登录和访问权限。</p>
@@ -38,7 +42,7 @@ export function ReportSettings() {
         {settings.data?.available ? `当前报告入口：${settings.data.effective_url}` : '未取得可用内网地址，请填写可从 IM 所在设备访问的 Workbench 地址。'}
         {settings.data?.source === 'lan_default' ? ' 默认按 Nexus 所在机器的内网 IP 与 Workbench 5273 端口生成；分机或反向代理部署请修改。' : ''}
       </p>
-      {!currentIsLan ? <p style={{ fontSize: 13, color: 'var(--w-text-tertiary)' }}>当前网页地址无法作为内网报告入口，请填写 Workbench 的内网 IP 和实际端口。</p> : null}
+      {!currentIsLan ? <p style={{ fontSize: 13, color: 'var(--w-text-tertiary)' }}>当前网页使用本机回环地址，请填写其他设备可访问的域名或 IP 与实际端口。</p> : null}
     </>}
   </section>
 }

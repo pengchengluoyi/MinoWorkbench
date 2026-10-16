@@ -1,15 +1,17 @@
-import { Fragment, useMemo, useState } from 'react'
+import { usesDesktopExecutor } from '@/constants/platformContract'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Cpu, PanelLeftClose, PanelLeftOpen, Plus, Power, RefreshCw, RotateCw, TriangleAlert, Upload } from 'lucide-react'
-import { Button, EmptyState, Skeleton, Tooltip, errText, useFeedback } from '@/ui'
+import { Alert, Button, EmptyState, FormSection, Input, Skeleton, StatusPill, Tooltip, errText, useFeedback } from '@/ui'
 import { usePersistedFlag } from '@/hooks/usePersistedFlag'
-import { connectedNodeDevices, compareVersion, executableDevices, heldChannels, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
+import { connectedNodeDevices, compareVersion, executableDevices, heldChannels, releaseTargetOf, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
 import { useNodeCommand, useNodes, useScoutRelease, useClaimLegacyNode } from './queries'
 import { useSession } from '@/lib/session'
 import { NodeLogs } from './NodeLogs'
 import { NodePlugins, PLUGIN_PANES, type PluginPane } from './NodePlugins'
 import { AddNodeModal } from './AddNodeModal'
+import { scoutReleaseState } from './releaseState'
 
 type Pane = 'overview' | 'connect' | 'logs'
 
@@ -31,21 +33,29 @@ const PANES: { id: Pane; label: string }[] = [
  */
 export function NodesPage() {
   const nodes = useNodes()
+  const accountId = useSession(state => state.user?.user_id || '')
   const [addingNode, setAddingNode] = useState(false)
   const [params, setParams] = useSearchParams()
   const [listCollapsed, setListCollapsed] = usePersistedFlag('mino.nodes.rail', false)
   const picked = params.get('node') || ''
+  const [nodeOrder, setNodeOrder] = useState<string[]>([])
+  useEffect(() => {
+    if (!nodes.data) return
+    setNodeOrder(previous => {
+      const ids = new Set(nodes.data.map(n => n.node_id))
+      const old = previous.filter(id => ids.has(id))
+      const fresh = [...nodes.data].sort((a, b) => Number(nodeIsOnline(b)) - Number(nodeIsOnline(a)) || String(a.hostname || a.node_id).localeCompare(String(b.hostname || b.node_id), 'zh-Hans-CN')).map(n => n.node_id)
+      const next = [...old, ...fresh.filter(id => !old.includes(id))]
+      return previous.join('\0') === next.join('\0') ? previous : next
+    })
+  }, [nodes.data])
 
   const list: ScoutNode[] = useMemo(() => {
     const raw = nodes.data ?? EMPTY_ARRAY
-    return [...raw].sort((a, b) => {
-      const ao = nodeIsOnline(a) ? 1 : 0
-      const bo = nodeIsOnline(b) ? 1 : 0
-      if (ao !== bo) return bo - ao
-      return String(a.hostname || a.node_id).localeCompare(String(b.hostname || b.node_id), 'zh-Hans-CN')
-    })
-  }, [nodes.data])
-  const activeId = (picked && list.some((n) => n.node_id === picked) ? picked : list[0]?.node_id) || ''
+    const ranks = new Map(nodeOrder.map((id, index) => [id, index]))
+    return [...raw].sort((a, b) => (ranks.get(a.node_id) ?? Number.MAX_SAFE_INTEGER) - (ranks.get(b.node_id) ?? Number.MAX_SAFE_INTEGER) || Number(nodeIsOnline(b)) - Number(nodeIsOnline(a)) || String(a.hostname || a.node_id).localeCompare(String(b.hostname || b.node_id), 'zh-Hans-CN'))
+  }, [nodes.data, nodeOrder])
+  const activeId = (picked ? (list.some((n) => n.node_id === picked) ? picked : '') : list[0]?.node_id) || ''
   const active = list.find((n) => n.node_id === activeId)
 
   const totals = useMemo(() => {
@@ -60,8 +70,8 @@ export function NodesPage() {
     return { online, devices, holders }
   }, [list])
 
-  const emptyContent = nodes.isLoading ? <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
-    : nodes.isError ? (
+  const emptyContent = nodes.isLoading && !nodes.data ? <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
+    : nodes.isError && !nodes.data ? (
       <Card>
         <EmptyState
           icon={<TriangleAlert size={28} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
@@ -79,16 +89,16 @@ export function NodesPage() {
           action={<Button onClick={() => setAddingNode(true)}>添加节点</Button>}
         />
       </Card>
-    ) : null
+    ) : picked && !active ? <Card><EmptyState title="该节点不可见或已移除" hint={`节点 ${picked} 未出现在当前账号目录中，请从列表明确选择另一个节点。`} /></Card> : null
 
   const selectNode = (id: string) => {
     const next = new URLSearchParams(params)
     next.set('node', id)
-    setParams(next, { replace: true })
+    setParams(next, { replace: false })
   }
 
   return (
-    <div className="flex flex-col" style={{ height: '100%', minHeight: 0, gap: 'var(--w-space-3)' }}>
+    <div className="w-workspace flex flex-col" style={{ height: '100%', minHeight: 0, gap: 'var(--w-space-3)' }}>
       <div className="flex flex-wrap items-center gap-3 shrink-0">
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--w-text)' }}>
           Scout 节点
@@ -106,22 +116,24 @@ export function NodesPage() {
         </span>
         <span style={{ flex: 1 }} />
         <Button icon={<Plus size={14} />} onClick={() => setAddingNode(true)}>添加节点</Button>
-        {active?.owner_user_id ? (
-          <NodeToolbar
+        <Tooltip title="刷新">
+          <Button size="small" icon={<RefreshCw size={13} />} loading={nodes.isFetching} onClick={() => { setNodeOrder([]); void nodes.refetch() }} aria-label="刷新" />
+        </Tooltip>
+      </div>
+
+      {nodes.isError && nodes.data && <Alert type="warning" showIcon message="节点刷新失败，以下保留上次读取信息" description={errText(nodes.error)} />}
+              {active?.owner_user_id ? (
+          <NodeToolbar key={active.node_id}
             node={active}
             pane={paneOf(params.get('pane'))}
             onPane={(id) => {
               const next = new URLSearchParams(params)
               next.set('node', active.node_id)
               next.set('pane', id)
-              setParams(next, { replace: true })
+              setParams(next, { replace: false })
             }}
           />
         ) : null}
-        <Tooltip title="刷新">
-          <Button size="small" icon={<RefreshCw size={13} />} loading={nodes.isFetching} onClick={() => void nodes.refetch()} aria-label="刷新" />
-        </Tooltip>
-      </div>
 
       {emptyContent ? emptyContent : <>
       {active && !nodeIsOnline(active) ? (
@@ -130,7 +142,7 @@ export function NodesPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-1 min-h-0" style={{ gap: 'var(--w-space-3)' }}>
+      <div className="w-nodes-body">
         <NodeRail
           list={list}
           activeId={activeId}
@@ -142,7 +154,7 @@ export function NodesPage() {
         {active ? <NodeDetail node={active} pane={active.owner_user_id ? paneOf(params.get('pane')) : 'overview'} pluginPane={pluginPaneOf(params.get('pane'))} /> : null}
       </div>
       </>}
-      <AddNodeModal open={addingNode} onClose={() => setAddingNode(false)} />
+      <AddNodeModal key={accountId} open={addingNode} onClose={() => setAddingNode(false)} />
     </div>
   )
 }
@@ -160,14 +172,14 @@ function NodeRail({
   onToggle: () => void
   onSelect: (id: string) => void
 }) {
-  const online = list.filter(nodeIsOnline)
-  const rest = list.filter((n) => !nodeIsOnline(n))
+  const [search, setSearch] = useState('')
+  const visibleList = list.filter(n => `${n.hostname || ''} ${n.node_id} ${n.platform || ''}`.toLowerCase().includes(search.toLowerCase()))
 
   return (
     <aside
       className="w-rail w-node-col shrink-0 overflow-y-auto flex flex-col"
       style={{
-        width: collapsed ? 56 : 250,
+        width: collapsed ? 56 : 272,
         background: 'var(--w-surface)',
         border: '1px solid var(--w-border)',
         borderRadius: 'var(--w-radius-lg)',
@@ -198,6 +210,7 @@ function NodeRail({
         </Tooltip>
       </div>
 
+      {!collapsed && <div style={{ padding: 12 }}><Input aria-label="搜索节点" placeholder="搜索名称、编号或系统" allowClear value={search} onChange={e => setSearch(e.target.value)} /></div>}
       {collapsed ? (
         list.map((n) => {
           const on = nodeIsOnline(n)
@@ -239,17 +252,8 @@ function NodeRail({
         })
       ) : (
         <>
-          {online.length > 0 && (
-            <div className="w-run-group" data-tone="pass">
-              <div className="w-band" data-tone="pass">在线</div>
-              {online.map((n) => (
-                <NodeRow key={n.node_id} node={n} active={n.node_id === activeId} onSelect={onSelect} />
-              ))}
-            </div>
-          )}
-          {rest.map((n) => (
-            <NodeRow key={n.node_id} node={n} active={n.node_id === activeId} onSelect={onSelect} />
-          ))}
+          {visibleList.map(n => <NodeRow key={n.node_id} node={n} active={n.node_id === activeId} onSelect={onSelect} />)}
+          {!visibleList.length && <p style={{ padding: 16 }}>没有匹配的节点</p>}
         </>
       )}
     </aside>
@@ -274,22 +278,10 @@ function NodeRow({ node, active, onSelect }: { node: ScoutNode; active: boolean;
       className="w-scout-row w-hit"
     >
       <span className="min-w-0 flex flex-col gap-1">
-        <span className="min-w-0 flex items-baseline gap-2">
-        <strong className="truncate" style={{ fontSize: 'var(--w-font-base)', fontWeight: 650, color: active ? 'var(--w-primary)' : 'var(--w-text)' }}>
-          {node.hostname || node.node_id.slice(0, 10)}
-        </strong>
-        <span className="truncate" style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
-          {devs} 台{node.scout_version ? ` · v${node.scout_version}` : ''}
-        </span>
-        {held.length ? (
-          <Tooltip title={`连着：${held.join('、')}。持有对话渠道的节点需要常驻`}>
-            <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-primary)' }}>对话</span>
-          </Tooltip>
-        ) : null}
-        </span>
-        <span className="truncate" title={`最后心跳：${lastHeartbeat}`} style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-tertiary)' }}>
-          {system} · 心跳 {lastHeartbeat}
-        </span>
+        <strong className="w-node-name" title={node.hostname || node.node_id} style={{ color: active ? 'var(--w-primary)' : 'var(--w-text)' }}>{node.hostname || node.node_id}</strong>
+        <span className="w-node-list-meta">{system} · 可执行 {devs} 台 · {node.scout_version ? `v${node.scout_version.replace(/^v/i, '')}` : '版本未上报'}</span>
+        <span className="w-node-list-meta" title={`最后心跳：${lastHeartbeat}`}>心跳 {lastHeartbeat}</span>
+        {!!held.length && <span className="w-node-list-meta" style={{ color: 'var(--w-primary)' }}>对话 · {held.join('、')}</span>}
       </span>
       <span style={{ textAlign: 'right', fontSize: 'var(--w-font-sm)', fontWeight: 700, color: asleep ? 'var(--w-warn)' : on ? 'var(--w-pass)' : 'var(--w-text-tertiary)' }}>
         {label}
@@ -316,110 +308,83 @@ function NodeToolbar({ node, pane, onPane }: { node: ScoutNode; pane: Pane; onPa
   const asleep = nodeIsAsleep(node)
   const current = String(node.scout_version || '')
   const latest = String(release.data?.version || '')
-  const packaging = !!release.data?.packaging
-  const behind = !!current && !!latest && compareVersion(current, latest) < 0
+  const releaseTarget = releaseTargetOf(node)
+  const updateKey = `mino.nodes.update.${node.owner_user_id || ''}.${node.node_id}`
+  const [pendingVersion, setPendingVersion] = useState(() => { try { return sessionStorage.getItem(updateKey) || '' } catch { return '' } })
+  const [commandError, setCommandError] = useState('')
+  const state = scoutReleaseState(node, release)
   const downloading = !!node.update_job?.active
-  const downloadPercent = Math.max(0, Math.min(100, Number(node.update_job?.percent) || 0))
-  const retryInstall = packaging || release.isError || !latest || downloading
-  const upgradeLabel = downloading
-    ? `下载中 ${downloadPercent}%`
-    : retryInstall
-      ? `重新下载${latest ? ` v${latest}` : ''}`
-      : behind
-        ? `升级到 v${latest}`
-        : '已是最新'
-  const upgradeBlocked = !online
-    ? '节点离线，命令没有接收方。'
-    : !behind && !retryInstall
-      ? `当前 v${current || '未知'} 已经是最新版。`
-      : ''
+  const versionConfirmed = pendingVersion && compareVersion(current, pendingVersion) != null && compareVersion(current, pendingVersion)! >= 0
+  const waiting = !!pendingVersion && !versionConfirmed
+  const upgradeLabel = downloading ? (node.update_job?.label || '正在升级') : waiting ? '等待节点版本确认' : state.label
+  const upgradeBlocked = !online ? '节点离线，无法接收升级命令。' : waiting ? '升级结果待确认，请读取同一节点状态，避免重复下发。' : state.canUpgrade ? '' : state.detail
+  useEffect(() => {
+    if (!versionConfirmed || !pendingVersion) return
+    setPendingVersion('')
+    try { sessionStorage.removeItem(updateKey) } catch { /* 不影响版本展示 */ }
+  }, [versionConfirmed, pendingVersion, updateKey])
 
   const run = async (command: NodeCommand, label: string, danger = false) => {
     const ok = await fb.confirm({
-      title: `确定${label}这个节点？`,
+      title: `确定${label}节点 ${node.node_id}？`,
       content: danger
         ? `${node.hostname || node.node_id} 上正在执行的用例会被中断。`
-        : `命令会下发给 ${node.hostname || node.node_id}。`,
+        : `命令会下发给 ${node.hostname || node.node_id}，节点编号 ${node.node_id}，账号归属 ${node.owner_user_id || '未报告'}。`,
       danger,
       okText: label,
     })
     if (!ok) return
+    if (command === 'update') {
+      if (upgradeBlocked || downloading || cmd.isPending) return
+      setPendingVersion(latest)
+      try { sessionStorage.setItem(updateKey, latest) } catch { /* 页面内仍保留待确认状态 */ }
+    }
+    setCommandError('')
     try {
       await cmd.mutateAsync({ nodeId: node.node_id, command })
       fb.ok(`${label}命令已下发`)
     } catch (e) {
       if (command === 'update' && requestDropped(e)) {
-        fb.warn('页面连接断了，下载可能还在进行。可以再点一次，重新下载安装最新版本。')
+        fb.warn('页面连接中断，下载可能仍在进行。请先查看同一节点的升级任务状态，避免重复下发。')
         return
       }
-      fb.fail(errText(e, `${label}失败`))
+      const text = errText(e, `${label}失败`)
+      setCommandError(text)
+      if (command === 'update' && !requestDropped(e)) { setPendingVersion(''); try { sessionStorage.removeItem(updateKey) } catch { /* 可再次检查状态 */ } }
+      fb.fail(text)
     }
   }
 
-  return (
-    <>
-      <div className="flex items-center" role="tablist" aria-label="节点内容">
-        {PANES.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={pane === item.id}
-            data-active={pane === item.id ? 'true' : 'false'}
-            className="w-hit"
-            onClick={() => onPane(item.id)}
-            style={{
-              height: 32,
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: 'var(--w-radius-sm)',
-              padding: '0 10px',
-              fontSize: 'var(--w-font-sm)',
-              fontWeight: 650,
-              color: pane === item.id ? 'var(--w-primary)' : 'var(--w-text-secondary)',
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
+  return <div className="flex shrink-0 flex-col gap-3">
+    <div className="w-node-version" role="status">
+      <div className="min-w-0"><strong className="w-node-name">{node.hostname || node.node_id}</strong><span className="w-form-hint">运行版本：{current || '未上报'} · {node.host?.os || node.platform || '系统未上报'} / {node.arch || node.host?.arch || '架构未上报'}</span></div>
+      <StatusPill status={waiting ? 'warn' : state.kind === 'available' ? 'pass' : state.kind === 'failed' ? 'warn' : 'muted'}>{upgradeLabel}</StatusPill>
+      <span className="w-form-hint" style={{ flex: 1 }}>{waiting ? '升级已触发，等待心跳确认运行版本。请勿重复下发。' : state.detail}</span>
+      <Button disabled={release.isFetching || !releaseTarget.os || !releaseTarget.arch} loading={release.isFetching} onClick={() => void release.refetch()}>检查更新</Button>
+      <Tooltip title={upgradeBlocked || state.detail}><span><Button icon={<Upload size={14} />} disabled={!!upgradeBlocked || downloading || cmd.isPending} loading={cmd.isPending && cmd.variables?.command === 'update'} onClick={() => void run('update', `升级至 ${latest}`)}>升级</Button></span></Tooltip>
+      {downloading && typeof node.update_job?.percent === 'number' && <span>{Math.round(Math.max(0, Math.min(100, node.update_job.percent)))}%</span>}
+      {release.dataUpdatedAt > 0 && <span className="w-form-hint">检查于 {new Date(release.dataUpdatedAt).toLocaleTimeString()}</span>}
+    </div>
+    {(commandError || node.update_job?.error) && <Alert type="warning" message="节点操作需要核对" description={commandError || node.update_job?.error} />}
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="w-node-tabs" role="group" aria-label="节点内容">
+        {PANES.map(item => <button key={item.id} type="button" aria-pressed={pane === item.id} data-active={pane === item.id ? 'true' : 'false'} className="w-hit" onClick={() => onPane(item.id)}>{item.label}</button>)}
       </div>
-      <Tooltip title={online ? '' : '节点离线，命令没有接收方。需要在设备机上手动启动 Scout。'}>
-        <span className="flex items-center gap-2">
-          {asleep ? (
-            <Button size="small" icon={<Power size={13} />} disabled={!online} loading={cmd.isPending} onClick={() => run('wake', '启动')}>启动</Button>
-          ) : (
-            <Button size="small" icon={<Power size={13} />} disabled={!online} loading={cmd.isPending} onClick={() => run('sleep', '休眠')}>休眠</Button>
-          )}
-          <Button size="small" icon={<RotateCw size={13} />} disabled={!online} loading={cmd.isPending} onClick={() => run('restart', '重启', true)}>重启</Button>
-          <Tooltip title={upgradeBlocked || node.update_job?.label || `当前 v${current || '未知'}${latest ? `，目标 v${latest}` : ''}`}>
-            <Button
-              size="small"
-              icon={<Upload size={13} />}
-              disabled={!!upgradeBlocked}
-              loading={cmd.isPending || downloading}
-              onClick={() => run('update', retryInstall ? '重新下载安装' : `升级到 v${latest}`)}
-            >
-              {upgradeLabel}
-            </Button>
-          </Tooltip>
-        </span>
-      </Tooltip>
-    </>
-  )
+      <div className="w-node-actions">
+        <Tooltip title={online ? '持有对话渠道的节点休眠会影响渠道服务' : '节点离线，命令没有接收方'}><span><Button icon={<Power size={14} />} disabled={!online || cmd.isPending || waiting || downloading} onClick={() => void run(asleep ? 'wake' : 'sleep', asleep ? '唤醒' : '休眠')}>{asleep ? '唤醒' : '休眠'}</Button></span></Tooltip>
+        <Button icon={<RotateCw size={14} />} disabled={!online || cmd.isPending || waiting || downloading} onClick={() => void run('restart', '重启', true)}>重启</Button>
+      </div>
+    </div>
+  </div>
 }
 
 function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; pluginPane?: PluginPane }) {
-  const release = useScoutRelease(node)
   const role = useSession((state) => state.role)
   const claim = useClaimLegacyNode()
   const fb = useFeedback()
   const [permissionsOpen, setPermissionsOpen] = useState(false)
   const devices = connectedNodeDevices(node)
 
-  const current = String(node.scout_version || '')
-  const latest = String(release.data?.version || '')
-  const behind = !!current && !!latest && compareVersion(current, latest) < 0
-  const versionText = !current ? '版本未知' : behind && latest ? `v${current}，可升到 v${latest}` : `v${current} 已是最新`
   const beat = node.last_seen_ago_sec != null ? `心跳 ${Math.round(node.last_seen_ago_sec)} 秒前` : ''
   const runnable = devices.filter((d) => d.executable === true).length
   const batteryPct = node.host?.battery_percent
@@ -427,7 +392,7 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
   const stale = node.last_seen_ago_sec != null && node.last_seen_ago_sec > 60
   const executors = Object.entries(node.executors || {})
   const execText = executors.length
-    ? executors.map(([name, ex]) => (ex?.available ? `${name} ${ex.provides ?? 0} 项` : `${name} 不可用`)).join(' · ')
+    ? executors.map(([name, ex]) => (ex?.available ? `${name} ${ex.provides ?? '数量未上报'} 项` : `${name} 不可用`)).join(' · ')
     : '没有上报'
 
   return (
@@ -445,7 +410,7 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
               {nodeIsOnline(node) ? '节点在线，执行取决于设备状态' : '节点离线，不能下发'}
               {batteryPct != null ? ` · 电量 ${batteryPct}%${batteryLow ? '，偏低' : ''}` : ''}
               {beat ? ` · ${beat}${stale ? '，心跳偏旧' : ''}` : ''}
-              {behind ? ` · ${versionText}` : ''}
+
             </div>
           </div>
           <div style={{ padding: 14, borderBottom: '1px solid var(--w-border)' }}>
@@ -454,6 +419,18 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
             <span role="status">{nodeIsOnline(node) ? '节点在线' : '节点离线'}</span>
             {!node.owner_user_id && role === 'admin' ? <div style={{ marginTop: 8 }}><Button size="small" loading={claim.isPending} onClick={() => claim.mutate(node.node_id, { onError: (error) => fb.fail(errText(error, '认领失败')) })}>认领历史节点到当前账号</Button></div> : null}
           </div>
+          <FormSection title="节点信息" description="来自当前节点上报；未提供的字段不会按默认值补齐。">
+            <dl className="w-facts-grid">
+              <div><dt>节点编号</dt><dd className="w-mono">{node.node_id}</dd></div>
+              <div><dt>运行版本</dt><dd>{node.scout_version || '未上报'}</dd></div>
+              <div><dt>归属账号</dt><dd>{node.owner_name || node.owner_user_id || '未归属'}</dd></div>
+              <div><dt>主机架构</dt><dd>{node.arch || node.host?.arch || '未上报'}</dd></div>
+              <div><dt>运行状态</dt><dd>{node.draining ? '停止接收新任务' : node.busy === true ? '忙碌' : node.busy === false ? '空闲' : '未上报'}</dd></div>
+              <div><dt>桌面状态</dt><dd>{node.host?.desktop?.blocked_reason || ({ ready: '已就绪', permission_required: '需要系统授权', blocked: '暂不可执行' } as Record<string, string>)[node.host?.desktop?.state || ''] || node.host?.desktop?.state || '未上报'}</dd></div>
+              <div><dt>CPU 使用率</dt><dd>{typeof node.host?.cpu_percent === 'number' ? `${node.host.cpu_percent}%` : '未上报'}</dd></div>
+              <div><dt>内存用量</dt><dd>{typeof node.host?.rss_mb === 'number' ? `${node.host.rss_mb} MB` : '未上报'}</dd></div>
+            </dl>
+          </FormSection>
           <div className="w-band" data-tone="quiet">当前节点设备 · {devices.length} 台 · 执行器 · {execText}</div>
           {!devices.length ? (
             <div style={{ padding: 14, fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
@@ -465,19 +442,19 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
             const on = d.executable === true
             return (
               <Fragment key={d.sn}>
-              <Link to={`/settings/runtime/device/${encodeURIComponent(d.sn)}`} className="w-scout-row w-hit">
-                <span className="min-w-0 flex items-baseline gap-2">
+              <Link to={`/settings/runtime/device/${encodeURIComponent(d.sn)}?node=${encodeURIComponent(node.node_id)}&device=${encodeURIComponent(d.sn)}&pane=overview`} className="w-scout-row w-hit">
+                <span className="min-w-0 flex flex-col gap-1">
                   <strong className="truncate" style={{ fontSize: 'var(--w-font-base)', fontWeight: 650 }}>{d.model || d.type || '设备'}</strong>
                   <span className="w-mono truncate" style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>{d.sn}</span>
                 </span>
                 <span style={{ textAlign: 'right', fontSize: 'var(--w-font-sm)', fontWeight: 700, color: on ? 'var(--w-pass)' : 'var(--w-text-tertiary)' }}>
-                  {on ? '就绪' : d.blocked_reason || '离线'}
+                  {on ? '可执行' : d.blocked_reason || d.desktop_state || d.status || '执行状态未上报'}
                 </span>
                 <span className="w-scout-go" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>
-                  {d.platform === 'desktop' ? `PC 桌面 · ${d.os || '系统未知'}` : d.platform === 'web' ? 'Web 浏览器' : d.platform || d.type || ''}
+                  {usesDesktopExecutor(d.platform) ? `PC 桌面 · ${d.platform === 'mac' ? 'mac' : d.platform === 'win' ? 'win' : d.os || '系统未知'}` : d.platform === 'web' ? 'Web 浏览器' : d.platform || d.type || ''}
                 </span>
               </Link>
-              {d.platform === 'desktop' && node.host?.desktop?.state === 'permission_required' ? (
+              {usesDesktopExecutor(d.platform) && node.host?.desktop?.state === 'permission_required' ? (
                 <div style={{ padding: '4px 14px 10px' }}>
                   <Button size="small" type="link" onClick={() => setPermissionsOpen((value) => !value)}>处理权限</Button>
                   {permissionsOpen ? <p>macOS：打开系统设置 → 隐私与安全性，为运行 Scout 的程序授予屏幕录制和辅助功能权限；按系统提示重启该程序，心跳会自动更新状态。</p> : null}

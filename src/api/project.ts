@@ -34,3 +34,32 @@ export const deleteApp = (appId: string) =>
 
 export const updateAppEnv = (appId: string, env: Record<string, unknown>) =>
   request({ url: `/project/app/${appId}/env`, method: 'put', data: { env } })
+
+export interface ProjectMaintainer {
+  user_id: string
+  name: string
+  email: string
+  source: 'creator' | 'member'
+  added_by: string
+  added_at: number
+}
+
+export interface ProjectMaintainers {
+  items: ProjectMaintainer[]
+  can_edit: boolean
+  can_manage: boolean
+}
+
+export const getProjectMaintainers = (projectId: string) =>
+  request<ProjectMaintainers>({ url: `/project/${projectId}/maintainers`, method: 'get' })
+
+export const addProjectMaintainer = (projectId: string, userId: string) =>
+  request<ProjectMaintainer[]>({ url: `/project/${projectId}/maintainers`, method: 'post', data: { user_id: userId } })
+
+export const removeProjectMaintainer = (projectId: string, userId: string) =>
+  request<ProjectMaintainer[]>({ url: `/project/${projectId}/maintainers/${userId}`, method: 'delete' })
+
+export interface AuthUser { user_id: string; name: string; username: string; email: string }
+
+export const listAuthUsers = () =>
+  request<{ users: AuthUser[] }>({ url: '/auth/users', method: 'get' })

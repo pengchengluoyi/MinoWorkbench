@@ -1,10 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Checkbox, Drawer, Select, StatusPill, errText } from '@/ui'
 import { compileV5Draft, configureV5Baseline, getV5Preview, publishV5Case, getV5Metrics, type V5Preview } from '@/api/v5'
 import type { CaseRow } from '@/api/projectCases'
 import { unwrapOne } from '@/lib/unwrap'
+import { caseKeys } from './queries'
 import { recordOf } from './caseUnderstanding'
+import { useSession } from '@/lib/session'
 import './V5Publication.css'
 
 const reasons: Record<string, [string, string]> = {
@@ -37,33 +39,42 @@ const labels: Record<string, string> = {
 }
 const values: Record<string, string> = { input_target: '输入', tap_target: '点击', text: '文字', draft: '草稿', published: '已发布', stale: '待重新审阅', pass: '通过', fail: '失败', flaky: '重试后通过', effect_unknown: '执行效果未知', not_measured: '尚未测量' }
 
-export function V5Publication({ projectId, row }: { projectId: string; row: CaseRow }) {
+export function V5Publication({ projectId, row, enabled = true }: { projectId: string; row: CaseRow; enabled?: boolean }) {
+  const owner = useSession(state => state.user?.user_id || '')
   const qc = useQueryClient()
   const [reviewed, setReviewed] = useState(false)
   const [retry, setRetry] = useState(false)
   const [showMetrics, setShowMetrics] = useState(false)
   const [baselineId, setBaselineId] = useState('')
-  const metrics = useQuery({ queryKey: ['v5-metrics', projectId], queryFn: async () => unwrapOne(await getV5Metrics(projectId)), enabled: showMetrics })
-  const key = ['v5-preview', projectId, row.case_id]
-  const preview = useQuery({ queryKey: key, queryFn: async () => unwrapOne<V5Preview>(await getV5Preview(projectId, row.case_id)), enabled: !!projectId })
-  const compile = useMutation({ mutationFn: () => compileV5Draft(projectId, row.case_id), onSuccess: async () => {
+  const metrics = useQuery({ queryKey: ['v5-metrics', projectId, owner], queryFn: async () => unwrapOne(await getV5Metrics(projectId)), enabled: enabled && showMetrics })
+  const key = ['v5-preview', owner, projectId, row.case_id]
+  const preview = useQuery({ queryKey: key, queryFn: async () => unwrapOne<V5Preview>(await getV5Preview(projectId, row.case_id)), enabled: enabled && !!projectId,
+    refetchInterval: q => ['queued', 'running'].includes(q.state.data?.compile_job?.status || '') ? 2000 : false })
+  const compileIdentity = useRef('')
+  const compile = useMutation({ mutationFn: () => {
+    if (!compileIdentity.current) compileIdentity.current = crypto.randomUUID()
+    return compileV5Draft(projectId, row.case_id, preview.data!.draft_revision, compileIdentity.current)
+  }, onSuccess: async () => {
+    compileIdentity.current = ''
+    await qc.invalidateQueries({ queryKey: ['case-version-chain', owner, projectId, row.case_id] })
+    await qc.invalidateQueries({ queryKey: ['case-review', owner, projectId, row.case_id] })
     setReviewed(false)
-    await qc.invalidateQueries({ queryKey: key })
+    await Promise.all([qc.invalidateQueries({ queryKey: key }), qc.invalidateQueries({ queryKey: caseKeys.list(projectId) })])
   } })
-  const publish = useMutation({ mutationFn: async () => {
-    if (!reviewed || !preview.data?.eligible) throw new Error('请先核对预期强度和资格检查')
-    return publishV5Case(projectId, row.case_id, preview.data.draft_revision, retry)
+  const publish = useMutation({ mutationFn: async (snapshot: { revision: number; retry: boolean; compileJobId: string }) => {
+    if (!reviewed || !preview.data?.eligible || snapshot.revision !== preview.data.draft_revision || snapshot.compileJobId !== (preview.data.compile_job_id || '')) throw new Error('草稿已变化，请重新核对资格和预期强度')
+    return publishV5Case(projectId, row.case_id, snapshot.revision, snapshot.retry, snapshot.compileJobId)
   }, onSuccess: async () => {
     setReviewed(false)
-    await qc.invalidateQueries()
+    await Promise.all([qc.invalidateQueries({ queryKey: key }), qc.invalidateQueries({ queryKey: caseKeys.list(projectId) }), qc.invalidateQueries({ queryKey: ['v5-metrics', projectId] }), qc.invalidateQueries({ queryKey: ['case-version-chain', owner, projectId, row.case_id] }), qc.invalidateQueries({ queryKey: ['case-review', owner, projectId, row.case_id] })])
   } })
   const baseline = useMutation({ mutationFn: () => configureV5Baseline(projectId, row.case_id, preview.data!.draft_revision, baselineId), onSuccess: async () => {
     setReviewed(false)
-    await qc.invalidateQueries({ queryKey: key })
+    await Promise.all([qc.invalidateQueries({ queryKey: key }), qc.invalidateQueries({ queryKey: caseKeys.list(projectId) }), qc.invalidateQueries({ queryKey: ['case-version-chain', owner, projectId, row.case_id] }), qc.invalidateQueries({ queryKey: ['case-review', owner, projectId, row.case_id] })])
   } })
   useEffect(() => { setReviewed(false) }, [projectId, row.case_id, preview.data])
-  useEffect(() => { setBaselineId(''); setRetry(false) }, [projectId, row.case_id])
-  const changing = compile.isPending || baseline.isPending || preview.isFetching
+  useEffect(() => { setBaselineId(''); setRetry(false); compileIdentity.current = '' }, [projectId, row.case_id])
+  const changing = compile.isPending || baseline.isPending || publish.isPending || preview.isFetching
   const error = preview.error || compile.error || publish.error || baseline.error
   const frozen = row.v5_publication as { frozen_revision?: number; source?: Record<string, unknown> } | undefined
   const data = preview.data
@@ -75,11 +86,12 @@ export function V5Publication({ projectId, row }: { projectId: string; row: Case
   const grouped = new Map<string, V5Preview['errors']>()
   for (const item of data?.errors || []) grouped.set(item.reason_code, [...(grouped.get(item.reason_code) || []), item])
   const checks = Array.isArray(data?.check_program_plan?.checkpoints) ? data.check_program_plan.checkpoints.map(recordOf) : []
-  return <section className="case-publication" aria-label="草稿发布审阅">
-    <div className="case-publication-header"><div><h2>草稿发布审阅</h2><p>运行使用已发布版本；修改文字或配置后，需要重新审阅并发布。</p></div><div className="case-publication-actions">
-      <Button size="small" onClick={() => setShowMetrics(true)}>最近七天统计</Button>
-      <Button size="small" loading={compile.isPending} onClick={() => compile.mutate()}>编译当前文字草稿</Button>
-      <Button size="small" loading={preview.isFetching} onClick={() => void preview.refetch()}>刷新资格检查</Button>
+  if (!enabled) return <section className="case-publication" aria-label="严格 Web 计划适用范围"><div className="case-publication-header"><div><h2>严格 Web 计划审阅</h2><p>此审阅区仅适用于已明确标注为 Web 的用例。当前为非 Web 或平台尚未明确，原文和解析仍可正常查看。</p></div></div></section>
+  return <section className="case-publication" aria-label="严格 Web 计划审阅">
+    <div className="case-publication-header"><div><h2>严格 Web 计划审阅</h2><p>适用于严格 Web 执行：使用已发布计划；修改文字或配置后，需要重新审阅并发布。</p></div><div className="case-publication-actions">
+      <Button size="small" onClick={() => setShowMetrics(true)}>项目近七天统计</Button>
+      <Button size="small" disabled={changing || !preview.data || ['queued', 'running'].includes(data?.compile_job?.status || '')} loading={compile.isPending} onClick={() => compile.mutate()}>排队编译当前草稿</Button>
+      <Button size="small" disabled={changing} loading={preview.isFetching} onClick={() => void preview.refetch()}>刷新资格检查</Button>
     </div></div>
     <div className="case-publication-status"><StatusPill status={data?.eligible ? 'pass' : 'muted'}>{preview.isPending ? '检查中' : preview.isError ? '检查读取失败' : data?.eligible ? '结构检查通过' : '暂不可发布'}</StatusPill><span>状态：{values[String(row.v5_plan_state || 'draft')] || String(row.v5_plan_state)}</span><span>已发布版本：{frozen?.frozen_revision ?? '无'}</span>{data ? <span>当前草稿：v{data.draft_revision}</span> : null}{row.v5_has_unpublished_changes ? <span>有未发布的文字修改</span> : null}</div>
     {error ? <p role="alert" className="case-publication-error">{errText(error, '发布配置读取失败')}</p> : null}
@@ -89,18 +101,18 @@ export function V5Publication({ projectId, row }: { projectId: string; row: Case
         const refs = [...new Set(items.map(item => item.control_id ? controlName(item.control_id) : item.point_id ? `校验 ${item.point_id}` : recordOf(item).operation_id ? `操作 ${recordOf(item).operation_id}` : recordOf(item).step ? `步骤 ${recordOf(item).step}` : '').filter(Boolean))]
         return <div className="case-publication-issue" key={code}><strong>{title}<span> {items.length} 项</span></strong><span>{detail}</span>{refs.length ? <small>涉及：{refs.join('、')}</small> : null}</div>
       })}</div> : <p className="case-publication-hint">{data.eligible ? '结构资格检查通过，请继续核对业务预期强度。' : '服务端尚未提供具体的拒绝原因，请刷新资格检查。'}</p>}
-      <div className="case-publication-baseline"><div><strong>未登录基线</strong><p>每案启动新浏览器，确认登录标记不可见；无法读取时停止执行。</p></div><Select aria-label="未登录基线控件" placeholder="选择业务认可的登录标记" value={baselineId || data.baseline?.control_id || undefined}
-        onChange={setBaselineId} options={data.baseline_controls?.map(item => ({ value: item.control_id, label: item.target_desc || item.control_id }))} /><Button size="small" disabled={!baselineId} loading={baseline.isPending} onClick={() => baseline.mutate()}>保存基线配置</Button></div>
+      <div className="case-publication-baseline"><div><strong>未登录基线</strong><p>每案启动新浏览器，确认登录标记不可见；无法读取时停止执行。</p></div><Select disabled={changing} aria-label="未登录基线控件" placeholder="选择业务认可的登录标记" value={baselineId || data.baseline?.control_id || undefined}
+        onChange={setBaselineId} options={data.baseline_controls?.map(item => ({ value: item.control_id, label: item.target_desc || item.control_id }))} /><Button size="small" disabled={changing || !baselineId} loading={baseline.isPending} onClick={() => baseline.mutate()}>保存基线配置</Button></div>
       <div className="case-publication-mapping"><div><h3>操作映射 <span>{data.actions.length} 项</span></h3>{data.actions.length ? <ol>{data.actions.map((action, index) => <li key={index}><strong>步骤 {String(action.case_step ?? '未关联')} · {values[String(action.capability_id)] || String(action.capability_id || '未返回动作')} · {controlName(action.control_id)}</strong><HumanValue value={action} omit={['case_step', 'capability_id', 'control_id']} /></li>)}</ol> : <p>尚无可执行的操作映射</p>}</div>
         <div><h3>原子校验 <span>{checks.length} 项</span></h3>{checks.length ? <ol>{checks.map((check, index) => <li key={index}><strong>步骤 {String(check.case_step ?? '未关联')} · {controlName(check.control_id)} · {check.required ? '必需' : '可选'}</strong><HumanValue value={check} omit={['case_step', 'control_id', 'required']} /></li>)}</ol> : <p>尚无可执行的原子校验</p>}</div></div>
       {Object.keys(data.provenance || {}).length ? <div className="case-publication-provenance"><h3>编译来源</h3><HumanValue value={data.provenance} /></div> : null}
       {frozen?.source ? <div className="case-publication-mapping"><SourceView title="发布时的原文" source={frozen.source} /><SourceView title="当前草稿原文" source={data.source} /></div> : null}
       <div className="case-publication-review"><Checkbox disabled={changing} checked={reviewed} onChange={event => setReviewed(event.target.checked)}>已核对业务预期强度、目标与必需校验项</Checkbox>
-        <Checkbox checked={retry} onChange={event => setRetry(event.target.checked)}>确认用例可复位，允许执行效果未知时整案重试一次（重试后通过会单独标记）</Checkbox>
-        <div><Button type="primary" disabled={changing || !reviewed || !data.eligible} loading={publish.isPending} onClick={() => publish.mutate()}>冻结发布此草稿</Button>{publish.isSuccess ? <span role="status"> 已发布</span> : null}</div>
+        <Checkbox disabled={changing} checked={retry} onChange={event => setRetry(event.target.checked)}>确认用例可复位，允许执行效果未知时整案重试一次（重试后通过会单独标记）</Checkbox>
+        <div><Button type="primary" disabled={changing || !reviewed || !data.eligible} loading={publish.isPending} onClick={() => publish.mutate({ revision: data.draft_revision, retry, compileJobId: data.compile_job_id || '' })}>冻结发布此草稿</Button>{publish.isSuccess ? <span role="status"> 已发布</span> : null}</div>
       </div>
     </> : null}
-    <Drawer title="最近七天执行统计" open={showMetrics} onClose={() => setShowMetrics(false)} width={560}><div className="case-publication-metrics">{metrics.isPending ? <p role="status">正在读取统计</p> : metrics.error ? <p role="alert">{errText(metrics.error)}</p> : <HumanValue value={metrics.data} />}<p className="case-publication-hint">“尚未测量”表示服务端没有提供测量值，不按零计算。</p></div></Drawer>
+    <Drawer title="项目近七天执行统计" open={showMetrics} onClose={() => setShowMetrics(false)} width={560}><div className="case-publication-metrics">{metrics.isPending ? <p role="status">正在读取统计</p> : metrics.error ? <p role="alert">{errText(metrics.error)}</p> : <HumanValue value={metrics.data} />}<p className="case-publication-hint">统计范围是当前项目，包含该项目的用例；不是本条用例的专属统计。“尚未测量”表示服务端没有提供测量值，不按零计算。</p></div></Drawer>
   </section>
 }
 

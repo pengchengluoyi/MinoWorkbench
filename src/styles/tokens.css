@@ -45,11 +45,11 @@
   --w-running-bg:       #f0fdf4;
 
   /* ---------- 字阶（四级，对应三层信息结构 + 大数字） ---------- */
-  --w-font-meta:        11px;   /* 标签、脚注、单号 */
-  --w-font-sm:          12px;   /* 次要正文、表格副信息 */
-  --w-font-base:        13px;   /* 正文、表格主信息 */
-  --w-font-title:       14px;   /* 行标题、卡片标题 */
-  --w-font-h2:          16px;
+  --w-font-meta:        12px;   /* 标签、脚注、单号 */
+  --w-font-sm:          13px;   /* 次要正文、表格副信息 */
+  --w-font-base:        14px;   /* 正文、表格主信息 */
+  --w-font-title:       15px;   /* 行标题、卡片标题 */
+  --w-font-h2:          22px;
   --w-font-stat:        28px;   /* 统计大数字 */
 
   --w-line-tight:       1.2;
@@ -92,7 +92,7 @@
 
   /* ---------- 密度相关（默认舒适） ---------- */
   --w-row-height:       44px;
-  --w-control-height:   32px;
+  --w-control-height:   36px;
   --w-cell-padding-y:   12px;
   --w-cell-padding-x:   14px;
   --w-card-padding:     16px;

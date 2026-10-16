@@ -62,7 +62,7 @@ export function UserMenu({ collapsed = false, place = 'testing' }: { collapsed?:
         onClick: async ({ key }) => {
           if (key.startsWith('theme:')) return setTheme(key.slice(6) as any)
           if (key.startsWith('density:')) return setDensity(key.slice(8) as any)
-          if (key === 'admin') return navigate('/dashboard')
+          if (key === 'admin') return navigate('/health')
           if (key === 'testing') return navigate('/testing')
           if (key === 'logout') { await logout(); navigate('/login', { replace: true }) }
         },

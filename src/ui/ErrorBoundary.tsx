@@ -2,7 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button } from 'antd'
 import { TriangleAlert } from 'lucide-react'
 
-interface Props { children: ReactNode; label?: string }
+interface Props { children: ReactNode; label?: string; resetKey?: string }
 interface State { error: Error | null }
 
 /**
@@ -18,6 +18,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary]', this.props.label || '', error, info.componentStack)
+  }
+
+  componentDidUpdate(previous: Props) {
+    if (previous.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null })
   }
 
   render() {

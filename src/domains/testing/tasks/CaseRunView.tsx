@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Segmented, Skeleton, StatusPill, toStatusKind, useFeedback } from '@/ui'
+import { Button, Segmented, Skeleton, StatusPill, toStatusKind, errText, EmptyState, useFeedback } from '@/ui'
 import { useSessionDetail } from '../sessions/queries'
 import { belongsToSession, linkedTurns, stepIdOf, type ExecutionEntry, type ExecutionScope } from '../sessions/executionLinks'
 import { SessionDetail } from '../sessions/SessionDetail'
-import { getCaseRunnerTraceDetail, getSessionTrajectory } from '@/api/caseRunner'
-import { unwrapOne } from '@/lib/unwrap'
+import { loadRunTrace } from './traceQueries'
+import { liveRefreshDelay } from '@/lib/liveQuery'
+import { copyToClipboard } from '@/lib/clipboard'
 import { expandPlatforms, type PlatformInput } from '@/constants/appPlatforms'
-import { conditionPair, splitNumbered } from '../cases/caseText'
+import { fieldPresentation, originalLines, type PreviewTask, type ScriptKind } from '../cases/caseUnderstanding'
+import { CaseScriptSections } from '../cases/CaseScriptSections'
+import type { ScriptInteraction } from '../cases/ScriptField'
+import { CaseVersionChain } from '../cases/CaseVersionChain'
 import { caseId, failReason, verdictOf, type TaskCase } from './types'
-import { mergeTraceSteps, parseTrace, traceKey, type TraceStep } from './trace'
+import { traceKey, type TraceStep } from './trace'
 import { parseInteraction, type TraceInteraction } from './interaction'
 import { ScreenshotOverlay } from './ScreenshotOverlay'
 import './CaseRunView.css'
@@ -28,30 +32,20 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
   const label = verdict === 'pass' ? '通过' : verdict === 'fail' ? '失败' : verdict === 'running' ? '执行中' : '其他'
   const fallback = String(row.summary || failReason(row) || '')
 
-  const session = useSessionDetail(sessionId)
+  const session = useSessionDetail(sessionId, verdict === 'running')
   const trace = useQuery({
     queryKey: ['task', 'trace', runId, sessionId],
-    enabled: !!runId,
-    queryFn: async () => {
-      const trajectory = unwrapOne<Record<string, unknown>>(await (sessionId ? getSessionTrajectory(sessionId).catch(() => ({ data: {} })) : Promise.resolve({ data: {} })))
-      const detail = unwrapOne<Record<string, unknown>>(await getCaseRunnerTraceDetail(runId).catch(() => ({ data: {} })))
-      const fromEvents = parseTrace(trajectory, fallback, { source: 'session', sessionId })
-      const fromTrace = parseTrace(detail, fallback, { source: 'trace', sessionId })
-      return {
-        summary: fromTrace.summary || fromEvents.summary || fallback,
-        steps: mergeTraceSteps(fromEvents.steps, fromTrace.steps),
-      }
-    },
+    enabled: !!(runId || sessionId),
+    refetchInterval: (query) => verdict === 'running' ? liveRefreshDelay(query.state.fetchFailureCount) : false,
+    refetchIntervalInBackground: false,
+    queryFn: () => loadRunTrace(runId, sessionId, fallback),
   })
 
   const steps = useMemo(() => trace.data?.steps || [], [trace.data?.steps])
-  const script = useMemo(() => ({
-    pre: splitNumbered(row.precondition),
-    op: splitNumbered(row.steps || row.steps_raw),
-    ex: splitNumbered(row.expected || row.expected_raw),
-  }), [row.precondition, row.steps, row.steps_raw, row.expected, row.expected_raw])
-  const opEvents = useMemo(() => columnEvents(row.steps_parsed, script.op, 'op'), [row.steps_parsed, script.op])
-  const exEvents = useMemo(() => columnEvents(row.expected_parsed, script.ex, 'ex'), [row.expected_parsed, script.ex])
+  const presentations = useMemo(() => ({ pre: fieldPresentation(row, 'pre'), op: fieldPresentation(row, 'op'), ex: fieldPresentation(row, 'ex') }), [row])
+  const script = useMemo(() => ({ pre: originalLines(presentations.pre.value), op: originalLines(presentations.op.value), ex: originalLines(presentations.ex.value) }), [presentations])
+  const opEvents = useMemo(() => executionTasks(presentations.op.tasks, 'op'), [presentations.op.tasks])
+  const exEvents = useMemo(() => executionTasks(presentations.ex.tasks, 'ex'), [presentations.ex.tasks])
 
   const linked = useMemo(() => linkClauses(opEvents, exEvents, steps), [opEvents, exEvents, steps])
   const [pane, setPane] = useState<'script' | 'trace' | 'log'>('trace')
@@ -86,7 +80,7 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
   const isPortrait = expandPlatforms(platforms).some((platform) => /^(android|ios|mobile)$/i.test(platform))
   const splitView = isPortrait || detailPane === 'trace'
   const interaction = currentTrace?.interaction || (currentTrace ? parseInteraction(currentTrace.event, { attrs: currentTrace.attrs, param: currentTrace.param }) : undefined)
-  const screenshot = <StepScreenshot key={runId} src={screenshotSrc} fallbackStep={!currentTrace?.thumb ? firstScreenshot?.step : undefined} interaction={interaction} />
+  const screenshot = <StepScreenshot key={runId} src={screenshotSrc} fallbackStep={!currentTrace?.thumb ? firstScreenshot?.step : undefined} interaction={currentTrace?.thumb ? interaction : undefined} coordinateUnknown={!!currentTrace?.thumb && /click|tap|press|drag|swipe|点击|拖拽|滑动/.test(currentTrace.event) && !interaction} />
 
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ gap: 10 }}>
@@ -109,35 +103,30 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
         />
       </header>
 
+      {trace.isError && trace.data ? <div className="execution-source-alert" role="alert">轨迹刷新失败，当前保留上次读取的记录。<Button size="small" onClick={() => void trace.refetch()}>重新读取</Button></div> : null}
+      {trace.data?.errors.length ? <div className="execution-source-alert" role="alert">{trace.data.errors.map((item) => <span key={item.source}>{item.source}读取失败：{errText(item.error)}。 </span>)}<Button size="small" onClick={() => void trace.refetch()}>重试缺失来源</Button></div> : null}
       <div className="case-content-pane" style={{ display: pane === 'log' ? 'none' : 'flex' }}>
-      {trace.isLoading ? <Skeleton active paragraph={{ rows: 8 }} title={false} /> : (
+      {trace.isLoading ? <Skeleton active paragraph={{ rows: 8 }} title={false} /> : trace.isError && !trace.data ? <EmptyState title="轨迹读取失败" hint={errText(trace.error)} action={<Button onClick={() => void trace.refetch()}>重试</Button>} /> : (
         <div className="flex min-h-0 flex-1 gap-2.5" style={{ flexDirection: splitView ? 'row' : 'column' }}>
           {splitView ? (
             <div style={{ ...shot, flex: `0 0 ${isPortrait ? '35%' : '52%'}`, maxWidth: isPortrait ? '35%' : '52%', borderRadius: 'var(--w-radius-lg)' }}>{screenshot}</div>
           ) : null}
           <div className="min-h-0 min-w-0 flex-1" style={{ display: detailPane === 'trace' ? 'grid' : 'flex', flexDirection: 'column', gridTemplateRows: detailPane === 'trace' ? 'minmax(0, 1fr) minmax(0, 3fr)' : undefined, gap: 10, overflow: isPortrait && detailPane !== 'trace' ? 'auto' : undefined }}>
             {detailPane === 'script' ? (
-              <div className="grid shrink-0" style={{ gridTemplateColumns: isPortrait ? 'minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.2fr)' : 'minmax(180px, 0.8fr) minmax(220px, 1.1fr) minmax(240px, 1.2fr)', gap: 10 }}>
-                <Card title="前置条件">
-                  {script.pre.length ? script.pre.map((line) => {
-                    const pair = conditionPair(line.text)
-                    return (
-                      <div key={line.num} style={lineRow}>
-                        <span style={num}>{line.num}</span>
-                        <button type="button" className="case-script-chip" aria-pressed={activeClause === `pre-${line.num}-1`} onClick={() => setPicked(`pre-${line.num}-1`)}>
-                          {pair.label ? <span style={verb}>{pair.label}</span> : null}
-                          <b>{pair.value}</b>
-                        </button><button type="button" className="case-step-inspect" onClick={() => { setPicked(`pre-${line.num}-1`); openLogs(scopeFor(`前置 ${line.num}-1`, line.text)) }}>查看回合</button>
-                      </div>
-                    )
-                  }) : <Empty>没有写前置条件</Empty>}
-                </Card>
-                <Card title="操作步骤">
-                  <ScriptColumn events={opEvents} activeId={activeClause} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId)?.at(-1))} onInspect={(clause) => openLogs(scopeFor(`操作 ${clause.stepNum}-${clause.id.split('-')[2]}`, clause.param))} turnsOf={(clause) => scopeFor(`操作 ${clause.stepNum}-${clause.id.split('-')[2]}`, clause.param).turns.length} empty="没有写操作步骤" />
-                </Card>
-                <Card title="预期结果">
-                  <ScriptColumn events={exEvents} activeId={activeClause} onPick={setPicked} toneOf={(clauseId) => eventTone(linked.byClause.get(clauseId)?.at(-1))} onInspect={(clause) => openLogs(scopeFor(`预期 ${clause.stepNum}-${clause.id.split('-')[2]}`, clause.param))} turnsOf={(clause) => scopeFor(`预期 ${clause.stepNum}-${clause.id.split('-')[2]}`, clause.param).turns.length} empty="没有写预期结果" />
-                </Card>
+              <div className="case-execution-script">
+                <CaseVersionChain row={row} execution context={session.data?.meta?.runtime_context} />
+                <p className="case-execution-reading">原文与理解来自本次执行返回的记录；未返回的解析不会以当前草稿补位。</p>
+                <CaseScriptSections row={row} emptyResultText="本次执行未返回这部分解析，原文完整保留" interactionOf={(kind: ScriptKind): ScriptInteraction => {
+                  const reference = (task: PreviewTask, number: number) => task.step > 0 ? `${kind === 'pre' ? '前置' : kind === 'op' ? '操作' : '预期'} ${task.step}-${number}` : undefined
+                  return {
+                    activeTaskId: activeClause,
+                    idOf: (task, number) => `${kind}-${task.step}-${number}`,
+                    onPick: (task, number) => setPicked(`${kind}-${task.step}-${number}`),
+                    onInspect: (task, number) => { setPicked(`${kind}-${task.step}-${number}`); openLogs(scopeFor(reference(task, number), task.title || task.source)) },
+                    turnsOf: (task, number) => scopeFor(reference(task, number), task.title || task.source).turns.length,
+                    statusOf: (task, number) => uiStatus(linked.byClause.get(`${kind}-${task.step}-${number}`)?.at(-1)),
+                  }
+                }} />
               </div>
             ) : null}
 
@@ -203,13 +192,13 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
       )}
       </div>
       <div className="case-content-pane" style={{ display: pane === 'log' ? 'flex' : 'none' }}>
-        {sessionId ? <SessionDetail key={sessionId} sessionId={sessionId} entry={entry} onReturn={() => setPane(returnPane)} /> : <Empty>这次执行没有 session。</Empty>}
+        {sessionId ? <SessionDetail key={sessionId} sessionId={sessionId} live={verdict === 'running'} entry={entry} onReturn={() => setPane(returnPane)} /> : <Empty>这次执行没有 session。</Empty>}
       </div>
     </div>
   )
 }
 
-function StepScreenshot({ src, fallbackStep, interaction }: { src: string; fallbackStep?: number; interaction?: TraceInteraction }) {
+function StepScreenshot({ src, fallbackStep, interaction, coordinateUnknown }: { src: string; fallbackStep?: number; interaction?: TraceInteraction; coordinateUnknown?: boolean }) {
   const [displayed, setDisplayed] = useState({ src: '', width: 0, height: 0 })
   const displayedSrc = displayed.src
   const [failedSrc, setFailedSrc] = useState('')
@@ -233,13 +222,14 @@ function StepScreenshot({ src, fallbackStep, interaction }: { src: string; fallb
   const loading = !!src && src !== displayedSrc && !failed
   const notice = failed ? '截图加载失败，保留上一张截图。'
     : loading ? '正在切换截图…'
-    : fallbackStep != null ? `补位截图 · 第 ${fallbackStep} 步` : ''
+    : fallbackStep != null ? `补位截图 · 第 ${fallbackStep} 步，仅供参考` : ''
 
   return (
     <>
       {src && displayedSrc ? (
-        <img src={displayedSrc} alt="当前步骤截图" style={{ position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
+        <img src={displayedSrc} alt={fallbackStep != null ? `参考截图，来自第 ${fallbackStep} 步` : "当前步骤截图"} style={{ position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%', objectFit: 'contain' }} />
       ) : <p style={{ margin: 0, color: '#94a3b8' }}>{!src ? '本次执行没有截图。' : failed ? '截图加载失败。' : '截图加载中…'}</p>}
+      {coordinateUnknown && <p role="status" style={{ position: 'absolute', top: 8, left: 8, right: 8, zIndex: 2, margin: 0, padding: 6, background: 'rgba(15,23,42,.8)', color: '#fff', fontSize: 12 }}>坐标空间或落点范围未确认，当前截图保留，暂不绘制落点。</p>}
       {src && src === displayedSrc && !failed && interaction ? <ScreenshotOverlay interaction={interaction} imageWidth={displayed.width} imageHeight={displayed.height} /> : null}
       {src && displayedSrc && notice ? (
         <span role={loading || failed ? 'status' : undefined} style={{ position: 'absolute', bottom: 12, left: 12, right: 12, width: 'fit-content', maxWidth: 'calc(100% - 24px)', padding: '4px 8px', borderRadius: 6, background: 'rgba(16, 20, 28, 0.8)', color: '#e2e8f0', fontSize: 12, zIndex: 2 }}>{notice}</span>
@@ -257,79 +247,14 @@ type ScriptEvent = {
   uncovered: boolean
 }
 
-function columnEvents(
-  parsed: unknown,
-  lines: { num: number; text: string }[],
-  prefix: 'op' | 'ex',
-): ScriptEvent[][] {
-  const compiled = Array.isArray(parsed)
-    ? parsed.map((item) => String(item ?? '').trim()).filter(Boolean).map((line) => {
-      const matched = line.match(/^(\d+)\.\s*(.*)$/)
-      return matched ? { step: matched[1], text: matched[2] } : { step: '', text: line }
-    })
-    : []
-  const grouped = new Map<string, string[]>()
-  for (const item of compiled) {
-    const key = item.step || '1'
-    grouped.set(key, [...(grouped.get(key) || []), item.text])
+function executionTasks(tasks: PreviewTask[], prefix: 'op' | 'ex'): ScriptEvent[][] {
+  const groups = new Map<number, ScriptEvent[]>()
+  for (const task of tasks) {
+    const group = groups.get(task.step) || []
+    group.push({ id: `${prefix}-${task.step}-${group.length + 1}`, stepNum: task.step, verb: '', param: task.title, blocked: !!task.blocked, uncovered: false })
+    groups.set(task.step, group)
   }
-  return lines.map((line) => {
-    const texts = compiled.length ? (grouped.get(String(line.num)) || []) : []
-    const shown = texts.length ? texts : ['未编译']
-    return shown.map((text, index) => ({
-      id: `${prefix}-${line.num}-${index + 1}`,
-      stepNum: line.num,
-      verb: '',
-      param: text,
-      uncovered: text.includes('未执行'),
-      blocked: text.startsWith('×') || (text.includes('无法') && !text.includes('未执行')),
-    }))
-  })
-}
-
-function ScriptColumn({
-  events, activeId, onPick, toneOf, empty, onInspect, turnsOf,
-}: {
-  events: ScriptEvent[][]
-  activeId: string
-  onPick: (id: string) => void
-  toneOf: (id: string) => CSSProperties
-  empty: string
-  onInspect: (clause: ScriptEvent) => void
-  turnsOf: (clause: ScriptEvent) => number
-}) {
-  if (!events.length) return <Empty>{empty}</Empty>
-  return (
-    <>
-      {events.map((row) => (
-        <div key={row[0]?.id || 'empty'} style={lineRow}>
-          <span style={num}>{row[0]?.stepNum}</span>
-          <span style={{ lineHeight: 1.75 }}>
-            {row.map((clause, index) => (
-              <span key={clause.id}>
-                {index > 0 ? <span>，</span> : null}
-                <button type="button" className="case-script-chip" aria-pressed={clause.id === activeId} onClick={() => onPick(clause.id)} style={{ ...chipBtn, ...(clause.uncovered ? { background: 'transparent', color: 'var(--w-text-quaternary)' } : clause.blocked ? skipChip : toneOf(clause.id)) }}>
-                  <i style={{ ...badge, background: clause.uncovered ? 'var(--w-text-quaternary)' : clause.blocked ? 'var(--w-warn)' : 'var(--w-primary)' }}>{index + 1}</i>
-                  <b>{clause.param}</b>
-                </button>
-                <button type="button" className="case-step-inspect" onClick={() => { onPick(clause.id); onInspect(clause) }}>{turnsOf(clause) ? `${turnsOf(clause)} 个回合` : '查看回合'}</button>
-                {clause.blocked ? <span style={{ marginLeft: 4, color: 'var(--w-warn)', fontSize: 11, fontWeight: 750 }}>无法执行</span> : null}
-              </span>
-            ))}
-          </span>
-        </div>
-      ))}
-    </>
-  )
-}
-
-function Card({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex min-h-0 flex-col" style={panel}>
-      <h2 style={heading}>{title}</h2>
-      <div className="overflow-auto" style={{ maxHeight: 220 }}>{children}</div>
-    </section>
-  )
+  return [...groups.values()]
 }
 
 function Param({ k, v, bold }: { k: string; v: string; bold?: boolean }) {
@@ -351,7 +276,7 @@ function CopyId({ text, shown, title, onCopy }: { text: string; shown?: string; 
 }
 
 function copyId(text: string, fb: { ok: (s: string) => void; fail: (s: string) => void }, both: boolean) {
-  navigator.clipboard.writeText(text).then(() => fb.ok(both ? '已复制任务和用例 ID' : '已复制')).catch(() => fb.fail('剪贴板不可用'))
+  copyToClipboard(text).then(() => fb.ok(both ? '已复制任务和用例 ID' : '已复制')).catch(() => fb.fail('复制失败，请选中文本手动复制'))
 }
 
 type UiStatus = 'pass' | 'skip' | 'retry' | 'fail' | 'pending' | 'blocked'
@@ -364,15 +289,6 @@ function uiStatus(step?: TraceStep): UiStatus {
   if (/fail|error|give_up|declined/.test(raw)) return 'fail'
   if (/pass|success|done|ok/.test(raw)) return 'pass'
   return 'pending'
-}
-
-function eventTone(step?: TraceStep): CSSProperties {
-  const status = uiStatus(step)
-  if (status === 'pass') return { background: 'var(--w-pass-bg)', color: 'var(--w-pass)' }
-  if (status === 'fail') return { background: 'var(--w-fail-bg)', color: 'var(--w-fail)' }
-  if (status === 'retry' || status === 'blocked') return { background: 'var(--w-warn-bg)', color: 'var(--w-warn)' }
-  if (status === 'skip') return { background: 'transparent', color: 'var(--w-text-quaternary)', textDecoration: 'line-through' }
-  return { background: 'var(--w-fill)', color: 'var(--w-text-tertiary)' }
 }
 
 function Empty({ children }: { children: string }) {
@@ -418,20 +334,9 @@ const panel: CSSProperties = {
   borderRadius: 'var(--w-radius-lg)',
   padding: 12,
 }
-const heading: CSSProperties = { margin: '0 0 8px', fontSize: 14, fontWeight: 750 }
-const lineRow: CSSProperties = { display: 'grid', gridTemplateColumns: '22px minmax(0, 1fr)', gap: 6, padding: '8px 0', borderBottom: '1px solid var(--w-border)' }
-const num: CSSProperties = { color: 'var(--w-text-tertiary)', fontWeight: 750, fontVariantNumeric: 'tabular-nums' }
-const chip: CSSProperties = { display: 'inline', background: '#e7ebf8', borderRadius: 5, padding: '1px 5px', lineHeight: 1.75 }
-const chipBtn: CSSProperties = { ...chip, border: 0, color: 'inherit', font: 'inherit', cursor: 'pointer' }
-const skipChip: CSSProperties = { background: 'transparent', color: 'var(--w-text-quaternary)', textDecoration: 'line-through' }
 const copyBtn: CSSProperties = {
   border: '1px solid var(--w-border)', background: 'var(--w-surface)', borderRadius: 8,
   padding: '2px 8px', fontSize: 12, color: 'var(--w-text-secondary)', cursor: 'pointer',
-}
-const verb: CSSProperties = { fontWeight: 750, color: '#312e81', marginRight: 3 }
-const badge: CSSProperties = {
-  display: 'inline-grid', placeItems: 'center', width: 15, height: 15, marginRight: 3,
-  borderRadius: 4, color: '#fff', fontSize: 10, fontWeight: 800, fontStyle: 'normal', verticalAlign: '1px',
 }
 const stage: CSSProperties = {
   flex: 1, minWidth: 0, minHeight: 240, display: 'grid', gridTemplateColumns: 'minmax(280px, 1.2fr) minmax(220px, 0.8fr)', gridTemplateRows: 'minmax(0, 1fr)',

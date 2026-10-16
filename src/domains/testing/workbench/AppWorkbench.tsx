@@ -10,6 +10,7 @@ import { loadCasesPanel, loadTasksPanel } from './listPrefetch'
 import { ensureListNavigation, failListNavigation } from './performance'
 import { useAppRealtime } from './useAppRealtime'
 
+const AppIssuesPanel = lazy(() => import('@/domains/testing/cases/AppIssuesPanel').then(m => ({ default: m.AppIssuesPanel })))
 const CasesPanel = lazy(() => loadCasesPanel().then((m) => ({ default: m.CasesPanel })))
 const TasksPanel = lazy(() => loadTasksPanel().then((m) => ({ default: m.TasksPanel })))
 const AssetsPanel = lazy(() => import('@/domains/testing/assets/AssetsPanel').then((m) => ({ default: m.AssetsPanel })))
@@ -122,7 +123,7 @@ export function AppWorkbench() {
       <div className="flex flex-1 min-h-0" style={{ gap: 'var(--w-space-4)' }}>
         {/* 主工作区 */}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <ErrorBoundary label="面板">
+          <ErrorBoundary resetKey={`${appId}:${params.toString()}`} label="面板">
             <Panel key={appId} tab={tab} appId={appId} projectId={projectId} platforms={app?.platforms} contextLoading={detail.isPending} />
           </ErrorBoundary>
         </main>
@@ -134,9 +135,11 @@ export function AppWorkbench() {
 /** 面板分发。各面板按阶段陆续替换掉占位。 */
 function Panel({ tab, appId, projectId, platforms, contextLoading }: { tab: Tab; appId: string; projectId: string; platforms: PlatformInput; contextLoading: boolean }) {
   switch (tab) {
+    case 'issues':
+      return contextLoading ? <Skeleton active /> : lazyPanel(<AppIssuesPanel key={appId + projectId} appId={appId} projectId={projectId} />)
     case 'cases':
       if (!projectId) return contextLoading ? <Skeleton active paragraph={{ rows: 8 }} /> : <EmptyState title="应用未关联项目" hint="请检查应用的项目信息。" />
-      return lazyPanel(<CasesPanel appId={appId} projectId={projectId} />)
+      return lazyPanel(<CasesPanel appId={appId} projectId={projectId} platforms={platforms} />)
     case 'tasks':
       if (contextLoading) return <Skeleton active paragraph={{ rows: 8 }} />
       return lazyPanel(<TasksPanel appId={appId} projectId={projectId} platforms={platforms} />)
@@ -145,9 +148,9 @@ function Panel({ tab, appId, projectId, platforms, contextLoading }: { tab: Tab;
     case 'navigation':
       return <Planned title="导航架构" phase="阶段 6" note="换 @xyflow/react，交互重做。" source="Testing/NavWorkbench.vue + 7 个图组件 4,165 行" />
     case 'assets':
-      return lazyPanel(<AssetsPanel />)
+      return contextLoading ? <Skeleton active /> : lazyPanel(<AssetsPanel projectId={projectId} />)
     case 'config':
-      return lazyPanel(<EnvConfigPanel />)
+      return contextLoading ? <Skeleton active /> : lazyPanel(<EnvConfigPanel projectId={projectId} />)
     default:
       return null
   }

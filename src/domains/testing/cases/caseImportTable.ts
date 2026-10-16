@@ -58,7 +58,7 @@ export function detectHeaderRow(table: string[][], scan = 6) {
 }
 
 const SUB_HEADER_RE = /^(ios|android|鸿蒙|web|双端|iphone|ipad)$/i
-const REGRESSION_RE = /回归|测试轮|结果/
+const REGRESSION_RE = /^(?:第\s*\d+\s*[轮次]\s*)?(?:回归(?:测试)?|测试轮(?:次)?|(?:测试|执行|回归)?结果)(?:\s*[:：#-]?\s*(?:第?\s*\d+\s*[轮次]?|通过|失败|待测|未执行))?$/
 
 export function suggestSkipRows(table: string[][], headerRow = 0) {
   const skip = new Set<number>()
@@ -69,8 +69,8 @@ export function suggestSkipRows(table: string[][], headerRow = 0) {
       skip.add(index)
       return
     }
-    const joined = cells.join(' ')
-    if (REGRESSION_RE.test(joined) && cells.length <= 4) skip.add(index)
+    // 只跳过整行都是说明标签的行；真实用例中的‘查看结果’等正文不能触发。
+    if (cells.length <= 4 && cells.every(cell => REGRESSION_RE.test(cell) || SUB_HEADER_RE.test(cell))) skip.add(index)
     else if (cells.length <= 3 && cells.every((cell) => SUB_HEADER_RE.test(cell))) skip.add(index)
   })
   return skip

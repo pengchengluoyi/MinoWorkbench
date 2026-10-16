@@ -39,16 +39,18 @@ export interface TaskRow {
 export const taskId = (t: TaskRow | undefined): string =>
   String(t?.task_id || t?.taskId || t?.run_id || '')
 
+export const executionKey = (c: TaskCase): string => String(c.execution_id || c.attempt_id || c.session_id || c.report_run_id || '') || `${String(c.case_id || c.caseId || '')}::${String(c.sn || c.device_sn || '')}::${String(c.attempt || '')}`
+
 export const caseId = (c: TaskCase): string => String(c.case_id || c.caseId || '')
 
-/** 9 种原始状态收口成 4 个语义档。 */
+/** 只根据明确的结果分类；完成状态不是测试通过。 */
 export type Verdict = 'pass' | 'fail' | 'running' | 'other'
 
 export const verdictOf = (raw: unknown): Verdict => {
-  const s = String(raw || '').toLowerCase()
-  if (/fail|error|exception/.test(s)) return 'fail'
-  if (/pass|success|done/.test(s)) return 'pass'
-  if (/run|pending|queue/.test(s)) return 'running'
+  const status = String(raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (['fail', 'failed', 'failure', 'error', 'fatal', 'exception', 'give_up', 'declined'].includes(status)) return 'fail'
+  if (['pass', 'passed', 'success', 'successful', 'succeeded', 'ok'].includes(status)) return 'pass'
+  if (['running', 'pending', 'queued', 'queue', 'in_progress', 'progress', 'init', 'initializing', 'created', 'submitted', 'executing', 'started'].includes(status)) return 'running'
   return 'other'
 }
 

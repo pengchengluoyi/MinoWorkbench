@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useSession } from '@/lib/session'
+import { isAdmin } from '@/lib/iam'
 import { useProjects } from '@/domains/testing/apps/queries'
 
 interface Command {
@@ -24,10 +26,13 @@ const STATIC: Command[] = [
  */
 export function CommandPalette() {
   const navigate = useNavigate()
+  const role = useSession((state) => state.role)
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [cursor, setCursor] = useState(0)
   const projects = useProjects()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (!open) return; const previous = document.activeElement as HTMLElement | null; return () => previous?.focus() }, [open])
 
   const commands = useMemo(() => {
     const apps: Command[] = []
@@ -47,11 +52,11 @@ export function CommandPalette() {
         })
       }
     }
-    const all = [...STATIC, ...apps]
+    const all = [...STATIC.filter((command) => command.hint !== '管理后台' || isAdmin(role)), ...apps]
     const needle = q.trim().toLowerCase()
     if (!needle) return all.slice(0, 12)
     return all.filter((c) => `${c.label} ${c.hint || ''}`.toLowerCase().includes(needle)).slice(0, 12)
-  }, [projects.data, q])
+  }, [projects.data, q, role])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -80,7 +85,16 @@ export function CommandPalette() {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
+      aria-modal="true"
+      onKeyDown={event => {
+        if (event.key !== 'Tab') return
+        const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input,button,[tabindex="0"]') || [])
+        const first = controls[0], last = controls[controls.length - 1]
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+      }}
       aria-label="命令面板"
       onClick={() => setOpen(false)}
       style={{
@@ -131,6 +145,7 @@ export function CommandPalette() {
             color: 'var(--w-text)',
           }}
         />
+        <p style={{ margin: '4px 16px', color: 'var(--w-text-tertiary)', fontSize: 12 }}>最多显示 12 个匹配结果，可继续输入缩小范围。</p>
         <div style={{ borderTop: '1px solid var(--w-border)', maxHeight: 320, overflow: 'auto' }}>
           {!commands.length && (
             <div style={{ padding: 16, color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>没有匹配的去向</div>

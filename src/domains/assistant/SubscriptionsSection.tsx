@@ -17,19 +17,19 @@ export function SubscriptionsSection() {
     { key: 'target', title: '对象', ellipsis: true, render: (_: unknown, r) => <span className="w-mono">{r.target_id || '全部'}</span> },
     { key: 'channel', title: '推送渠道', width: 110, render: (_: unknown, r) => channelLabel(r.channel) },
     { key: 'created', title: '创建时间', width: 170, render: (_: unknown, r) => <span className="w-mono">{fmtTime(r.created_at)}</span> },
-    { key: 'status', title: '状态', width: 90, render: (_: unknown, r) => <StatusPill status={r.status === 'active' ? 'running' : 'muted'}>{r.status === 'active' ? '生效中' : '已结束'}</StatusPill> },
+    { key: 'status', title: '状态', width: 90, render: (_: unknown, r) => <StatusPill status={r.status === 'active' ? 'running' : 'muted'}>{r.status === 'active' ? '生效中' : ['cancelled', 'expired', 'done'].includes(r.status) ? '已结束' : `状态未确认：${r.status || '未返回'}`}</StatusPill> },
     {
       key: 'op', title: '操作', width: 90, alwaysVisible: true,
-      render: (_: unknown, r) => (
+      render: (_: unknown, r) => r.status === 'active' ? (
         <Popconfirm
           title="取消这个订阅？"
           okText="取消订阅"
           okButtonProps={{ danger: true }}
           onConfirm={() => cancelSub.mutateAsync(r.id).then(() => fb.ok('已取消')).catch((e) => fb.fail(errText(e, '取消失败')))}
         >
-          <Button size="small" type="text" danger onClick={(e) => e.stopPropagation()}>取消</Button>
+          <Button size="small" type="text" danger disabled={cancelSub.isPending} onClick={(e) => e.stopPropagation()}>取消</Button>
         </Popconfirm>
-      ),
+      ) : null,
     },
   ]
 
@@ -43,6 +43,7 @@ export function SubscriptionsSection() {
       dataSource={q.data}
       loading={q.isLoading}
       error={q.error}
+      onRetry={() => void q.refetch()}
       columns={columns}
       emptyTitle="还没有订阅"
       emptyHint="在 IM 里对助手说「跑完告诉我」，它会替你订阅一次运行完成通知。"

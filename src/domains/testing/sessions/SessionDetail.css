@@ -238,3 +238,6 @@
   .session-scope-controls .ant-select { flex: 1; }
   .session-overview .session-metric strong { font-size: 18px; }
 }
+
+.session-source-alert { flex-shrink: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border: 1px solid var(--w-border); border-radius: var(--w-radius-lg); background: var(--w-warn-bg); color: var(--w-warn); font-size: var(--w-font-sm); overflow-wrap: anywhere; }
+.session-history-status { display: block; color: var(--w-text-tertiary); font-size: var(--w-font-sm); line-height: 1.65; overflow-wrap: anywhere; }

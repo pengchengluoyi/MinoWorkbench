@@ -15,7 +15,8 @@
     "lint": "eslint src",
     "check:banned": "bash scripts/check-banned-words.sh",
     "check:no-electron": "bash scripts/check-no-electron.sh",
-    "verify": "npm run typecheck && npm run check:banned && npm run check:no-electron"
+    "verify": "npm run typecheck && npm run check:banned && npm run check:no-electron",
+    "check:release": "npm run verify && npm run lint && npm run build"
   },
   "dependencies": {
     "@ant-design/v5-patch-for-react-19": "^1.0.3",

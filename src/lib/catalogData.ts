@@ -1,0 +1,1 @@
+export function catalogData<T>(data: T | undefined, field: string, label: string): T { if (!data || !Array.isArray((data as Record<string, unknown>)[field])) throw new Error(`${label}响应缺少 ${field} 数组，请重试或核对服务版本。`); return data }

@@ -1,188 +1,23 @@
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Button, Input, QRCode, Switch, errText, useFeedback } from '@/ui'
+import { Button, Input, Switch, errText, useFeedback } from '@/ui'
 import {
   callNodePlugin,
   configNodePlugin,
   installNodePlugin,
   removeNodePlugin,
-  heldChannels,
   nodeIsOnline,
-  type NodePluginJob,
   type NodePluginStatus,
   type ScoutNode,
 } from '@/api/nodes'
 import { unwrapOne } from '@/lib/unwrap'
-import { fmtAgo } from '@/lib/timeText'
 import { nodeKeys } from './queries'
 import { assistantKeys } from '@/domains/assistant/queries'
-import { imConnectionLabel } from '@/lib/imStatus'
 
-interface FieldDef {
-  key: string
-  label: string
-  secret?: boolean
-  optional?: boolean
-  placeholder?: string
-  group?: string
-  type?: string
-}
-
-interface ItemDef {
-  id: string
-  label: string
-  /** 节点插件快照里这一行的 class。缺省等于所在分类；微信在「对话」里展示，但数据仍是 class=bot */
-  kind?: string
-  needsInstall?: boolean
-  wechat?: boolean
-  /** 展示连接状态（对话类） */
-  conn?: boolean
-  hint?: string
-  fields?: FieldDef[]
-  /** 左侧选中用。LangBot 一家渠道一个，避免和插件 id 撞车 */
-  navId?: string
-  /** 实际下发的插件 id。渠道行仍是 langbot，不是渠道名 */
-  pluginId?: string
-  /** 这一行只编辑、只保存这个渠道 */
-  groupId?: string
-}
-
-export type PluginPane = 'cli' | 'bot' | 'mail' | 'im'
-export const PLUGIN_PANES: readonly PluginPane[] = ['cli', 'bot', 'mail', 'im']
-
-const kindOf = (group: PluginPane, item: ItemDef) => item.kind ?? group
-const pluginIdOf = (item: ItemDef) => item.pluginId || item.id
-const navKey = (pane: string, item: ItemDef) => `${pane}:${item.navId || item.id}`
-
-/** LangBot 是一个插件、多家渠道。字段 key 已经按渠道加了前缀，页面按渠道拆开编辑和保存。 */
-function imChannels(row: NodePluginStatus): ItemDef[] {
-  const fields = (row.fields || []) as FieldDef[]
-  const grouped = new Map<string, FieldDef[]>()
-  for (const field of fields) {
-    if (!field.group) continue
-    const list = grouped.get(field.group) || []
-    list.push(field)
-    grouped.set(field.group, list)
-  }
-  const labelOf = row.label || row.title || row.name || row.id
-  if (grouped.size < 2) {
-    return [{
-      id: row.id,
-      label: labelOf,
-      kind: 'im',
-      conn: true,
-      needsInstall: row.installed !== undefined,
-      fields,
-      hint: '这是一整份配置。节点若把多家渠道放在同一插件里，会按渠道拆开。',
-    }]
-  }
-  const names = new Map((row.groups || []).map((group) => [group.id, group.label]))
-  return [...grouped.entries()].map(([groupId, groupFields]) => {
-    const fromSwitch = groupFields.find((field) => field.type === 'bool')?.label.replace(/^启用/, '')
-    const label = names.get(groupId) || fromSwitch || groupId
-    return {
-      id: row.id,
-      navId: `${row.id}:${groupId}`,
-      pluginId: row.id,
-      groupId,
-      label,
-      kind: 'im' as const,
-      conn: true,
-      needsInstall: true,
-      fields: groupFields,
-      hint: `只保存${label}。每家渠道单独一份，保存这里不会改动其它渠道。`,
-    }
-  })
-}
-
-function channelFilled(st: NodePluginStatus | undefined, fields: FieldDef[] | undefined) {
-  const required = (fields || []).filter((field) => !field.optional && field.type !== 'bool')
-  if (!required.length) return !!st?.configured
-  return required.every((field) => (
-    field.secret
-      ? (st?.saved_secrets || []).includes(field.key)
-      : !!String(st?.values?.[field.key] || '').trim()
-  ))
-}
-
-function channelState(st: NodePluginStatus | undefined, item: ItemDef, node: ScoutNode) {
-  if (!item.groupId) return ''
-  const channel = node.im_channels?.find((row) => row.channel === `langbot:${item.groupId}`)
-  if (channel || !nodeIsOnline(node)) return imConnectionLabel(channel, nodeIsOnline(node)).text
-  const filled = channelFilled(st, item.fields)
-  const flag = (item.fields || []).find((field) => field.type === 'bool' && field.key.endsWith('.enabled'))
-  const on = flag ? st?.values?.[flag.key] === '1' : filled
-  if (filled && on) return '状态未上报'
-  if (filled) return '已填写'
-  return '待填写'
-}
-
-const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
-  {
-    id: 'cli',
-    title: '工作项',
-    items: [
-      {
-        id: 'feishu',
-        label: '飞书',
-        needsInstall: true,
-        fields: [
-          { key: 'app_id', label: 'App ID' },
-          { key: 'app_secret', label: 'App Secret', secret: true },
-        ],
-      },
-      {
-        id: 'meego',
-        label: 'Meego',
-        needsInstall: true,
-        fields: [
-          { key: 'plugin_id', label: '插件 ID' },
-          { key: 'plugin_secret', label: '插件密钥', secret: true },
-          { key: 'base_url', label: '地址' },
-          { key: 'user_key', label: 'User Key' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'bot',
-    title: '通知',
-    items: [
-      {
-        id: 'feishu_bot',
-        label: '飞书机器人',
-        fields: [{ key: 'webhook_url', label: 'Webhook', secret: true }],
-      },
-      {
-        id: 'wecom',
-        label: '企业微信',
-        fields: [{ key: 'webhook_url', label: 'Webhook', secret: true }],
-      },
-    ],
-  },
-  {
-    id: 'im',
-    title: '对话',
-    items: [
-      { id: 'wechat', label: '微信 iLink', kind: 'im', wechat: true, conn: true },
-    ],
-  },
-  {
-    id: 'mail',
-    title: '收信',
-    items: [
-      {
-        id: 'gmail',
-        label: 'Gmail',
-        fields: [
-          { key: 'inbox_address', label: '收件箱' },
-          { key: 'app_password', label: '应用专用密码', secret: true },
-        ],
-      },
-    ],
-  },
-]
-
+import { GROUPS, kindOf, pluginIdOf, navKey, imChannels, channelState, type PluginPane, type ItemDef } from './pluginCatalog'
+export { PLUGIN_PANES, type PluginPane } from './pluginCatalog'
+import { ConnLine, ImNotes, HINT, WechatQr, wechatHint, testLabel, testExplain, jobMatches, JobBar } from './PluginStatusViews'
 /**
  * 每台 Scout 自己的插件参数。密钥不进 Nexus，表单只负责下发到这台在线节点。
  * 分类按接入方式：CLI / MCP / Bot / 邮箱。
@@ -195,24 +30,20 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
   const job = node.plugin_job
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
   const [busy, setBusy] = useState('')
+  const [unknownJob, setUnknownJob] = useState('')
+  useUnsavedChanges(Object.values(drafts).some(values => Object.keys(values).length > 0))
   const [wechat, setWechat] = useState({ qrcode_img: '', error: '', logged_in: false, need_verify: false, status: '' })
   const [verifyCode, setVerifyCode] = useState('')
   const [openId, setOpenId] = useState('')
   const [lastTest, setLastTest] = useState<Record<string, { ok: boolean; text: string }>>({})
   const wechatAsked = useRef('')
 
-  useEffect(() => {
-    if (!job?.active) return undefined
-    const timer = window.setInterval(() => {
-      void qc.invalidateQueries({ queryKey: nodeKeys.all })
-    }, 1500)
-    return () => window.clearInterval(timer)
-  }, [job?.active, qc])
 
   const statusOf = (kind: string, id: string): NodePluginStatus | undefined =>
     (node.plugins || []).find((row) => row.class === kind && row.id === id)
 
   const setField = (kind: string, id: string, key: string, value: string) => {
+    if (busy) return
     const bag = `${kind}:${id}`
     setDrafts((prev) => ({ ...prev, [bag]: { ...(prev[bag] || {}), [key]: value } }))
   }
@@ -268,6 +99,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
   }
 
   const install = async (kind: string, item: ItemDef) => {
+    if (unknownJob || busy || job?.active) { fb.warn('请先核对当前插件任务状态，避免重复派发'); return }
     setBusy(`install:${kind}:${item.id}`)
     try {
       await installNodePlugin(node.node_id, { kind, plugin_id: item.id })
@@ -275,7 +107,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
       void refresh()
       return true
     } catch (e) {
-      fb.fail(errText(e, '安装失败'))
+      setUnknownJob(`${kind}:${item.id}`); fb.fail(errText(e, '安装结果待确认，请先核对节点任务和插件状态，不重复派发'))
       return false
     } finally {
       setBusy('')
@@ -413,7 +245,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
   }, [node.node_id, online, known, selected.item.wechat, wechatReported])
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0">{unknownJob && <p role="alert">插件 {unknownJob} 的执行结果待确认，未重新提交。<button type="button" onClick={() => { void refresh(); setUnknownJob('') }}>已核对节点状态，解除本地派发锁</button></p>}
       <nav className="shrink-0 overflow-y-auto" aria-label="接入项" style={{ width: 'clamp(180px, 22%, 280px)', borderRight: '1px solid var(--w-border)' }}>
         {online && !known ? (
           <div style={{ padding: '10px 12px', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-secondary)' }}>
@@ -589,118 +421,3 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
 }
 
 /** 对话渠道的连接状态：读插件快照里的 status。Scout 没上报就明说「未知」，不猜。 */
-function ConnLine({ st }: { st: NodePluginStatus | undefined }) {
-  const s = st?.status
-  const known = s && typeof s.connected === 'boolean'
-  return (
-    <div className="flex flex-wrap items-center gap-3" style={{ margin: '-8px 0 14px', fontSize: 'var(--w-font-sm)' }}>
-      <span style={{ fontWeight: 700, color: !known ? 'var(--w-text-tertiary)' : s.connected ? 'var(--w-pass)' : 'var(--w-warn)' }}>
-        {!known ? '连接状态：未知' : s.connected ? '● 已连接' : '○ 未连接'}
-      </span>
-      {known ? <span style={{ color: 'var(--w-text-tertiary)' }}>最后收到消息 {fmtAgo(s.last_message_at)}</span> : null}
-      {s?.error ? <span style={{ color: 'var(--w-fail)' }}>{s.error}</span> : null}
-    </div>
-  )
-}
-
-function ImNotes({ node, hasDynamic }: { node: ScoutNode; hasDynamic: boolean }) {
-  const held = heldChannels(node)
-  const box = { marginTop: 20, padding: '10px 12px', borderRadius: 'var(--w-radius-sm)', border: '1px solid var(--w-border)', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-secondary)' } as const
-  return (
-    <>
-      <div style={{ ...box, background: held.length ? 'var(--w-warn-bg)' : 'var(--w-surface-subtle)' }}>
-          <strong>这台机器上的机器人</strong>
-        <div style={{ marginTop: 2 }}>
-          这里只让机器人登录到这台 Scout。谁的微信账号可以指挥它，在「我的助手」里用绑定码认领，两步都要做，不是二选一。
-          {held.length
-            ? ` 本节点正连着「${held.join('、')}」，需要常驻。`
-            : ' 本节点当前没有连着对话渠道。'}
-        </div>
-      </div>
-      {!hasDynamic ? (
-        <div style={{ ...box, background: 'var(--w-surface-subtle)' }}>
-          <strong>LangBot 渠道层</strong>
-          <div style={{ marginTop: 2 }}>飞书 / 企业微信 / 钉钉等渠道由 LangBot 提供，将在节点安装后出现在这里。当前节点还没有上报这类条目。</div>
-        </div>
-      ) : null}
-    </>
-  )
-}
-
-
-const HINT: Record<string, string> = {
-  feishu: '拉需求，把结果写回去',
-  meego: '读写工作项',
-  wechat: '让机器人登录到这台机器。登录态只留在这里。个人账号的认领在「我的助手」，不要在这里填绑定码。',
-  feishu_bot: '往群里发一条消息',
-  wecom: '往群里发一条消息',
-  gmail: '收验证码',
-}
-
-/** 微信返回的常常是登录链接，不是图片。已经是图就直接显示，否则画成二维码。 */
-function WechatQr({ raw }: { raw: string }) {
-  const text = raw.trim()
-  if (!text) return null
-  const compact = text.replace(/\s/g, '')
-  const image = text.startsWith('data:image')
-    || compact.startsWith('/9j/')
-    || compact.startsWith('iVBORw0K')
-    || /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(text)
-    || (/^[A-Za-z0-9+/=]+$/.test(compact) && compact.length > 80)
-  if (image) {
-    const src = text.startsWith('data:image') || text.startsWith('http')
-      ? text
-      : `data:${compact.startsWith('/9j/') ? 'image/jpeg' : 'image/png'};base64,${compact}`
-    return (
-      <img
-        src={src}
-        alt="微信登录二维码"
-        width={220}
-        height={220}
-        style={{ width: 220, height: 220, objectFit: 'contain', alignSelf: 'center', background: 'var(--w-surface)' }}
-      />
-    )
-  }
-  return <QRCode value={text} size={220} style={{ alignSelf: 'center' }} />
-}
-
-function wechatHint(state: { error: string; logged_in: boolean; status: string; qrcode_img: string }) {
-  if (state.error) return state.error
-  if (state.logged_in) return '这台机器已登录微信'
-  if (state.status === 'expired') return '二维码过期了，重新拿一张。'
-  if (state.status === 'scaned' || state.status === 'scanned') return '已扫码，在手机上确认。'
-  if (state.qrcode_img) return '用将要作为机器人的微信号扫这一张。扫完后，每个人再到「我的助手」生成绑定码。'
-  return '点显示二维码，让机器人微信号登录这台机器。'
-}
-
-function testLabel(item: ItemDef) {
-  if (item.id === 'feishu') return '测试鉴权'
-  if (item.id === 'meego') return '测试换票'
-  if (item.id === 'feishu_bot' || item.id === 'wecom') return '发测试消息'
-  return ''
-}
-
-function testExplain(item: ItemDef) {
-  if (item.id === 'feishu') return '用已保存的 App ID 和 Secret 向飞书换访问凭证，不改文档。'
-  if (item.id === 'meego') return '用已保存的插件 ID 和密钥向 Meego 换访问凭证，不改工作项。'
-  if (item.id === 'feishu_bot' || item.id === 'wecom') return '往已保存的 Webhook 发一条「Mino 测试消息」。'
-  return ''
-}
-
-function jobMatches(job: NodePluginJob | undefined, kind: string, id: string) {
-  return !!job?.active && job.class === kind && job.id === id
-}
-
-function JobBar({ job }: { job: NodePluginJob | undefined }) {
-  const percent = Math.max(0, Math.min(100, Number(job?.percent) || 0))
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ height: 6, borderRadius: 99, background: 'var(--w-muted-bg)', overflow: 'hidden' }}>
-        <div style={{ width: `${percent}%`, height: '100%', background: 'var(--w-primary)' }} />
-      </div>
-      <div style={{ marginTop: 4, fontSize: 'var(--w-font-meta)', color: 'var(--w-text-tertiary)' }}>
-        {job?.label || job?.stage || '安装中'}
-      </div>
-    </div>
-  )
-}

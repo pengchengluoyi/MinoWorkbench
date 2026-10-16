@@ -1,15 +1,18 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { recordAudit } from '@/domains/admin/audit/auditLog'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
 import {
-  Button, EmptyState, Input, InputNumber, Modal, Select, Skeleton, StatusPill, Switch, errText, useFeedback,
+  Alert, Button, EmptyState, FormSection, Input, InputNumber, Modal, Select, Skeleton, StatusPill, Switch, errText, useFeedback,
 } from '@/ui'
 import {
   PRESET_PROVIDER_IDS, apiTypeLabel, deleteAIProvider, listAIProviders, roundRatio, saveAIProvider, saveAIUsage,
   validateAIProvider, sdkProviderLabel, type AIProvider, type ProviderForm,
 } from '@/api/ai'
 
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { useSession } from '@/lib/session'
+import { useUrlState } from '@/hooks/useUrlState'
 import { ModelCosts } from './ModelCosts'
 import { ModelConfig } from './ModelConfig'
 
@@ -47,13 +50,14 @@ const toForm = (p: AIProvider, defaultId: string): ProviderForm => {
  * 发信和知识沉淀不在这个页面里（知识 tab 已砍，发信也不在当前导航）。
  */
 export function KeysPage() {
-  const [tab, setTab] = useState<'keys' | 'costs'>('keys')
+  const [tab, setTab] = useUrlState<'keys' | 'costs'>('modelTab', 'keys', ['keys', 'costs'])
   const [addOpen, setAddOpen] = useState(false)
   const [newId, setNewId] = useState('')
   const [newSdkProvider, setNewSdkProvider] = useState('openai')
   const feedback = useFeedback()
   const qc = useQueryClient()
   const [openId, setOpenId] = useState('')
+  const [providerSearch, setProviderSearch] = useState('')
   const [forms, setForms] = useState<Record<string, ProviderForm>>({})
 
   const query = useQuery({
@@ -85,19 +89,19 @@ export function KeysPage() {
   })
 
   const liveForms = useMemo(
-    () => (Object.keys(forms).length ? forms : (query.data?.forms || {})),
+    () => ({ ...(query.data?.forms || {}), ...forms }),
     [forms, query.data],
   )
 
   const patchForm = (id: string, patch: Partial<ProviderForm>) => {
+    if (save.isPending || validate.isPending) return
     setForms((prev) => {
-      const base = Object.keys(prev).length ? prev : (query.data?.forms || {})
-      return { ...base, [id]: { ...base[id], ...patch } }
+      const base = { ...(query.data?.forms || {}), ...prev }
+      return { ...prev, [id]: { ...base[id], ...patch } }
     })
   }
 
   const refresh = async () => {
-    setForms({})
     await qc.invalidateQueries({ queryKey: keys.all })
   }
 
@@ -111,17 +115,20 @@ export function KeysPage() {
         pc_compress_ratio: roundRatio(form.pc_compress_ratio, 1),
       })
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, { id, form }) => {
+      await refresh()
+      if (qc.getQueryState(keys.all)?.status !== 'success') { feedback.warn('保存请求已成功，但最新配置暂未读回；当前草稿已保留，请重试读取。'); return }
+      setForms(prev => { if (JSON.stringify(prev[id]) !== JSON.stringify(form)) return prev; const next = { ...prev }; delete next[id]; return next })
+      recordAudit('模型接入保存')
       feedback.ok('已保存')
       setAddOpen(false)
-      await refresh()
     },
     onError: (e) => feedback.fail(errText(e, '保存失败')),
   })
 
   const usage = useMutation({
     mutationFn: (enabled: boolean) => {
-      const chosen = query.data?.providers.find((p) => liveForms[p.id]?.case_execution_use)?.id || ''
+      const chosen = query.data?.providers.find((p) => query.data.forms[p.id]?.case_execution_use)?.id || ''
       return saveAIUsage({ case_execution_enabled: enabled, case_execution_provider_id: chosen })
     },
     onSuccess: async () => {
@@ -146,16 +153,18 @@ export function KeysPage() {
     onError: (e) => feedback.fail(errText(e, '删除失败')),
   })
 
+  const hasDrafts = Object.keys(forms).some(id => JSON.stringify(forms[id]) !== JSON.stringify(query.data?.forms[id]))
+  useUnsavedChanges(hasDrafts)
   const ordered = useMemo(() => {
     const rows = query.data?.providers || []
     return [...rows].sort((a, b) => {
-      const rank = (p: AIProvider) => (liveForms[p.id]?.case_execution_use ? 0 : liveForms[p.id]?.enabled ? 1 : 2)
+      const rank = (p: AIProvider) => p.configured ? 0 : 1
       return rank(a) - rank(b)
     })
-  }, [query.data?.providers, liveForms])
+  }, [query.data?.providers])
 
   if (query.isLoading) return <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
-  if (query.isError) {
+  if (query.isError && !query.data) {
     return (
       <EmptyState
         icon={<TriangleAlert size={28} strokeWidth={1.5} style={{ color: 'var(--w-fail)' }} />}
@@ -167,6 +176,7 @@ export function KeysPage() {
   }
 
   const toggleEnabled = (p: AIProvider, enabled: boolean) => {
+    if (hasDrafts) { feedback.warn('请先保存或放弃配置草稿，再更改启用状态'); return }
     const form = liveForms[p.id]
     if (!form) return
     if (enabled && !p.configured && !form.api_key.trim()) {
@@ -179,44 +189,38 @@ export function KeysPage() {
   }
 
   const toggleCase = (p: AIProvider, on: boolean) => {
-    const form = liveForms[p.id]
-    if (!form?.enabled) return
-    if (on && !p.configured && !form.api_key.trim()) {
-      feedback.warn('请先填写并保存 API Key')
-      return
-    }
-    const nextForms = { ...liveForms }
-    for (const id of Object.keys(nextForms)) {
-      nextForms[id] = { ...nextForms[id], case_execution_use: on && id === p.id, api_key: '', clear_key: false }
-    }
-    setForms(nextForms)
-    save.mutate({ id: p.id, form: { ...nextForms[p.id], enabled: true } })
+    if (hasDrafts) { feedback.warn('请先保存或放弃当前配置草稿，再调整执行用途。'); return }
+    const form = query.data?.forms[p.id]
+    if (!form || !p.configured || !form.enabled) { feedback.warn('请先保存并启用此接入配置'); return }
+    save.mutate({ id: p.id, form: { ...form, case_execution_use: on } })
   }
 
   const selectedId = openId || ordered[0]?.id || ''
   const selected = ordered.find((p) => p.id === selectedId)
   const selectedForm = selected ? liveForms[selected.id] : undefined
-  const validationDirty = Boolean(selected && selectedForm && (selectedForm.model !== selected.model || selectedForm.base_url !== selected.base_url || selectedForm.sdk_provider !== selected.sdk_provider || selectedForm.api_key || selectedForm.clear_key || JSON.stringify(selectedForm.model_parameters) !== JSON.stringify(selected.model_parameters || {})))
+  const validationDirty = Boolean(selected && selectedForm && JSON.stringify(selectedForm) !== JSON.stringify(query.data?.forms[selected.id]))
 
   if (tab === 'costs') return <div className="flex h-full min-h-0 flex-col"><Button onClick={() => setTab('keys')}>返回模型配置</Button><ModelCosts /></div>
 
   return (
-    <div className="flex h-full min-h-0 flex-col" style={{ gap: 12 }}>
-      <header className="flex shrink-0 items-center gap-4">
+    <div className="w-workspace flex h-full min-h-0 flex-col" style={{ gap: 16 }}>
+      <header className="flex shrink-0 flex-wrap items-center gap-4">
         <div className="min-w-0 flex-1">
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em' }}>模型密钥</h1>
           <p style={{ margin: '4px 0 0', color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>
             从左侧选择接入方式，再配置对应的模型、Key 和地址。已配置 {ordered.filter((p) => p.configured).length} 项。
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={() => setTab('costs')}>模型用量与费用</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button disabled={hasDrafts} onClick={() => setTab('costs')}>模型用量与费用</Button>
           <Button onClick={() => setAddOpen(true)}>添加模型接入</Button>
           <span style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-secondary)' }}>用例执行使用大模型</span>
-          <Switch checked={query.data?.usageEnabled} loading={usage.isPending} onChange={(v) => usage.mutate(v)} />
+          <Switch disabled={hasDrafts || save.isPending} checked={query.data?.usageEnabled} loading={usage.isPending} onChange={(v) => usage.mutate(v)} />
         </div>
       </header>
 
+      {query.isError && <Alert type="warning" showIcon message="配置刷新失败，保留上次读取内容与草稿" description={errText(query.error)} action={<Button onClick={() => void query.refetch()}>重试读取</Button>} />}
+      {hasDrafts && <p role="status">有未保存的接入配置。保存或验证其他接入不会清除这些草稿。<Button disabled={save.isPending} onClick={() => setForms({})}>放弃全部配置草稿</Button></p>}
       <Modal open={addOpen} title="添加模型接入" onCancel={() => setAddOpen(false)} confirmLoading={save.isPending}
         onOk={() => {
           const id = newId.trim().toLowerCase()
@@ -231,56 +235,41 @@ export function KeysPage() {
       {!ordered.length && <EmptyState title="还没有接入方式" hint="Nexus 没有返回任何模型配置。" />}
 
       {!!ordered.length && (
-        <div className="flex min-h-0 flex-1" style={{ gap: 12 }}>
-          <aside className="min-h-0 overflow-y-auto" style={{ flex: '0 0 clamp(200px, 22%, 320px)', background: 'var(--w-surface)', border: '1px solid var(--w-border)', borderRadius: 'var(--w-radius-lg)' }}>
-            <div style={{ padding: '12px', fontWeight: 700, borderBottom: '1px solid var(--w-border)' }}>接入方式</div>
-            {ordered.map((p) => {
-              const form = liveForms[p.id]
-              const on = p.id === selectedId
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  data-active={on ? 'true' : 'false'}
-                  className="w-hit flex w-full items-center gap-2"
-                  onClick={() => setOpenId(p.id)}
-                  style={{ border: 'none', borderBottom: '1px solid var(--w-border)', cursor: 'pointer', textAlign: 'left', padding: '10px 12px' }}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate" style={{ fontWeight: 700 }}>{sdkProviderLabel(form?.sdk_provider || p.sdk_provider || 'openai')}</span>
-                    {!(PRESET_PROVIDER_IDS as readonly string[]).includes(p.id) && p.id !== p.sdk_provider && <span className="block truncate" style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-secondary)' }}>{p.name || p.id}</span>}
-                    <span className="block truncate" style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)', fontFamily: 'var(--w-font-mono)' }}>
-                      {p.configured ? (p.api_key_masked || '已保存') : '还没有 Key'}
-                    </span>
-                  </span>
-                  {form?.case_execution_use && <StatusPill status="pass">用例</StatusPill>}
-                </button>
-              )
+        <div className="w-settings-layout">
+          <aside className="w-settings-nav" aria-label="模型接入列表">
+            <div className="w-settings-nav-heading"><strong>接入方式</strong><Input aria-label="搜索模型接入" placeholder="搜索服务商或接入名称" allowClear value={providerSearch} onChange={e => setProviderSearch(e.target.value)} style={{ marginTop: 10 }} /></div>
+            {([true, false] as const).map(configured => {
+              const rows = ordered.filter(p => !!p.configured === configured && `${sdkProviderLabel(p.sdk_provider || '')} ${p.name || ''} ${p.id}`.toLowerCase().includes(providerSearch.toLowerCase()))
+              return rows.length ? <div key={String(configured)}><div className="w-band" data-tone="quiet">{configured ? '已配置接入' : '可添加的接入'}</div>{rows.map(p => <button key={p.id} type="button" className="w-nav-item w-hit" aria-current={p.id === selectedId ? 'true' : undefined} onClick={() => setOpenId(p.id)}>
+                <div className="w-nav-item-title"><span>{p.name || sdkProviderLabel(p.sdk_provider || 'openai')}</span>{query.data?.forms[p.id]?.case_execution_use && <StatusPill status="pass">用例</StatusPill>}</div>
+                <div className="w-nav-item-meta">{p.configured ? (p.api_key_masked || '凭证已保存') : '尚未配置'}{forms[p.id] && JSON.stringify(forms[p.id]) !== JSON.stringify(query.data?.forms[p.id]) ? ' · 有草稿' : ''}</div>
+              </button>)}</div> : null
             })}
+            {providerSearch && !ordered.some(p => `${sdkProviderLabel(p.sdk_provider || '')} ${p.name || ''} ${p.id}`.toLowerCase().includes(providerSearch.toLowerCase())) && <p style={{ padding: 16 }}>没有匹配的接入</p>}
           </aside>
 
           {selected && selectedForm && (
-            <section className="min-h-0 flex-1 overflow-y-auto" style={{ ...card, paddingBottom: 28 }}>
-              <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: 16 }}>
+            <section className="w-settings-detail" aria-label="当前模型接入配置">
+              <div className="w-detail-heading">
                 <strong style={{ fontSize: 18 }}>{sdkProviderLabel(selectedForm.sdk_provider)}</strong>
                 <StatusPill status="muted">{apiTypeLabel(selected)}</StatusPill>
                 <span style={{ flex: 1 }} />
-                <span style={{ fontSize: 'var(--w-font-sm)' }}>启用</span>
-                <Switch checked={selectedForm.enabled} loading={save.isPending} onChange={(v) => toggleEnabled(selected, v)} />
+                <span>启用接入</span>
+                <Switch aria-label="启用当前模型接入" checked={selectedForm.enabled} disabled={validate.isPending} loading={save.isPending} onChange={(v) => toggleEnabled(selected, v)} />
                 {selectedForm.enabled && (
                   <>
-                    <span style={{ fontSize: 'var(--w-font-sm)' }}>跑用例</span>
-                    <Switch checked={selectedForm.case_execution_use} loading={save.isPending} onChange={(v) => toggleCase(selected, v)} />
+                    <span>用于跑用例</span>
+                    <Switch aria-label="允许当前模型用于用例执行" checked={selectedForm.case_execution_use} disabled={validate.isPending} loading={save.isPending} onChange={(v) => toggleCase(selected, v)} />
                   </>
                 )}
               </div>
-              <ModelConfig provider={selected} form={selectedForm} patch={(patch) => patchForm(selected.id, patch)} />
-              <div className="grid" style={{ gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))' }}>
+              <FormSection title="连接与凭证" description="密钥仅保存在当前账号下。修改后请先保存，再验证已保存的连接。"><div className="w-form-grid">
                 <Field label="API Key">
                   {selected.configured && selected.api_key_masked ? (
                     <div style={{ fontFamily: 'var(--w-font-mono)', fontSize: 'var(--w-font-sm)', marginBottom: 4 }}>{selected.api_key_masked}</div>
                   ) : null}
                   <Input.Password
+                    aria-label="当前接入 API Key"
                     value={selectedForm.api_key}
                     placeholder={selected.configured ? '留空则不修改' : '粘贴 API Key'}
                     autoComplete="new-password"
@@ -288,23 +277,34 @@ export function KeysPage() {
                   />
                 </Field>
                 <Field label="Base URL">
-                  <Input value={selectedForm.base_url} onChange={(e) => patchForm(selected.id, { base_url: e.target.value })} />
+                  <Input aria-label="当前接入 Base URL" value={selectedForm.base_url} onChange={(e) => patchForm(selected.id, { base_url: e.target.value })} />
                 </Field>
+
+              </div></FormSection>
+              <ModelConfig provider={selected} form={selectedForm} patch={(patch) => patchForm(selected.id, patch)} />
+              <FormSection title="截图压缩策略" description="各执行平台独立配置，范围 1–10；沿用现有压缩倍率语义。">
+                <div className="w-form-grid">
                 <Ratio label="Plan 压缩" value={selectedForm.plan_compress_ratio} onChange={(v) => patchForm(selected.id, { plan_compress_ratio: v })} />
                 <Ratio label="Web 压缩" value={selectedForm.web_compress_ratio} onChange={(v) => patchForm(selected.id, { web_compress_ratio: v })} />
                 <Ratio label="安卓压缩" value={selectedForm.android_compress_ratio} onChange={(v) => patchForm(selected.id, { android_compress_ratio: v })} />
                 <Ratio label="PC 压缩" value={selectedForm.pc_compress_ratio} onChange={(v) => patchForm(selected.id, { pc_compress_ratio: v })} />
-              </div>
-              <div className="flex gap-2" style={{ marginTop: 16 }}>
-                <Button type="primary" loading={save.isPending} onClick={() => save.mutate({ id: selected.id, form: selectedForm })}>保存配置</Button>
-                {selected.configured && <Button disabled={validationDirty} loading={validate.isPending} onClick={() => validate.mutate(selected.id)}>验证已保存配置（产生少量用量）</Button>}
+                </div>
+              </FormSection>
+              <FormSection title="配置验证" description="验证会产生少量模型用量，只针对已保存的连接与文本探针，不代表全部能力。">
+                <StatusPill status={validationDirty ? 'warn' : selected.validation?.status === 'verified' ? 'pass' : selected.validation?.status === 'failed' ? 'fail' : 'muted'}>{validationDirty ? '有未保存修改 · 需保存后验证' : selected.validation?.status === 'verified' ? '已保存配置连接成功' : selected.validation?.status === 'failed' ? '已保存配置验证失败' : '尚未验证'}</StatusPill>
+                {selected.validation?.at && <p className="w-form-hint">最近验证：{selected.validation.at}</p>}
+                {selected.validation?.error && <p role="alert" style={{ color: 'var(--w-fail)' }}>{selected.validation.error}</p>}
+                {save.isError && save.variables?.id === selected.id && <Alert type="error" message="保存失败，草稿已保留" description={errText(save.error)} style={{ marginTop: 12 }} />}
+                {validate.isError && validate.variables === selected.id && <Alert type="error" message="本次验证失败" description={errText(validate.error)} style={{ marginTop: 12 }} />}
+              </FormSection>
+              <div className="w-action-bar">
+                <span className="w-form-hint" role="status">{validationDirty ? '当前接入有未保存修改' : '当前配置已保存'}</span>
+                <Button type="primary" disabled={!validationDirty || validate.isPending || query.isError} loading={save.isPending} onClick={() => save.mutate({ id: selected.id, form: selectedForm })}>保存配置</Button>
+                {selected.configured && <Button disabled={validationDirty || save.isPending || query.isError} loading={validate.isPending} onClick={() => validate.mutate(selected.id)}>验证已保存配置（产生少量用量）</Button>}
                 {selected.configured && (
                   <Button
                     loading={save.isPending}
-                    onClick={() => save.mutate({
-                      id: selected.id,
-                      form: { ...selectedForm, api_key: '', clear_key: true, enabled: false, case_execution_use: false },
-                    })}
+                    danger disabled={validationDirty || save.isPending || validate.isPending} onClick={() => { void feedback.confirm({ title: `清除 ${selected.name || selected.id} 的密钥？`, content: '此接入将停用，并不再用于用例执行。', danger: true, okText: '清除密钥' }).then(ok => { if (ok) save.mutate({ id: selected.id, form: { ...selectedForm, api_key: '', clear_key: true, enabled: false, case_execution_use: false } }) }) }}
                   >
                     清除 Key
                   </Button>
@@ -343,14 +343,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function Ratio({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
     <Field label={label}>
-      <InputNumber min={1} max={10} step={0.1} value={value} onChange={(v) => onChange(roundRatio(v, value))} style={{ width: '100%' }} />
+      <InputNumber aria-label={label} min={1} max={10} step={0.1} value={value} onChange={(v) => onChange(roundRatio(v, value))} style={{ width: '100%' }} />
     </Field>
   )
-}
-
-const card: CSSProperties = {
-  background: 'var(--w-surface)',
-  border: '1px solid var(--w-border)',
-  borderRadius: 'var(--w-radius-lg)',
-  padding: 'var(--w-space-4)',
 }

@@ -180,3 +180,11 @@ body {
   .w-app-row .w-app-tags,
   .w-app-row .w-app-status { display: none; }
 }
+
+/* 详情选择区别于批量选择；完整长文本保持自然换行。 */
+.w-detail-row-active > td, .w-detail-row-active:hover > td { background: var(--w-primary-soft) !important; }
+.w-detail-row-active > td:first-child { box-shadow: inset 3px 0 var(--w-primary); }
+.ant-table-row:focus-visible { outline: 2px solid var(--w-primary); outline-offset: -2px; }
+.w-run-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px; position:sticky; bottom:12px; margin:0 auto; padding:10px 16px; background:var(--w-surface); border:1px solid var(--w-border); border-radius:14px; box-shadow:var(--w-shadow-lg); z-index:10; }
+.w-read-detail { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.65; font-size:13px; }
+@media(max-width:1000px) { .w-page > .grid, .w-catalog-layout { grid-template-columns:minmax(0,1fr) !important; } }

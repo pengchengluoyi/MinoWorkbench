@@ -7,7 +7,7 @@ export { PageHeader } from './PageHeader'
 export { Planned } from './Planned'
 export { EmptyState } from './EmptyState'
 export { ErrorBoundary } from './ErrorBoundary'
-export { StatusPill, toStatusKind, type StatusKind } from './StatusPill'
+export { StatusPill, EnabledPill, toStatusKind, type StatusKind } from './StatusPill'
 export { FeedbackProvider, useFeedback, errText } from './feedback'
 export { AppearanceMenu } from './AppearanceMenu'
 export { UserMenu } from './UserMenu'
@@ -20,7 +20,9 @@ export { lightTheme, darkTheme } from './theme'
 // 把 antd 整个镜像一遍会白付 100KB+。需要新组件时在这里加一行，
 // 不要在业务代码里绕过去直接 import 'antd'。
 export {
-  Button, Input, InputNumber, Select, Switch, Checkbox, Radio, Form,
+  Button, Input, InputNumber, AutoComplete, Select, Switch, Checkbox, Radio, Form,
   Modal, Drawer, Tabs, Tag, Tooltip, Dropdown, Space, Divider, Spin,
   Alert, Skeleton, Empty, Popconfirm, Segmented, Badge, QRCode,
 } from 'antd'
+
+export { FormSection, FormField } from './FormSection'

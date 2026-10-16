@@ -15,6 +15,11 @@ export const fmtMs = (ms?: number): string => {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`
 }
 
+export const fmtTokens = (prompt?: number, completion?: number, usageStatus?: unknown): string => {
+  const show = (value: number | undefined) => usageStatus === 'missing' || value == null || !Number.isFinite(value) || value < 0 ? '未报告' : String(value)
+  return `${show(prompt)} / ${show(completion)}`
+}
+
 const CHANNEL_LABELS: Record<string, string> = {
   wechat: '微信', weixin: '微信', feishu: '飞书', lark: '飞书', wecom: '企业微信', dingtalk: '钉钉', qq: 'QQ', mcp: 'MCP',
 }

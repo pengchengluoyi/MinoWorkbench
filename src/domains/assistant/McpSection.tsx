@@ -6,8 +6,9 @@ import { useAssistantMutations, useAssistantStatus, useMcpTokens } from './queri
 import { QueryProblem } from './AssistantNotReady'
 import { CopyButton } from './CopyButton'
 
+const shellQuote = (value: string) => "'" + value.replaceAll("'", "'\"'\"'") + "'"
 export const claudeCmd = (url: string, token: string) =>
-  `claude mcp add --transport http mino ${url} --header "Authorization: Bearer ${token}"`
+  `claude mcp add --transport http mino ${shellQuote(url)} --header ${shellQuote(`Authorization: Bearer ${token}`)}`
 
 export const jsonSnippet = (url: string, token: string) =>
   JSON.stringify({ mcpServers: { mino: { type: 'http', url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2)
@@ -37,6 +38,7 @@ export function McpSection() {
   const mcpUrl = status.data?.mcp_url || ''
 
   const submit = () => {
+    if (!status.data?.mcp_available || !mcpUrl || createToken.isPending) return
     const n = name.trim()
     if (!n) { fb.warn('先给 token 起个名字，方便以后认出它'); return }
     createToken.mutate(n, {
@@ -61,7 +63,7 @@ export function McpSection() {
           okButtonProps={{ danger: true }}
           onConfirm={() => revokeToken.mutateAsync(r.id).then(() => fb.ok('已吊销')).catch((e) => fb.fail(errText(e, '吊销失败')))}
         >
-          <Button size="small" type="text" danger>吊销</Button>
+          <Button size="small" type="text" danger disabled={revokeToken.isPending}>吊销</Button>
         </Popconfirm>
       ),
     },
@@ -81,7 +83,7 @@ export function McpSection() {
               让 Claude Code 等 Agent 直接调用 Mino 的助手工具。端点：<code className="w-mono">{mcpUrl || '未提供'}</code>
             </p>
           </div>
-          <Button type="primary" onClick={() => setNaming(true)}>生成 token</Button>
+          <Button type="primary" disabled={!status.data?.mcp_available || !mcpUrl} onClick={() => setNaming(true)}>生成 token</Button>
         </div>
       </section>
 
@@ -96,7 +98,7 @@ export function McpSection() {
         emptyHint="点右上「生成 token」，复制后配到你的 MCP 客户端。"
       />
 
-      <Modal open={naming} title="生成 MCP token" okText="生成" cancelText="取消" confirmLoading={createToken.isPending} onOk={submit} onCancel={() => setNaming(false)} destroyOnHidden>
+      <Modal open={naming} title="生成 MCP token" okText="生成" cancelText="取消" confirmLoading={createToken.isPending} onOk={submit} onCancel={() => { if (!createToken.isPending) setNaming(false) }} destroyOnHidden>
         <p style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>起一个能认出用途的名字，例如「我的 Claude Code」。</p>
         <Input autoFocus maxLength={40} value={name} placeholder="token 名称" onChange={(e) => setName(e.target.value)} onPressEnter={submit} />
       </Modal>

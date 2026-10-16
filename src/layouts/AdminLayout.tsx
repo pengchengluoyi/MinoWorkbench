@@ -1,7 +1,7 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  LayoutDashboard, Activity, FolderTree, Cpu, NotebookTabs, KeyRound,
+  Activity, FolderTree, Cpu, NotebookTabs, KeyRound,
   Lock, FileClock, Sparkles, ListChecks, Users, Layers, Package, GitBranch,
   BookCheck, Link2, Bot,
 } from 'lucide-react'
@@ -10,10 +10,10 @@ import { CommandPalette } from './CommandPalette'
 import { getServerInfo } from '@/api/me'
 
 /** 导航分组沿用 MinoConsole 的 5 组 16 项，顺序和文案不动。 */
+const AVAILABLE = new Set(['/health', '/audit', '/case-resource', '/skills', '/jobs', '/assistant-tools', '/roles', '/stack', '/packs', '/flow-blocks'])
 const GROUPS = [
   {
     id: 'overview', label: '概览', items: [
-      { to: '/dashboard', label: '工作台', icon: LayoutDashboard },
       { to: '/health', label: '运行状态', icon: Activity },
     ],
   },
@@ -36,7 +36,7 @@ const GROUPS = [
       { to: '/skills', label: '技能', icon: Sparkles },
       { to: '/jobs', label: 'Jobs', icon: ListChecks },
       { to: '/assistant-tools', label: '助手工具', icon: Bot },
-      { to: '/roles', label: '角色', icon: Users },
+      { to: '/roles', label: '提示词角色', icon: Users },
       { to: '/stack', label: '编排', icon: Layers },
       { to: '/packs', label: '扩展包', icon: Package },
       { to: '/flow-blocks', label: 'FSM 逻辑块', icon: GitBranch },
@@ -51,8 +51,9 @@ const GROUPS = [
 ]
 
 export function AdminLayout() {
+  const location = useLocation()
   // 30 秒一次的 Nexus 连通性，用 Query 的 refetchInterval，不自己写 setInterval
-  const { data: info, isError } = useQuery({
+  const { data: info, isError, isPending } = useQuery({
     queryKey: ['sys', 'server_info'],
     queryFn: getServerInfo,
     refetchInterval: 30_000,
@@ -63,7 +64,7 @@ export function AdminLayout() {
     ? '无法连接'
     : info?.data?.version
       ? `Nexus ${info.data.version}`
-      : 'Nexus 已连接'
+      : isPending ? '正在连接 Nexus' : 'Nexus 已连接'
 
   return (
     <div className="flex h-full" style={{ background: 'var(--w-bg)' }}>
@@ -100,7 +101,7 @@ export function AdminLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto" style={{ padding: '10px 8px' }}>
-          {GROUPS.map((group) => (
+          {GROUPS.filter(group => group.items.some(item => AVAILABLE.has(item.to))).map((group) => (
             <div key={group.id} style={{ marginBottom: 14 }}>
               <div
                 style={{
@@ -113,7 +114,7 @@ export function AdminLayout() {
               >
                 {group.label}
               </div>
-              {group.items.map(({ to, label, icon: Icon }) => (
+              {group.items.filter(item => AVAILABLE.has(item.to)).map(({ to, label, icon: Icon }) => (
                 <NavLink key={to} to={to} style={{ textDecoration: 'none' }}>
                   {({ isActive }) => (
                     <div
@@ -145,7 +146,7 @@ export function AdminLayout() {
 
       <div className="flex flex-1 flex-col min-w-0">
         <main className="flex-1 overflow-auto" style={{ padding: 'var(--w-space-4)', minHeight: 0 }}>
-          <ErrorBoundary label="页面">
+          <ErrorBoundary resetKey={location.pathname + location.search} label="页面">
             <Outlet />
           </ErrorBoundary>
         </main>

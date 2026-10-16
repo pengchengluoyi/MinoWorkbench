@@ -31,6 +31,7 @@ export function useFeedback() {
       new Promise<boolean>((resolve) => {
         modal.confirm({
           title: opts.title,
+          styles: { header: { display: 'none' } },
           content: opts.content,
           okText: opts.okText ?? '确定',
           cancelText: opts.cancelText ?? '取消',
@@ -54,6 +55,7 @@ const textOf = (value: unknown): string => {
       return textOf(item)
     }).filter(Boolean).join('；')
   }
+  if (typeof value === 'object' && 'message' in value) return textOf((value as { message?: unknown }).message)
   return ''
 }
 

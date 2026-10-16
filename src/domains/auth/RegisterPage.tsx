@@ -20,9 +20,7 @@ export function RegisterPage() {
       navigate('/login', { replace: true, state: { ...(location.state || {}), email: normalized, registered: true } })
     } catch (failure) {
       const message = errText(failure, '注册失败，请重试')
-      if (/邮箱/.test(message)) form.setFields([{ name: 'email', errors: [message] }])
-      else if (/密码/.test(message)) form.setFields([{ name: 'password', errors: [message] }])
-      else setError(message)
+      setError(message)
     } finally {
       setLoading(false)
     }

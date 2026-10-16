@@ -1,6 +1,7 @@
 import { Alert, DataTable, Drawer, EmptyState, PageHeader, Skeleton, StatusPill, Tag, type DataColumn } from '@/ui'
 import { isAssistantNotReady, type AssistantTool } from '@/api/assistant'
 import { useUrlState } from '@/hooks/useUrlState'
+import { CatalogToolbar, useCatalogSearch } from '@/ui/CatalogBrowser'
 import { useAssistantTools } from '@/domains/assistant/queries'
 import { QueryProblem } from '@/domains/assistant/AssistantNotReady'
 import { CopyButton } from '@/domains/assistant/CopyButton'
@@ -19,7 +20,7 @@ const columns: DataColumn<AssistantTool>[] = [
   },
   { key: 'description', title: '描述', ellipsis: true, render: (_: unknown, r) => r.description || '无' },
   { key: 'risk', title: '档位', width: 100, render: (_: unknown, r) => { const k = RISK[r.risk] || { kind: 'muted', text: r.risk }; return <StatusPill status={k.kind as 'pass' | 'warn' | 'muted'}>{k.text}</StatusPill> } },
-  { key: 'surfaces', title: '入口', width: 120, render: (_: unknown, r) => (r.surfaces ?? []).map((s) => <Tag key={s}>{s === 'im' ? 'IM' : 'MCP'}</Tag>) },
+  { key: 'surfaces', title: '入口', width: 120, render: (_: unknown, r) => (r.surfaces ?? []).map((s) => <Tag key={s}>{s === 'im' ? 'IM' : s === 'mcp' ? 'MCP' : `未知入口：${s}`}</Tag>) },
   { key: 'route', title: '绑定路由', width: 220, ellipsis: true, render: (_: unknown, r) => <span className="w-mono">{r.route}</span> },
   { key: 'async', title: '异步', width: 70, render: (_: unknown, r) => (r.async ? '是' : '否') },
 ]
@@ -38,6 +39,7 @@ export function AssistantToolsPage() {
   const q = useAssistantTools()
   const [openId, setOpenId] = useUrlState<string>('tool', '')
   const rows = q.data
+  const browser = useCatalogSearch(rows || [])
   const cur = rows?.find((t) => t.id === openId)
   const schema = cur ? JSON.stringify(cur.params_schema ?? {}, null, 2) : ''
 
@@ -55,12 +57,14 @@ export function AssistantToolsPage() {
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader title="助手工具" subtitle="IM 助手与 MCP 共用的白名单工具表" count={`${rows?.length ?? 0} 个`} />
       <Alert type="info" showIcon style={{ marginBottom: 'var(--w-gap)' }} message="工具在仓库里维护（git），此页只读" />
+      <CatalogToolbar {...browser} count={browser.rows.length} refreshing={q.isFetching} onRefresh={() => void q.refetch()} />
       <DataTable<AssistantTool>
         viewId="admin.assistant-tools"
         fill
         rowKey={(r) => r.id}
-        dataSource={rows}
+        dataSource={browser.rows}
         columns={columns}
+        activeRowKey={openId}
         onRowClick={(r) => setOpenId(r.id)}
         emptyTitle="工具表为空"
         emptyHint="仓库里 mino_nexus/prompts/assistant/tools/ 下还没有启用的工具。"
@@ -71,8 +75,8 @@ export function AssistantToolsPage() {
             <Row k="id"><span className="w-mono">{cur.id}</span></Row>
             <Row k="标题">{cur.title}</Row>
             <Row k="描述">{cur.description || '无'}</Row>
-            <Row k="档位"><StatusPill status={cur.risk === 'read' ? 'pass' : 'warn'}>{RISK[cur.risk]?.text || cur.risk}</StatusPill></Row>
-            <Row k="入口">{(cur.surfaces ?? []).map((s) => <Tag key={s}>{s === 'im' ? 'IM' : 'MCP'}</Tag>)}</Row>
+            <Row k="档位"><StatusPill status={cur.risk === 'read' ? 'pass' : cur.risk === 'write' ? 'warn' : 'muted'}>{RISK[cur.risk]?.text || cur.risk}</StatusPill></Row>
+            <Row k="入口">{(cur.surfaces ?? []).map((s) => <Tag key={s}>{s === 'im' ? 'IM' : s === 'mcp' ? 'MCP' : `未知入口：${s}`}</Tag>)}</Row>
             <Row k="绑定路由"><span className="w-mono">{cur.route}</span></Row>
             <Row k="异步">{cur.async ? '是（先返回受理，结果稍后推送）' : '否'}</Row>
             <details style={{ marginTop: 12 }}>

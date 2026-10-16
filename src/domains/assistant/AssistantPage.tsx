@@ -22,7 +22,7 @@ export function AssistantPage() {
   const [tab, setTab] = useUrlState<(typeof TABS)[number]>('tab', 'requests', TABS)
 
   return (
-    <div className="h-full overflow-y-auto" style={{ paddingRight: 4 }}>
+    <div className="w-workspace h-full overflow-y-auto" style={{ paddingRight: 4 }}>
       <PageHeader
         title="我的助手"
         subtitle="查看请求进展、补充执行参数，管理账号绑定、群聊策略和对话偏好。"
@@ -41,7 +41,7 @@ export function AssistantPage() {
         items={[
           { key: 'requests', label: '请求与任务', children: <RequestsSection /> },
           { key: 'preferences', label: '对话设置', children: <ConversationSettings /> },
-          { key: 'setup', label: '接入', children: <BindSection /> },
+          { key: 'setup', label: '渠道管理', children: <BindSection /> },
           { key: 'turns', label: '会话与轨迹', children: <TurnsSection /> },
           { key: 'subs', label: '订阅', children: <SubscriptionsSection /> },
           { key: 'mcp', label: 'MCP', children: <McpSection /> },

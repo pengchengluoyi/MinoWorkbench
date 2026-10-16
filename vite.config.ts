@@ -82,9 +82,11 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks(id) {
             if (!id.includes('node_modules')) return undefined
+            // 表格解析仅在打开导入时加载，不放入所有页面共用的 vendor。
+            if (/[\\/]node_modules[\\/]xlsx[\\/]/.test(id)) return 'spreadsheet'
             if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) return 'react'
             if (/[\\/]node_modules[\\/]@tanstack[\\/]/.test(id)) return 'query'
-            return 'vendor'
+            return undefined
           },
         },
       },

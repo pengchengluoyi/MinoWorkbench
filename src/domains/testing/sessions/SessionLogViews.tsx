@@ -1,3 +1,4 @@
+import { redactedText } from '@/lib/redact'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Search } from 'lucide-react'
 import { Button, EmptyState, Input, Select, StatusPill, toStatusKind, type StatusKind } from '@/ui'
@@ -31,7 +32,7 @@ export function RawParameters({ value }: { value: unknown }) {
   return (
     <details className="session-raw" open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
       <summary>原始参数</summary>
-      {expanded && <pre className="w-mono">{typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2)}</pre>}
+      {expanded && <pre className="w-mono">{redactedText(value)}</pre>}
     </details>
   )
 }

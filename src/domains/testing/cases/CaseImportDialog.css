@@ -47,9 +47,13 @@
 .case-import-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--w-border); padding-top: 12px; }
 .case-import-footer > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; font-size: 12px; }
 .case-import-footer strong { color: var(--w-text); }
-.case-import-footer span { color: var(--w-text-tertiary); font-size: 11px; }
+.case-import-footer > div:first-child span { color: var(--w-text-tertiary); font-size: 11px; }
 .case-import-footer-actions { display: flex; gap: 8px; }
 .case-import-empty { margin: 12px; color: var(--w-text-tertiary); font-size: 12px; }
+.case-import-recovery { display: flex; flex-direction: column; gap: 12px; padding: 8px 0; }
+.case-import-recovery h3, .case-import-recovery p { margin: 0; line-height: 1.7; overflow-wrap: anywhere; }
+.case-import-recovery p { color: var(--w-text-secondary); }
+.case-import-recovery [role=alert] { color: var(--w-fail); }
 @media (max-width: 1200px) { .case-import-review .case-script-grid { grid-template-columns: minmax(0, 1fr); } .case-import-mapping { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 700px) {
   .case-import-review-layout { display: flex; flex-direction: column; height: 65vh; }
@@ -65,3 +69,65 @@
   .case-import-review-header { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) { .case-import-progress > span { transition: none; } }
+
+.case-import-sheet-picker { display: flex; flex-direction: column; gap: 16px; }
+.case-import-sheet-picker h2 { margin: 0 0 6px; font-size: 17px; }
+.case-import-sheet-picker p { margin: 0; color: var(--w-text-tertiary); font-size: var(--w-font-sm); line-height: 1.7; }
+.case-import-sheet-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.case-import-sheet-list button { text-align: left; border: 1px solid var(--w-border); border-radius: var(--w-radius-lg); padding: 14px; background: var(--w-surface); color: var(--w-text); cursor: pointer; }
+.case-import-sheet-list button[aria-pressed=true] { border-color: var(--w-primary); background: var(--w-primary-soft); }
+.case-import-sheet-list button:disabled { opacity: .5; cursor: default; }
+.case-import-sheet-list button span { display: block; margin-top: 6px; color: var(--w-text-tertiary); font-size: var(--w-font-sm); }
+.case-import-sheet-sample { padding: 12px 14px; background: var(--w-fill); border-radius: var(--w-radius-lg); }
+.case-import-sheet-sample p { color: var(--w-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.case-import-sheet-sample p span { display: inline-block; width: 38px; color: var(--w-text-tertiary); font-family: var(--w-font-mono); }
+.case-import-source-summary, .case-import-grid-pages { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; font-size: var(--w-font-sm); color: var(--w-text-tertiary); }
+.case-import-source-summary strong { color: var(--w-primary); }
+.case-import-source-summary > div { display: flex; gap: 8px; margin-left: auto; }
+.case-import-grid-pages > span { flex: 1; }
+.case-import-read-status, .case-import-sheet-warning { font-size: var(--w-font-sm); color: var(--w-warn); line-height: 1.7; margin: 0; }
+
+.case-import-session-note { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 10px 12px; background: var(--w-fill); border-radius: 8px; color: var(--w-text-tertiary); font-size: 11px; line-height: 1.7; }
+.case-import-session-note > span { flex: 1; min-width: 220px; }
+.case-import-session-note > div { display: flex; gap: 8px; }
+.case-import-conflict-review { display: flex; flex-direction: column; gap: 8px; }
+.case-import-conflict-review h3 { font-size: 12px; font-weight: 650; margin: 0; color: var(--w-text-secondary); }
+.case-import-existing-source { padding: 12px; border: 1px solid var(--w-border); border-radius: 8px; background: var(--w-fill); }
+.case-import-existing-source > h3 { margin-bottom: 8px; }
+.case-import-existing-source > p { font-size: 11px; color: var(--w-text-tertiary); margin: 8px 0 0; }
+.case-import-result { display: flex; flex-direction: column; min-height: 0; gap: 14px; }
+.case-import-result-heading { display: flex; align-items: flex-start; gap: 10px; }
+.case-import-result-heading > svg { color: var(--w-pass); flex-shrink: 0; margin-top: 3px; }
+.case-import-result-heading[data-state=unknown] > svg, .case-import-result-heading[data-state=attention] > svg { color: var(--w-warn); }
+.case-import-result-heading h2 { font-size: 17px; margin: 0 0 4px; color: var(--w-text); }
+.case-import-result-heading p { margin: 0; font-size: 11px; color: var(--w-text-tertiary); overflow-wrap: anywhere; }
+.case-import-result-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px; padding: 12px 16px; border: 1px solid var(--w-border); border-radius: 8px; background: var(--w-surface-subtle); }
+.case-import-result-metrics > div { display: flex; align-items: baseline; gap: 8px; }
+.case-import-result-metrics strong { color: var(--w-text); font-size: 22px; font-variant-numeric: tabular-nums; }
+.case-import-result-metrics span, .case-import-result-metrics p { color: var(--w-text-tertiary); font-size: 11px; }
+.case-import-result-metrics p { margin: 0 0 0 auto; }
+.case-import-result-notice { padding: 10px 12px; background: var(--w-warn-bg); border-left: 2px solid var(--w-warn); border-radius: 0 6px 6px 0; font-size: 12px; color: var(--w-warn); line-height: 1.7; }
+.case-import-result-notice p { margin: 0; }
+.case-import-result-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.case-import-result-toolbar > span { color: var(--w-text-tertiary); font-size: 11px; }
+.case-import-result-layout { display: grid; grid-template-columns: minmax(330px, .8fr) minmax(0, 1.4fr); min-height: 0; border: 1px solid var(--w-border); border-radius: 8px; overflow: hidden; }
+.case-import-result-table { min-width: 0; max-height: 46vh; overflow: auto; border-right: 1px solid var(--w-border); }
+.case-import-result-table table { width: 100%; table-layout: fixed; border-spacing: 0; font-size: 12px; }
+.case-import-result-table th { position: sticky; top: 0; background: var(--w-surface); text-align: left; padding: 10px; border-bottom: 1px solid var(--w-border); color: var(--w-text-tertiary); font-size: 11px; z-index: 1; }
+.case-import-result-table th:first-child { width: 65px; }
+.case-import-result-table th:last-child { width: 148px; }
+.case-import-result-table td { padding: 10px; vertical-align: top; border-bottom: 1px solid var(--w-border); overflow-wrap: anywhere; }
+.case-import-result-table tr { cursor: pointer; }
+.case-import-result-table tr[aria-selected=true] { background: var(--w-primary-soft); }
+.case-import-result-table tr[aria-selected=true] td:first-child { box-shadow: inset 3px 0 var(--w-primary); }
+.case-import-result-table tr:focus-visible { outline: 2px solid var(--w-primary); outline-offset: -2px; }
+.case-import-result-table td:nth-child(2) strong, .case-import-result-table td:nth-child(2) > span, .case-import-result-table td:nth-child(2) small { display: block; }
+.case-import-result-table td strong { font-weight: 600; color: var(--w-text); }
+.case-import-result-table td:nth-child(2) > span, .case-import-result-table td:nth-child(2) small { margin-top: 4px; color: var(--w-text-tertiary); font-size: 11px; }
+.case-import-result-detail { padding: 14px; min-width: 0; max-height: 46vh; overflow: auto; }
+.case-import-result-detail .case-script-grid { grid-template-columns: minmax(0, 1fr); }
+.case-import-result-detail-header h3 { margin: 0; font-size: 14px; color: var(--w-text); overflow-wrap: anywhere; }
+.case-import-result-detail-header p, .case-import-result-refresh { color: var(--w-text-tertiary); font-size: 12px; line-height: 1.7; margin: 4px 0 12px; }
+.case-import-result .case-import-footer > div:first-child { flex: 1; min-width: 220px; }
+.case-import-result .case-import-footer-actions { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 1000px) { .case-import-result-layout { grid-template-columns: minmax(0, 1fr); } .case-import-result-table { max-height: 220px; border-right: 0; border-bottom: 1px solid var(--w-border); } .case-import-result-detail { max-height: 38vh; } }

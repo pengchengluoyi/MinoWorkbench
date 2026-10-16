@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { Button, DataTable, PageHeader, useFeedback, type DataColumn } from '@/ui'
 import { Trash2 } from 'lucide-react'
 import { clearAudit, listAudit, type AuditRow } from './auditLog'
@@ -41,6 +41,7 @@ export function AuditPage() {
   const fb = useFeedback()
   const [rows, setRows] = useState<AuditRow[]>(() => listAudit())
 
+  useEffect(() => { const update = () => setRows(listAudit()); window.addEventListener('mino:audit', update); return () => window.removeEventListener('mino:audit', update) }, [])
   const onClear = useCallback(async () => {
     const ok = await fb.confirm({
       title: '清空本会话的操作记录？',
@@ -58,7 +59,7 @@ export function AuditPage() {
     <div className="flex flex-col" style={{ minHeight: 0 }}>
       <PageHeader
         title="操作记录"
-        subtitle="只记录当前浏览器会话内发生的管理操作"
+        subtitle="当前账号、本浏览器会话最近 200 条前端成功操作；不是服务端审计，记录可被清空"
         count={`${rows.length} 条`}
         extra={
           <Button size="small" danger icon={<Trash2 size={13} />} disabled={!rows.length} onClick={onClear}>
@@ -72,7 +73,7 @@ export function AuditPage() {
         dataSource={rows}
         rowKey={(r) => `${r.t}-${r.action}`}
         emptyTitle="本会话还没有操作记录"
-        emptyHint="在管理后台做过增删改之后，这里会出现对应条目。"
+        emptyHint="目前记录环境保存、模型接入保存、控件保存与发布。没有记录不表示没有发生其他操作。"
       />
     </div>
   )
