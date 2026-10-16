@@ -20,7 +20,7 @@ def main():
     first = rows[0]
     identities = set()
     for row in rows:
-        if row.get("dirty") or row.get("payload") != "binary":
+        if row.get("dirty") or row.get("payload") not in {"binary", "static"}:
             raise ValueError("dirty/source packages are not installable releases")
         if any(row[k] != first[k] for k in ("component", "build_id", "source_commit", "version")):
             raise ValueError("mixed release identities")
@@ -37,6 +37,12 @@ def main():
     manifest = {"manifest_schema_version":1, "component":first["component"], "version":first["version"],
                 "build_id":first["build_id"], "source_commit":first["source_commit"],
                 "compatibility":{'runtime': {'bundled': True, 'python': '3.12'}, 'protocol': {'node': 2, 'mcp': '2025-03-26'}, 'api': {'admission': 'explicit-tested-build-pair', 'tested_build_pairs': []}, 'schema': {'migration': 'ensure_db-and-bootstrap', 'rollback_compatibility': 'unverified'}, 'automatic_rollback': False, 'installation': 'baseline-v1', 'health': 'health_contract_v1'}, "items":rows}
+    if first["component"] == "workbench":
+        manifest["compatibility"]["workbench"] = first.get("workbench_contract")
+        manifest["compatibility"]["api"]["tested_build_pairs"] = [
+            {"workbench_build_id": first["build_id"], "nexus_build_id": build}
+            for build in first.get("tested_nexus_builds", [])
+        ]
     (args.dist / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Fresh-install baseline only. Does not implement in-place update or database rollback."""
+"""Installation/service management and Workbench update entry point; never rolls back Nexus data."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -16,6 +16,8 @@ import stat
 import subprocess
 import sys
 import zipfile
+import uuid
+from urllib.parse import urlsplit
 
 def load(root):
     root = root.expanduser().resolve(strict=True)
@@ -28,6 +30,14 @@ def install(args):
         raise ValueError("installation root already exists; baseline installer never overwrites it")
     if root.parent.resolve() != root.parent:
         raise ValueError("installation parent must be resolved, not a symlink")
+    nexus = urlsplit(args.nexus_url)
+    if nexus.scheme not in {"http", "https"} or not nexus.hostname or nexus.username or nexus.password or nexus.path not in {"", "/"} or nexus.query or nexus.fragment:
+        raise ValueError("invalid Nexus origin")
+    _ = nexus.port
+    if args.label and not re.fullmatch(r"[A-Za-z0-9.-]+", args.label):
+        raise ValueError("invalid service label")
+    if args.data_dir and not args.data_dir.expanduser().is_dir():
+        raise ValueError("registered data root must already exist")
     archive = args.package.resolve(strict=True)
     if hashlib.sha256(archive.read_bytes()).hexdigest() != args.sha256:
         raise ValueError("package digest mismatch")
@@ -36,7 +46,7 @@ def install(args):
     with zipfile.ZipFile(archive) as z:
         info = json.loads(z.read("release.json"))
         component, build = info["component"], info["build_id"]
-        if component not in {"nexus", "workbench"} or not re.fullmatch(r"[A-Za-z0-9._-]+", build):
+        if component not in {"nexus", "workbench"} or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,100}", build):
             raise ValueError("invalid component/build")
         import platform
         machine = "arm64" if platform.machine().lower() in {"arm64", "aarch64"} else "x64"
@@ -48,6 +58,11 @@ def install(args):
                 raise ValueError("unsafe archive path")
             if stat.S_ISLNK(row.external_attr >> 16):
                 raise ValueError("archive symlinks are not accepted")
+        if component == "workbench":
+            from hi3d_release import package_info
+            checked = package_info(archive, args.sha256)
+            if checked["payload"] != "binary":
+                raise ValueError("first install requires a full binary package")
         root.mkdir(mode=0o700)
         for name in ("launcher", "releases", "config", "updates", "logs"):
             (root / name).mkdir()
@@ -65,14 +80,18 @@ def install(args):
                 output.write(z.read(row))
             target.chmod((row.external_attr >> 16) & 0o777 or 0o644)
         (release / "release.json").write_text(json.dumps(info, indent=2))
+    if component == "workbench":
+        from hi3d_release import check_release, atomic
+        check_release(release, info)
+        atomic(release / "hi3d-installed.json", {"sha256": args.sha256})
     data_root = args.data_dir.expanduser().resolve() if args.data_dir else root / "data"
     if component == "nexus" and args.data_dir is None:
         data_root.mkdir()
     if component == "nexus" and not data_root.is_dir():
         raise ValueError("registered data root must already exist")
-    conf = {"component": component, "build_id": build, "data_dir": str(data_root),
+    conf = {"installation_id": str(uuid.uuid4()), "component": component, "build_id": build, "data_dir": str(data_root),
             "host":args.host, "port":args.port, "nexus_url":args.nexus_url,
-            "mdns":args.mdns, "label":args.label or "com.mino." + component}
+            "release_repository": "pengchengluoyi/MinoWorkbench", "mdns":args.mdns, "label":args.label or "com.mino." + component}
     if not re.fullmatch(r"[A-Za-z0-9.-]+", conf["label"]):
         raise ValueError("invalid service label")
     (root / "config/installation.json").write_text(json.dumps(conf, indent=2))
@@ -99,6 +118,9 @@ def service(args):
         with dest.open("xb") as stream:
             plistlib.dump(data, stream)
         record.write_text(json.dumps({"label":conf["label"], "plist":str(dest)}))
+        if conf["component"] == "workbench":
+            from hi3d_update_service import register_helper
+            register_helper(root, conf, dest)
         print("service definition registered; use start to bootstrap")
     elif args.command == "start":
         saved = json.loads(record.read_text())
@@ -128,7 +150,8 @@ def run(args):
         env["MINO_NEXUS_MDNS"] = "1" if conf["mdns"] else "0"
         command += ["--data-dir", conf["data_dir"]]
     else:
-        command += ["--nexus-url", conf["nexus_url"], "--releases-root", str(root / "releases")]
+        command += ["--nexus-url", conf["nexus_url"], "--releases-root", str(root / "releases"),
+                    "--current-root", str(root), "--installation-id", conf["installation_id"]]
     log = logging.getLogger("service")
     log.setLevel(logging.INFO)
     log.addHandler(RotatingFileHandler(root / "logs/service.log", maxBytes=5*1024*1024, backupCount=3))
@@ -163,7 +186,49 @@ def main():
         p.add_argument("--root", type=Path, required=True)
         if name == "register":
             p.add_argument("--service-file", type=Path, required=True)
+    for name in ("check-update", "update", "rollback", "operation", "recover", "cancel-update", "update-worker"):
+        p = sub.add_parser(name)
+        p.add_argument("--root", type=Path, required=True)
+        if name not in {"check-update", "update-worker"}:
+            p.add_argument("--operation", required=True)
+        if name in {"check-update", "update"}:
+            p.add_argument("--manifest", type=Path, required=True)
+        if name == "update":
+            p.add_argument("--package", type=Path, required=True)
+        if name == "rollback":
+            p.add_argument("--build", required=True)
+        if name in {"update", "rollback"}:
+            p.add_argument("--defer", action="store_true", help="persist request without starting helper")
+            p.add_argument("--local-verification", action="store_true", help="explicitly test dirty packages; does not certify business compatibility")
+    for name in ("github-check", "github-fetch"):
+        p = sub.add_parser(name)
+        p.add_argument("--root", type=Path, required=True)
+        p.add_argument("--tag", default="", required=name == "github-fetch")
+        if name == "github-fetch":
+            p.add_argument("--build", required=True)
     args = ap.parse_args()
+    if args.command in {"github-check", "github-fetch"}:
+        from hi3d_release import installation, current, read, lock, package_info
+        from hi3d_github_release import check, prepare
+        root, conf = installation(args.root)
+        repo = conf.get("release_repository", "pengchengluoyi/MinoWorkbench")
+        if args.command == "github-check":
+            value = check(repo, "workbench", read(current(root) / "release.json"), args.tag)
+        else:
+            with lock(root):
+                manifest, package = prepare(root, repo, "workbench", args.tag, args.build)
+                from hi3d_release import manifest_item
+                _, item = manifest_item(package.parent / "hi3d-manifest.json")
+                info = package_info(package, item["sha256"])
+                if any(info.get(k) != manifest.get(k) for k in ("component", "version", "build_id", "source_commit")):
+                    raise ValueError("Downloaded package metadata differs from manifest")
+            value = {"build_id": args.build, "release_tag": args.tag, "package_verified": True, "compatibility_verified": False}
+        print(json.dumps(value))
+        return 0
+    if args.command in {"check-update", "update", "rollback", "operation", "recover", "cancel-update", "update-worker"}:
+        from hi3d_updates import dispatch
+        dispatch(args)
+        return 0
     if args.command == "install":
         install(args)
         return 0
