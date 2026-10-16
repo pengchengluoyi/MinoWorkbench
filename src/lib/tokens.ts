@@ -1,7 +1,10 @@
 /** 登录凭证的唯一存取口。别处不许直接碰 localStorage 的这两个 key。 */
 
-const TOKEN = 'token'
-const WS_TOKEN = 'ws_token'
+import { nexusOrigin } from './config'
+
+const scope = encodeURIComponent(nexusOrigin())
+const TOKEN = `mino:${scope}:token`
+const WS_TOKEN = `mino:${scope}:ws_token`
 
 const safeGet = (k: string): string | null => {
   try { return localStorage.getItem(k) } catch { return null }
@@ -19,7 +22,7 @@ export const getWsToken = () => safeGet(WS_TOKEN)
 export const setWsToken = (v: string) => safeSet(WS_TOKEN, v)
 export const clearTokens = () => { safeDel(TOKEN); safeDel(WS_TOKEN) }
 export const hasToken = () => !!getToken()
-export const isAuthStorageKey = (key: string | null) => key === TOKEN || key === null
+export const isAuthStorageKey = (key: string | null) => key === TOKEN || key === WS_TOKEN || key === null
 
 /**
  * 从 /auth/login 或 /auth/status 的返回体里落票据。
@@ -32,4 +35,11 @@ export const persistAuthTokens = (data: { token?: string; ws_token?: string } | 
   if (!data) return
   if (data.token) setToken(data.token)
   if (data.ws_token) setWsToken(data.ws_token)
+}
+
+/** Target changes require a fresh login; legacy unscoped keys are never migrated. */
+export const prepareAuthTarget = () => {
+  const marker = 'mino:auth-target'
+  if (safeGet(marker) !== nexusOrigin()) clearTokens()
+  safeSet(marker, nexusOrigin())
 }

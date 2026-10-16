@@ -6,15 +6,31 @@
  */
 
 const DEFAULT_NEXUS = 'http://mino.local:10104'
+declare global {
+  interface Window { __MINO_CONFIG__?: { nexusUrl: string; buildId: string } }
+}
+const runtimeOrigin = (): string | undefined => {
+  const value = window.__MINO_CONFIG__?.nexusUrl
+  if (value === undefined) return undefined
+  const url = new URL(value)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('Workbench 运行地址配置无效')
+  }
+  return url.origin
+}
+
+
 
 export const nexusOrigin = (): string => {
+  const runtime = runtimeOrigin()
+  if (runtime !== undefined) return runtime
   const baked = String(import.meta.env.VITE_NEXUS_URL || '').trim().replace(/\/$/, '')
   return baked || DEFAULT_NEXUS
 }
 
 /** dev 下未显式指定 origin 时走 vite proxy（同源，免 CORS）。 */
 export const usesDevProxy = (): boolean => {
-  if (import.meta.env.VITE_NEXUS_URL) return false
+  if (runtimeOrigin() !== undefined || import.meta.env.VITE_NEXUS_URL) return false
   return import.meta.env.DEV
 }
 

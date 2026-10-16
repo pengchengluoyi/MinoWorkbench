@@ -1,0 +1,58 @@
+name: Release native baseline
+on:
+  workflow_dispatch:
+  push:
+    branches: ['v6-a-baseline-*']
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: python -m pip install pyinstaller
+      - name: Validate source version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python -c "import os; assert os.environ['GITHUB_REF_NAME'] == 'v' + __import__('json').loads(__import__('pathlib').Path('package.json').read_text())['version']"
+      - run: python scripts/build_release.py --output dist
+      - uses: actions/upload-artifact@v5
+        with:
+          name: native-package
+          path: |
+            dist/hi3d-*.zip
+            dist/item-*.json
+          if-no-files-found: error
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v6
+        with:
+          name: native-package
+          path: dist
+      - name: Validate packages and create manifest
+        env:
+          RELEASE_PREFIX: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+        run: python scripts/write_manifest.py --dist dist --prefix "$RELEASE_PREFIX"
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/hi3d-*.zip
+            dist/manifest.json
+          fail_on_unmatched_files: true
+          generate_release_notes: true
