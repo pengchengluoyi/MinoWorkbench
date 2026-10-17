@@ -79,7 +79,7 @@ jobs:
                   time.sleep(15)
           PYCODE
       - name: Install the released Nexus integration partner
-        run: python packaging/install.py --components nexus --nexus-version 0.1.45 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
+        run: python packaging/install.py --components nexus --nexus-version 0.1.46 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
       - name: Install released Workbench upgrade baseline
         run: |
           python - <<'PYCODE'
