@@ -50,7 +50,7 @@ jobs:
           VERSION=$(python -c "from pathlib import Path; import json; print(Path('mino_nexus/VERSION').read_text().strip() if Path('mino_nexus').is_dir() else json.loads(Path('package.json').read_text())['version'])")
           python scripts/write_manifest.py --dist dist --prefix "https://github.com/${{ github.repository }}/releases/download/v$VERSION"
       - name: Install the released Nexus integration partner
-        run: python packaging/install.py --components nexus --nexus-version 0.1.39 --root "$RUNNER_TEMP/mino-install/nexus"
+        run: python packaging/install.py --components nexus --nexus-version 0.1.40 --root "$RUNNER_TEMP/mino-install/nexus"
       - name: Validate installer against the actual native package
         run: |
           python - <<'PYCODE'
