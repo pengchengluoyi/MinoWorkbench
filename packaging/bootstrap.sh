@@ -113,6 +113,16 @@ for attempt in range(60):
     except OSError:
         if attempt == 59: raise SystemExit('服务未就绪；请保留安装目录检查，不要重复安装')
         time.sleep(1)
+# Bind only the matching sibling installation; remote Nexus is left untouched.
+if component == 'workbench':
+    sibling = root.parent/'nexus'
+    deployment = sibling/'config/mino-deployment.json'
+    nexus_helper = sibling/'launcher/mino-maintain'
+    if deployment.is_file() and nexus_helper.is_file():
+        conf = json.loads(deployment.read_text())
+        requested = (args.nexus_url or f'http://127.0.0.1:{nexus_port}').rstrip('/')
+        if conf.get('probe_url') == requested:
+            run([nexus_helper, 'd2', 'bind-workbench', '--root', sibling, '--workbench-root', root])
 print(f'安装完成：{root}\n地址：http://127.0.0.1:{port}\n维护入口：{helper}')
 
 MINO_BOOTSTRAP_PY

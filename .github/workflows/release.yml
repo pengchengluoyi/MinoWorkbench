@@ -31,8 +31,60 @@ jobs:
         run: |
           VERSION=$(python -c "from pathlib import Path; import json; print(Path('mino_nexus/VERSION').read_text().strip() if Path('mino_nexus').is_dir() else json.loads(Path('package.json').read_text())['version'])")
           python scripts/write_manifest.py --dist dist --prefix "https://github.com/${{ github.repository }}/releases/download/v$VERSION"
+      - name: Install the exact released Nexus integration partner
+        run: |
+          curl -fsSL https://github.com/pengchengluoyi/MinoNexus/releases/download/v0.1.37/bootstrap.sh -o "$RUNNER_TEMP/nexus-bootstrap.sh"
+          bash "$RUNNER_TEMP/nexus-bootstrap.sh" --environment test --version 0.1.37 --root "$RUNNER_TEMP/mino-install/nexus"
       - name: Validate installer against the actual native package
         run: bash packaging/bootstrap.sh --environment test --package-dir "$PWD/dist" --root "$RUNNER_TEMP/mino-install/workbench"
+      - name: Verify native pair in a cold browser
+        run: |
+          python -m pip install playwright
+          python -m playwright install chromium
+          python - <<'PYCODE'
+          import json, os, sys
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          from playwright.sync_api import sync_playwright
+          sys.path.insert(0, str(Path('packaging').resolve()))
+          from mino_release import read
+          from mino_update_service import api_compatibility
+          root = Path(os.environ['RUNNER_TEMP'])/'mino-install/workbench'
+          release = (root/'current').resolve()
+          info = read(release/'release.json')
+          evidence = api_compatibility(read(root/'config/installation.json'), info)
+          failures = []
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              context = browser.new_context(service_workers='block')
+              def route(r):
+                  if urlsplit(r.request.url).hostname not in ('127.0.0.1', 'localhost'):
+                      failures.append('unexpected remote resource'); r.abort()
+                  else: r.continue_()
+              context.route('**/*', route)
+              page = context.new_page()
+              page.on('pageerror', lambda e: failures.append(str(e)))
+              page.on('requestfailed', lambda r: failures.append(r.url))
+              page.goto('http://127.0.0.1:60101/login', wait_until='networkidle')
+              assert page.locator('#root').inner_text().strip()
+              assert page.evaluate('window.__MINO_CONFIG__.nexusUrl') == 'http://127.0.0.1:50101'
+              page.get_by_role('link', name='注册账号').click()
+              page.wait_for_url('**/register')
+              web = release/'_internal/web'
+              assets = ['/releases/'+info['build_id']+'/'+f.relative_to(web).as_posix() for f in web.rglob('*') if f.is_file() and f.name != 'index.html']
+              page.evaluate("""async paths => {
+                  for (const path of paths) {
+                      const res = await fetch(path, {cache:'no-store'});
+                      if (!res.ok) throw new Error(path);
+                      if (path.endsWith('.js')) await import(path);
+                      else if (path.endsWith('.css')) { const sheet=new CSSStyleSheet(); sheet.replaceSync(await res.text()); }
+                      else await res.arrayBuffer();
+                  }
+              }""", assets)
+              assert not failures, failures
+              browser.close()
+          print(json.dumps({'native_pair': evidence, 'cold_browser_assets':len(assets), 'passed':True}))
+          PYCODE
       - run: cp packaging/bootstrap.sh dist/bootstrap.sh
       - uses: actions/upload-artifact@v5
         with:
