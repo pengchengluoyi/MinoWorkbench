@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ApplicationUnderstandingPanel } from './ApplicationUnderstandingPanel'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { request } from '@/lib/request'
@@ -48,5 +49,6 @@ export function AppIssuesPanel({ appId, projectId }: { appId: string; projectId:
       </article>)}
       <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button> <span>第 {page} 页 / 共 {Math.max(1, Math.ceil(data.total / data.size))} 页</span> <Button disabled={page * data.size >= data.total} onClick={() => setPage(page + 1)}>下一页</Button>
     </> : null}
+    <ApplicationUnderstandingPanel projectId={projectId} appId={appId} />
   </section>
 }
