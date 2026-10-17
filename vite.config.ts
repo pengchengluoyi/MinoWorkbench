@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
@@ -21,7 +21,8 @@ const NEXUS_PREFIXES = [
 
 export default defineConfig(({ mode }) => {
   // VITE_PROXY_TARGET：仅 dev 代理目标（联调指向本机 Nexus），不影响生产 origin
-  const nexus = process.env.VITE_PROXY_TARGET || process.env.VITE_NEXUS_URL || 'http://127.0.0.1:50101'
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  const nexus = env.VITE_PROXY_TARGET || env.VITE_NEXUS_URL || 'http://127.0.0.1:50101'
   return {
     plugins: [react(), tailwindcss(), {
       name: 'local-development-only',
@@ -56,7 +57,7 @@ export default defineConfig(({ mode }) => {
       //
       // bypass 解决第 2 个：浏览器导航带 Accept: text/html，直接给 SPA；
       // XHR（Accept: application/json）才真代理。沿用 MinoConsole 验证过的做法。
-      proxy: mode === 'development' && !process.env.VITE_NEXUS_URL
+      proxy: mode === 'development' && !env.VITE_NEXUS_URL
         ? {
             '/ws': { target: nexus, changeOrigin: true, ws: true },
             [`^/(${NEXUS_PREFIXES.join('|')})(/|$|\\?)`]: {

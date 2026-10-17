@@ -29,7 +29,14 @@ export const nexusOrigin = (): string => {
   const runtime = runtimeOrigin()
   if (runtime !== undefined) return runtime
   const baked = String(import.meta.env.VITE_NEXUS_URL || '').trim().replace(/\/$/, '')
-  return baked || DEFAULT_NEXUS
+  const target = baked || DEFAULT_NEXUS
+  if (import.meta.env.DEV) {
+    const url = new URL(target)
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || url.port !== '50101') {
+      throw new Error('开发 Workbench 只能连接本机 Nexus :50101')
+    }
+  }
+  return target
 }
 
 /** dev 下未显式指定 origin 时走 vite proxy（同源，免 CORS）。 */
