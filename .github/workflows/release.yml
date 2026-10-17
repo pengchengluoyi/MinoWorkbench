@@ -82,7 +82,21 @@ jobs:
         run: python packaging/install.py --components nexus --nexus-version 0.1.45 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
       - name: Install released Workbench upgrade baseline
         run: |
-          python packaging/install.py --components workbench --workbench-version 0.0.21 --root "$RUNNER_TEMP/mino-install/workbench" --command-dir "$RUNNER_TEMP/mino-commands" --no-path --no-open
+          python - <<'PYCODE'
+          import hashlib, os, pathlib, platform, subprocess, urllib.request
+          system = {'Darwin': 'darwin', 'Windows': 'win32', 'Linux': 'linux'}[platform.system()]
+          arch = 'arm64' if platform.machine().lower() in ('arm64', 'aarch64') else 'x64'
+          name = f'MinoInstaller-{system}-{arch}' + ('.exe' if system == 'win32' else '')
+          base = 'https://github.com/pengchengluoyi/MinoWorkbench/releases/download/v0.0.21/'
+          with urllib.request.urlopen(base + 'INSTALLER-SHA256SUMS.txt') as response:
+              sums = {line.split()[1].lstrip('*'): line.split()[0] for line in response.read().decode().splitlines() if line.strip()}
+          installer = pathlib.Path(os.environ['RUNNER_TEMP']) / name
+          urllib.request.urlretrieve(base + name, installer)
+          assert hashlib.sha256(installer.read_bytes()).hexdigest() == sums[name]
+          installer.chmod(0o755)
+          subprocess.run([str(installer), '--components', 'workbench', '--version', '0.0.21', '--root', str(pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-install/workbench'), '--command-dir', str(pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-commands'), '--no-path'], check=True)
+          assert not (pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-install/workbench/config/command.json').exists()
+          PYCODE
           python - <<'PYCODE'
           import os, pathlib, shutil
           root = pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-install/workbench'
