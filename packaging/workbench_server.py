@@ -11,6 +11,9 @@ from urllib.parse import urlsplit, unquote
 from mino_platform import current_release, watch_stop
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "open":
+        from open_workbench import main as open_main
+        return open_main(sys.argv[2:])
     ap = argparse.ArgumentParser(prog="mino-workbench")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=None)
@@ -125,6 +128,9 @@ def main():
             if self.command != "HEAD":
                 self.wfile.write(data)
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    if args.current_root:
+        from command_entry import refresh_when_registered
+        refresh_when_registered(args.current_root.resolve())
     watch_stop(server.shutdown)
     try:
         server.serve_forever()

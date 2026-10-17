@@ -26,8 +26,7 @@ def check(folder, components):
             raise ValueError(f'Existing command preserved: {path}; choose --command-dir or inspect the previous installation')
 
 
-def register(folder, component, root):
-    folder=folder.expanduser().absolute();folder.mkdir(parents=True,exist_ok=True)
+def legacy_text(folder, component, root):
     helper=root/'launcher'/('mino-maintain.exe' if os.name=='nt' else 'mino-maintain')
     prefix='d2 ' if component=='nexus' else ''
     status='service-status' if component=='nexus' else 'status'
@@ -73,10 +72,86 @@ case "${{1:-start}}" in
 esac
 exec {shlex.quote(str(helper))} {prefix}"$action" --root {shlex.quote(str(root))}
 '''
-    target=command_file(folder,component)
-    with target.open('x',encoding='utf-8',newline='\n') as out:out.write(text)
+    return text
+
+
+def rendered(folder, component, root):
+    text = legacy_text(folder, component, root)
+    if component != 'workbench':
+        return text
+    from mino_platform import current_release, executable
+    app = executable(current_release(root) / 'mino-workbench')
+    if os.name == 'nt':
+        app = str(app).replace('%', '%%')
+        install_root = str(root).replace('%', '%%')
+        text = text.replace('setlocal\n', 'setlocal\nif "%~1"=="open" goto open\n', 1)
+        text += f'\n:open\n"{app}" %* --root "{install_root}"\nexit /b %errorlevel%\n'
+        text = text.replace('start^|stop^|status', 'start^|stop^|status^|open')
+    else:
+        dispatch = f'if [ "${{1:-}}" = open ]; then shift; exec {shlex.quote(str(app))} open --root {shlex.quote(str(root))} "$@"; fi\n'
+        text = text.replace('if [ "$#" -gt 1 ]', dispatch + 'if [ "$#" -gt 1 ]', 1)
+        text = text.replace('start|stop|status', 'start|stop|status|open')
+    return text
+
+
+def remember(root, target, text):
+    import hashlib, json
+    record = root / 'config/command.json'
+    record.write_text(json.dumps({'path': str(target), 'sha256': hashlib.sha256(text.encode()).hexdigest()}))
+
+
+def register(folder, component, root):
+    folder = folder.expanduser().absolute()
+    folder.mkdir(parents=True, exist_ok=True)
+    text = rendered(folder, component, root)
+    target = command_file(folder, component)
+    with target.open('x', encoding='utf-8', newline='\n') as out:
+        out.write(text)
     target.chmod(0o755)
+    if component == 'workbench':
+        remember(root, target, text)
     return target
+
+
+def refresh_workbench(root):
+    """Upgrade only our unchanged generated command; retain a backup and user edits."""
+    import hashlib, json, shutil, tempfile, uuid
+    record = root / 'config/command.json'
+    saved = json.loads(record.read_text()) if record.exists() else {}
+    target = Path(saved['path']) if saved else command_file(command_dir(), 'workbench')
+    if not target.exists():
+        return False  # Installer may still be registering its entry.
+    if target.is_symlink() or target.parent.resolve() != target.parent or target.stat().st_nlink != 1:
+        return True
+    old = target.read_text(encoding='utf-8')
+    expected = saved.get('sha256')
+    owned = hashlib.sha256(old.encode()).hexdigest() == expected if expected else old == legacy_text(target.parent, 'workbench', root)
+    if not owned:
+        return True  # Preserve custom commands.
+    text = rendered(target.parent, 'workbench', root)
+    if old != text:
+        backup = root / 'config' / ('command-backup-' + uuid.uuid4().hex)
+        shutil.copy2(target, backup)
+        fd, name = tempfile.mkstemp(prefix='.mino-command-', dir=target.parent)
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as out:
+            out.write(text)
+        os.chmod(name, target.stat().st_mode & 0o777)
+        os.replace(name, target)
+    remember(root, target, text)
+    return True
+
+
+def refresh_when_registered(root):
+    import threading, time
+    def refresh():
+        for _ in range(60):
+            try:
+                if refresh_workbench(root):
+                    return
+            except (OSError, ValueError, KeyError):
+                return  # Command repair must never stop the service.
+            time.sleep(1)
+    threading.Thread(target=refresh, daemon=True, name='command-registration').start()
 
 
 def add_path(folder):

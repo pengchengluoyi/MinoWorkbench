@@ -157,6 +157,18 @@ jobs:
               except OSError:
                   if attempt == 59: raise
                   time.sleep(1)
+          url = subprocess.check_output(command + ['open', '--print-url'], text=True).strip()
+          assert url == 'http://127.0.0.1:60104', url
+          assert 'open' in subprocess.check_output(command + ['--help'], text=True)
+          subprocess.run(command + ['stop'], check=True)
+          # Exercise browser dispatch without requiring an interactive desktop on CI.
+          receiver = pathlib.Path(os.environ['RUNNER_TEMP'])/'browser-receiver.py'
+          receipt = receiver.with_suffix('.url')
+          receiver.write_text('import pathlib,sys; pathlib.Path(__file__).with_suffix(".url").write_text(sys.argv[1])')
+          browser_env = dict(os.environ, BROWSER=f'"{__import__("sys").executable}" "{receiver}" %s')
+          subprocess.run(command + ['open'], env=browser_env, check=True)
+          assert receipt.read_text() == url
+          assert json.loads(subprocess.check_output(command + ['status'], text=True))['running']
           subprocess.run(command + ['stop'], check=True)
           PYCODE
       - uses: actions/upload-artifact@v5
