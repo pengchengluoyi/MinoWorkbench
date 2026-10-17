@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import shutil
+import tempfile
 import uuid
 import zipfile
 
@@ -42,6 +43,15 @@ def upgrade(root, manifest, package):
         backup = root / 'updates' / operation
         backup.mkdir()
         shutil.copytree(root / 'config', backup / 'config')
+        import command_entry
+        saved_command = root / 'config/command.json'
+        saved = read(saved_command) if saved_command.is_file() else {}
+        command = Path(saved['path']) if saved else command_entry.command_file(command_entry.command_dir(), 'workbench')
+        command_backup = None
+        if command.exists():
+            command_entry.check_upgrade(command.parent, 'workbench', root)
+            command_backup = backup / 'previous-command'
+            shutil.copy2(command, command_backup)
         row = {'kind': 'update', 'operation': operation, 'before': old['build_id'],
                'release': info, 'sha256': item['sha256'], 'package': str(package)}
         stage(root, row)
@@ -85,6 +95,20 @@ def upgrade(root, manifest, package):
                         os.rename(root / 'launcher', backup / 'launcher-failed')
                     os.rename(backup / 'launcher-old', root / 'launcher')
                 switch(root, old['build_id'])
+                if command_backup is not None:
+                    # A running new app may already have refreshed the command.
+                    # Restore only our unchanged generated file; preserve user edits.
+                    command_entry.check_upgrade(command.parent, 'workbench', root)
+                    shutil.copy2(command, backup / 'failed-command')
+                    fd, temporary = tempfile.mkstemp(prefix='.mino-command-', dir=command.parent)
+                    with os.fdopen(fd, 'wb') as output:
+                        output.write(command_backup.read_bytes())
+                    os.chmod(temporary, command_backup.stat().st_mode & 0o777)
+                    os.replace(temporary, command)
+                    if saved:
+                        atomic(saved_command, saved)
+                    else:
+                        command_entry.remember(root, command, command.read_text(encoding='utf-8'))
                 start_app(root, conf)
                 health(conf, old['build_id'], old['runtime_id'], timeout=60)
                 row['state'] = 'rolled_back'; atomic(journal, row)
