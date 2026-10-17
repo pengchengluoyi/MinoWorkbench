@@ -44,6 +44,16 @@ jobs:
         run: |
           bash -n packaging/bootstrap.sh
           bash -n packaging/install.sh
+      - name: Validate Windows installer scripts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($path in @('packaging/install.ps1', 'packaging/bootstrap.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count) { throw ($errors | Out-String) }
+          }
       - run: python scripts/build_release.py --output dist
       - name: Create install manifest for the exact build
         run: |
