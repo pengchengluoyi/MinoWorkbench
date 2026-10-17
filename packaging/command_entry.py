@@ -185,3 +185,20 @@ def add_path(folder):
         if block.strip() not in previous:
             with profile.open('a',encoding='utf-8') as out:out.write(block)
     print(f'Commands: {folder}. Open a NEW terminal, or run: export PATH={quoted}:"$PATH"')
+
+
+def check_upgrade(folder, component, root):
+    """Refuse foreign/custom commands before touching an installed service."""
+    import hashlib, json
+    folder = folder.expanduser().absolute()
+    target = command_file(folder, component)
+    if not target.exists():
+        check(folder, [component]); return
+    if folder.resolve() != folder or target.is_symlink() or target.stat().st_nlink != 1:
+        raise ValueError('Linked command preserved: ' + str(target))
+    actual = target.read_text(encoding='utf-8')
+    record = root / 'config/command.json'
+    saved = json.loads(record.read_text()) if record.is_file() else {}
+    owned = (saved.get('path') == str(target) and saved.get('sha256') == hashlib.sha256(actual.encode()).hexdigest())
+    if not owned and actual != legacy_text(folder, component, root):
+        raise ValueError('Custom or unrelated command preserved: ' + str(target) + '; choose --command-dir')

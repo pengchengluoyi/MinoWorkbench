@@ -225,7 +225,15 @@ def main():
         p.add_argument("--tag", default="", required=name == "github-fetch")
         if name == "github-fetch":
             p.add_argument("--build", required=True)
+    p = sub.add_parser("installer-upgrade")
+    p.add_argument("--root", type=Path, required=True)
+    p.add_argument("--manifest", type=Path, required=True)
+    p.add_argument("--package", type=Path, required=True)
     args = ap.parse_args()
+    if args.command == "installer-upgrade":
+        from installer_upgrade import upgrade
+        print(json.dumps(upgrade(args.root, args.manifest, args.package)))
+        return 0
     if args.command in {"github-check", "github-fetch"}:
         from mino_release import legacy_path, installation, current, read, lock, package_info
         from mino_github_release import check, prepare

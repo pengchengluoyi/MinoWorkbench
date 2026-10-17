@@ -79,7 +79,16 @@ jobs:
                   time.sleep(15)
           PYCODE
       - name: Install the released Nexus integration partner
-        run: python packaging/install.py --components nexus --nexus-version 0.1.44 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
+        run: python packaging/install.py --components nexus --nexus-version 0.1.45 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
+      - name: Install released Workbench upgrade baseline
+        run: |
+          python packaging/install.py --components workbench --workbench-version 0.0.21 --root "$RUNNER_TEMP/mino-install/workbench" --command-dir "$RUNNER_TEMP/mino-commands" --no-path --no-open
+          python - <<'PYCODE'
+          import os, pathlib, shutil
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-install/workbench'
+          (root/'config/upgrade-preservation.txt').write_text('retained user configuration')
+          shutil.copyfile(root/'config/installation.json', pathlib.Path(os.environ['RUNNER_TEMP'])/'workbench-before.json')
+          PYCODE
       - name: Validate installer against the actual native package
         run: |
           python - <<'PYCODE'
@@ -90,6 +99,18 @@ jobs:
           browser_env = dict(os.environ, BROWSER=f'"{__import__("sys").executable}" "{receiver}" %s')
           subprocess.run([str(installer.resolve()), '--components', 'workbench', '--package-dir', str(pathlib.Path('dist').resolve()), '--root', str(pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-install'/'workbench'), '--command-dir', str(pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-commands'), '--no-path'], env=browser_env, check=True)
           assert receiver.with_suffix('.url').read_text() == 'http://127.0.0.1:60104'
+          PYCODE
+      - name: Verify Workbench upgrade preserved configuration and previous launcher
+        run: |
+          python - <<'PYCODE'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-install/workbench'
+          assert (root/'config/installation.json').read_bytes() == (pathlib.Path(os.environ['RUNNER_TEMP'])/'workbench-before.json').read_bytes()
+          assert (root/'config/upgrade-preservation.txt').read_text() == 'retained user configuration'
+          rows = [json.loads(p.read_text()) for p in (root/'updates').glob('mino-installer-*.json')]
+          assert len(rows) == 1 and rows[0]['state'] == 'succeeded'
+          assert rows[0]['before'].startswith('0.0.21-')
+          assert (pathlib.Path(rows[0]['backup'])/'launcher-old').is_dir()
           PYCODE
       - name: Verify native pair in a cold browser
         run: |

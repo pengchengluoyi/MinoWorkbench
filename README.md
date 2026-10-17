@@ -51,3 +51,9 @@ Scout 不分配独立业务监听端口。测试与正式使用独立的数据�
 安装 Workbench（或同时安装两者）成功后默认打开浏览器。服务器或自动部署可在安装命令末尾加 `--no-open`；无法打开浏览器时仍会打印网址，安装保持成功。
 
 开发环境面板、IDE 联动与独立安装升级合同见 [安装升级合同](docs/contracts/mino-workbench-updates.md)。
+
+### 已有安装升级
+
+重新执行 GitHub Release 安装脚本即可识别已有安装，`--components both` 按 Nexus → Workbench 顺序升级。安装器下载校验全部包后，保留配置与旧启动器再切换；Workbench 升级失败恢复旧应用和启动器，不操作 Nexus 数据库。自定义命令入口或未完成维护会明确阻止更新，原文件不被静默覆盖。两组件各自有恢复记录，不是跨组件原子事务。
+
+本版原生 CI 从 Workbench 0.0.21 安装开始，验收到 0.0.24 的升级、配置保留、`open` 和服务启停。Nexus 的迁移及恢复约束见 Nexus README。
