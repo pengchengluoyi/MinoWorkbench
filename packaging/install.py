@@ -153,6 +153,7 @@ def main():
     ap.add_argument('--nexus-url')
     ap.add_argument('--package-dir',type=Path,help='Offline manifest/ZIP directory; both uses nexus/ and workbench/ subdirectories')
     ap.add_argument('--download-only',action='store_true')
+    ap.add_argument('--no-open',action='store_true',help='Do not open Workbench in the default browser after installation')
     ap.add_argument('--command-dir',type=Path,help='Directory for installed service commands')
     ap.add_argument('--no-path',action='store_true',help='Register commands without changing user PATH settings')
     args=ap.parse_args()
@@ -185,9 +186,21 @@ def main():
     for c in components:
         install(c,roots[c],packages[c],nexus_url)
         entry=command_entry.register(commands,c,roots[c].resolve())
-        print(f'Service command: {entry} [start|stop|status]')
+        actions = 'start|stop|status|open' if c == 'workbench' else 'start|stop|status'
+        print(f'Service command: {entry} [{actions}]')
     if not args.no_path: command_entry.add_path(commands)
-    print('Production installation complete.')
+    print('Production installation complete.', flush=True)
+    if 'workbench' in components:
+        url = 'http://127.0.0.1:60104'
+        print(f'Workbench: {url}', flush=True)
+        if not args.no_open:
+            try:
+                import webbrowser
+                opened = webbrowser.open(url, new=2)
+            except Exception:
+                opened = False
+            if not opened:
+                print('无法启动默认浏览器；安装已完成，请手动打开上面的地址。')
     return 0
 
 if __name__=='__main__':
