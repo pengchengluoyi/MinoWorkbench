@@ -59,6 +59,25 @@ jobs:
         run: |
           VERSION=$(python -c "from pathlib import Path; import json; print(Path('mino_nexus/VERSION').read_text().strip() if Path('mino_nexus').is_dir() else json.loads(Path('package.json').read_text())['version'])")
           python scripts/write_manifest.py --dist dist --prefix "https://github.com/${{ github.repository }}/releases/download/v$VERSION"
+      - name: Wait for the exact released Nexus integration partner
+        timeout-minutes: 35
+        run: |
+          python - <<'PYCODE'
+          import json, pathlib, time, urllib.error, urllib.request
+          expected = json.loads(pathlib.Path('packaging/mino-compatibility.json').read_text())['tested_nexus_builds'][0]
+          version = expected.split('-', 1)[0]
+          url = f'https://github.com/pengchengluoyi/MinoNexus/releases/download/v{version}/manifest.json'
+          deadline = time.monotonic() + 1800
+          while True:
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as response: manifest = json.load(response)
+                  assert manifest['build_id'] == expected, 'Released Nexus does not match the verified source pair'
+                  break
+              except urllib.error.HTTPError as exc:
+                  if exc.code != 404 or time.monotonic() >= deadline: raise
+                  print(f'Waiting for the exact Nexus release {version}', flush=True)
+                  time.sleep(15)
+          PYCODE
       - name: Install the released Nexus integration partner
         run: python packaging/install.py --components nexus --nexus-version 0.1.44 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
       - name: Validate installer against the actual native package
