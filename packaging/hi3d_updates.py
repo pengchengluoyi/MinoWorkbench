@@ -187,7 +187,7 @@ def dispatch(args):
             if any(row.get(key) != value for key, value in params.items()):
                 raise ValueError("operation already has different parameters")
             print(json.dumps(row)); return
-        if any(row["state"] not in TERMINAL for row in records(root)):
+        if any(row["state"] not in TERMINAL or row["state"] == "needs_operator" for row in records(root)):
             raise ValueError("unfinished operation exists; recover it before another update")
         old = read(current(root) / "release.json")
         check_release(current(root), old)

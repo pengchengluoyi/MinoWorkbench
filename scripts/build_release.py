@@ -36,7 +36,7 @@ def build(args):
     if component == "workbench":
         from hi3d_release import CONTRACT, package_info, sha, runtime_digest
         identity.update(workbench_contract=CONTRACT, payload="static" if args.static_from else "binary",
-                        tested_nexus_builds=args.tested_nexus_build)
+                        tested_nexus_builds=args.tested_nexus_build or (json.loads((ROOT / "packaging/hi3d-compatibility.json").read_text())["tested_nexus_builds"] if (ROOT / "packaging/hi3d-compatibility.json").is_file() else []))
         if args.static_from:
             original = package_info(args.static_from, sha(args.static_from))
             if original["payload"] != "binary":
