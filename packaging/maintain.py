@@ -143,7 +143,11 @@ def service(args):
             subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", saved["plist"]], check=True)
         subprocess.run(["launchctl", "kickstart", target], check=True)
     elif args.command == "stop":
-        subprocess.run(["launchctl", "bootout", target], check=True)
+        probe = subprocess.run(["launchctl", "print", target], capture_output=True)
+        if probe.returncode == 0:
+            subprocess.run(["launchctl", "bootout", target], check=True)
+        elif b"Could not find service" not in probe.stderr:
+            raise RuntimeError("Cannot inspect service before stop")
     elif args.command == "status":
         result = subprocess.run(["launchctl", "print", target], capture_output=True)
         print(json.dumps({"registered": result.returncode == 0, "running": result.returncode == 0 and bool(re.search(rb"^\s*pid = \d+", result.stdout, re.MULTILINE))}))
