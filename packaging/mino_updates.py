@@ -4,17 +4,17 @@ from pathlib import Path
 import shutil
 import tempfile
 import time
-from hi3d_release import (TERMINAL, atomic, check_release, current, extract_app, identifier,
+from mino_release import (legacy_path, TERMINAL, atomic, check_release, current, extract_app, identifier,
                          installation, lock, manifest_item, package_info, read, switch, sync_dir)
-from hi3d_update_service import health, schedule, service_record, start_app, stop_app, api_compatibility
+from mino_update_service import health, schedule, service_record, start_app, stop_app, api_compatibility
 
 
 def record_path(root, operation):
-    return root / "updates" / ("hi3d-" + identifier(operation) + ".json")
+    return legacy_path(root / "updates" / ("mino-" + identifier(operation) + ".json"))
 
 
 def records(root):
-    return [read(path) for path in sorted((root / "updates").glob("hi3d-*.json"))]
+    return [read(path) for path in sorted(set((root / "updates").glob("mino-*.json")) | set((root / "updates").glob("hi3d-*.json")))]
 
 
 def save(root, row, state, **fields):
@@ -30,7 +30,7 @@ def stage(root, row):
     if target.exists():
         if read(target / "release.json") != info:
             raise ValueError("build ID already exists with different content")
-        if row["kind"] == "update" and read(target / "hi3d-installed.json")["sha256"] != row["sha256"]:
+        if row["kind"] == "update" and read(target / "mino-installed.json")["sha256"] != row["sha256"]:
             raise ValueError("build ID already belongs to another package")
         check_release(target, info)
         return
@@ -46,7 +46,7 @@ def stage(root, row):
             raise ValueError("static package requires a different runtime")
         # Copy only the runtime; the new web payload never overwrites the old release.
         for path in source.iterdir():
-            if path.name in {"release.json", "hi3d-installed.json"}:
+            if path.name in {"release.json", "mino-installed.json", "hi3d-installed.json"}:
                 continue
             if path.is_dir():
                 shutil.copytree(path, temporary / path.name,
@@ -55,7 +55,7 @@ def stage(root, row):
                 shutil.copy2(path, temporary / path.name)
     extract_app(package, temporary)
     atomic(temporary / "release.json", info)
-    atomic(temporary / "hi3d-installed.json", {"sha256": row["sha256"]})
+    atomic(temporary / "mino-installed.json", {"sha256": row["sha256"]})
     check_release(temporary, info)
     temporary.rename(target)
     sync_dir(target.parent)
@@ -198,7 +198,7 @@ def dispatch(args):
         row = {**params, "operation": args.operation, "before": current(root).name, "restart": restart,
                "local_verification": args.local_verification, "api_evidence": evidence}
         if command == "update":
-            saved = root / "updates" / ("hi3d-" + args.operation + ".zip")
+            saved = root / "updates" / ("mino-" + args.operation + ".zip")
             with saved.open("xb") as out, package.open("rb") as inp:
                 shutil.copyfileobj(inp, out)
                 out.flush()

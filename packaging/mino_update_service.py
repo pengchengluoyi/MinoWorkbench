@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-from hi3d_release import read, atomic
+from mino_release import read, atomic
 
 
 def service_record(root, conf):

@@ -1,6 +1,6 @@
 {
   "tested_nexus_builds": [
-    "0.1.36-e97da5d60c71"
+    "0.1.37-060aae137c5d"
   ],
   "release_gate": "Candidate build pair must pass native integration acceptance before publishing a version tag; the declaration alone is not verification."
 }

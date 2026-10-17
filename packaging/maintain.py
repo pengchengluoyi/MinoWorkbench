@@ -59,7 +59,7 @@ def install(args):
             if stat.S_ISLNK(row.external_attr >> 16):
                 raise ValueError("archive symlinks are not accepted")
         if component == "workbench":
-            from hi3d_release import package_info
+            from mino_release import package_info
             checked = package_info(archive, args.sha256)
             if checked["payload"] != "binary":
                 raise ValueError("first install requires a full binary package")
@@ -81,9 +81,9 @@ def install(args):
             target.chmod((row.external_attr >> 16) & 0o777 or 0o644)
         (release / "release.json").write_text(json.dumps(info, indent=2))
     if component == "workbench":
-        from hi3d_release import check_release, atomic
+        from mino_release import check_release, atomic
         check_release(release, info)
-        atomic(release / "hi3d-installed.json", {"sha256": args.sha256})
+        atomic(release / "mino-installed.json", {"sha256": args.sha256})
     data_root = args.data_dir.expanduser().resolve() if args.data_dir else root / "data"
     if component == "nexus" and args.data_dir is None:
         data_root.mkdir()
@@ -119,7 +119,7 @@ def service(args):
             plistlib.dump(data, stream)
         record.write_text(json.dumps({"label":conf["label"], "plist":str(dest)}))
         if conf["component"] == "workbench":
-            from hi3d_update_service import register_helper
+            from mino_update_service import register_helper
             register_helper(root, conf, dest)
         print("service definition registered; use start to bootstrap")
     elif args.command == "start":
@@ -209,8 +209,8 @@ def main():
             p.add_argument("--build", required=True)
     args = ap.parse_args()
     if args.command in {"github-check", "github-fetch"}:
-        from hi3d_release import installation, current, read, lock, package_info
-        from hi3d_github_release import check, prepare
+        from mino_release import legacy_path, installation, current, read, lock, package_info
+        from mino_github_release import check, prepare
         root, conf = installation(args.root)
         repo = conf.get("release_repository", "pengchengluoyi/MinoWorkbench")
         if args.command == "github-check":
@@ -218,8 +218,8 @@ def main():
         else:
             with lock(root):
                 manifest, package = prepare(root, repo, "workbench", args.tag, args.build)
-                from hi3d_release import manifest_item
-                _, item = manifest_item(package.parent / "hi3d-manifest.json")
+                from mino_release import manifest_item
+                _, item = manifest_item(legacy_path(package.parent / "mino-manifest.json"))
                 info = package_info(package, item["sha256"])
                 if any(info.get(k) != manifest.get(k) for k in ("component", "version", "build_id", "source_commit")):
                     raise ValueError("Downloaded package metadata differs from manifest")
@@ -227,7 +227,7 @@ def main():
         print(json.dumps(value))
         return 0
     if args.command in {"check-update", "update", "rollback", "operation", "recover", "cancel-update", "update-worker"}:
-        from hi3d_updates import dispatch
+        from mino_updates import dispatch
         dispatch(args)
         return 0
     if args.command == "install":

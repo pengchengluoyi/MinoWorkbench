@@ -21,8 +21,14 @@ def identifier(value):
     return value
 
 
+
+def legacy_path(path):
+    """Keep pre-branding installation records usable without rewriting user data."""
+    old = path.with_name(path.name.replace("mino-", "hi3d-", 1))
+    return old if not path.exists() and old.exists() else path
+
 def read(path):
-    return json.loads(path.read_text())
+    return json.loads(legacy_path(path).read_text())
 
 
 def sync_dir(path):
@@ -66,7 +72,7 @@ def current(root):
 
 @contextlib.contextmanager
 def lock(root):
-    path = root / "updates/hi3d-update.lock"
+    path = legacy_path(root / "updates/mino-update.lock")
     if path.is_symlink():
         raise ValueError("update lock may not be a symlink")
     with path.open("a") as stream:
@@ -95,7 +101,7 @@ def runtime_digest(folder):
             paths.append(path)
     for path in sorted(paths):
         relative = path.relative_to(folder).as_posix()
-        if relative.startswith("_internal/web/") or relative in {"release.json", "hi3d-installed.json", "_internal/hi3d-runtime.json"}:
+        if relative.startswith("_internal/web/") or relative in {"release.json", "mino-installed.json", "_internal/mino-runtime.json", "hi3d-installed.json", "_internal/hi3d-runtime.json"}:
             continue
         digest.update(relative.encode() + b"\0" + sha(path).encode() + b"\0")
     return digest.hexdigest()
@@ -111,7 +117,7 @@ def check_release(folder, info):
         raise ValueError("web identity does not match release")
     if not (web / "index.html").is_file() or not any((web / "assets").glob("*.js")):
         raise ValueError("release is missing web entry/resources")
-    if read(folder / "_internal/hi3d-runtime.json").get("runtime_id") != info.get("runtime_id"):
+    if read(folder / "_internal/mino-runtime.json").get("runtime_id") != info.get("runtime_id"):
         raise ValueError("runtime identity metadata mismatch")
     if runtime_digest(folder) != info.get("runtime_id"):
         raise ValueError("runtime digest mismatch")

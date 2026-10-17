@@ -34,9 +34,9 @@ def build(args):
     identity = {"component": component, "version":version, "build_id":build_id,
                 "source_commit":commit, "dirty":dirty, "os":osn, "arch":arch}
     if component == "workbench":
-        from hi3d_release import CONTRACT, package_info, sha, runtime_digest
+        from mino_release import CONTRACT, package_info, sha, runtime_digest
         identity.update(workbench_contract=CONTRACT, payload="static" if args.static_from else "binary",
-                        tested_nexus_builds=args.tested_nexus_build or (json.loads((ROOT / "packaging/hi3d-compatibility.json").read_text())["tested_nexus_builds"] if (ROOT / "packaging/hi3d-compatibility.json").is_file() else []))
+                        tested_nexus_builds=args.tested_nexus_build or (json.loads((ROOT / "packaging/mino-compatibility.json").read_text())["tested_nexus_builds"] if (ROOT / "packaging/mino-compatibility.json").is_file() else []))
         if args.static_from:
             original = package_info(args.static_from, sha(args.static_from))
             if original["payload"] != "binary":
@@ -51,7 +51,7 @@ def build(args):
     if component == "nexus":
         shutil.copytree(ROOT / "mino_nexus", source / "mino_nexus", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         (source / "mino_nexus/BUILD.json").write_text(json.dumps(identity))
-        entry = work / "hi3d-entry.py"
+        entry = work / "mino-entry.py"
         entry.write_text("from mino_nexus.cli import main\nraise SystemExit(main())\n")
         extra = ["--paths", str(source), "--collect-submodules", "mino_nexus",
                  "--add-data", str(source / "mino_nexus") + os.pathsep + "mino_nexus",
@@ -73,15 +73,16 @@ def build(args):
         command([*base, "--name", "mino-maintain", str(ROOT / "packaging/maintain.py")], cwd=source, env=env)
         executable = work / "dist" / ("mino-" + component) / ("mino-" + component + (".exe" if osn == "win32" else ""))
         command([str(executable), "--help"], env=env)
+        command([str(work / "dist/mino-maintain/mino-maintain"), "--help"], env=env)
         if component == "nexus":
             command([str(executable), "migrate", "--data-dir", str(work / "package-probe-data")], env=env)
         else:
             command([str(executable), "--identity"], env=env)
         if component == "workbench":
             identity["runtime_id"] = runtime_digest(executable.parent)
-            (executable.parent / "_internal/hi3d-runtime.json").write_text(json.dumps({"runtime_id": identity["runtime_id"]}))
+            (executable.parent / "_internal/mino-runtime.json").write_text(json.dumps({"runtime_id": identity["runtime_id"]}))
             (executable.parent / "_internal/web/BUILD.json").write_text(json.dumps(identity))
-    archive = out / ("hi3d-Mino" + component.capitalize() + "-" + build_id + "-" + osn + "-" + arch + ".zip")
+    archive = out / ("Mino" + component.capitalize() + "-" + build_id + "-" + osn + "-" + arch + ".zip")
     with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED) as z:
         z.writestr("release.json", json.dumps(identity))
         folders = [(web, "app/_internal/web")] if args.static_from else [(executable.parent, "app"), (work / "dist/mino-maintain", "launcher")]
