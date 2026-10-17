@@ -308,7 +308,7 @@ function EnvironmentSettings({ projectId }: { projectId: string }) {
         <div className="flex flex-col" style={{ gap: 10 }}>
           <Select value={kind} options={CHANNEL_KINDS.map((k) => ({ value: k.id, label: k.label }))} onChange={setKind} />
           {kind === 'app' && <Select value={platform} options={APP_PLATFORMS.map((p) => ({ value: p.id, label: p.label }))} onChange={setPlatform} />}
-          <Input value={alias} placeholder="简称，例如 Hi3D、管理后台" onChange={(e) => { setAlias(e.target.value); setIdent(appIdentifierFromAlias(e.target.value)) }} />
+          <Input value={alias} placeholder="简称，例如 商城、管理后台" onChange={(e) => { setAlias(e.target.value); setIdent(appIdentifierFromAlias(e.target.value)) }} />
           <Input value={ident} placeholder="应用标识，英文、数字与下划线" onChange={(e) => setIdent(e.target.value)} />
         </div>
       </Modal>

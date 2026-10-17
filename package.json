@@ -1,7 +1,7 @@
 {
   "name": "mino-workbench",
   "private": true,
-  "version": "0.0.15",
+  "version": "0.0.16",
   "type": "module",
   "description": "Mino Workbench \u2014 \u6d4b\u8bd5\u5de5\u4f5c\u53f0\u4e0e\u7ba1\u7406\u540e\u53f0\uff08\u7eaf Web\uff09",
   "engines": {
