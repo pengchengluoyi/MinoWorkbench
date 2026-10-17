@@ -145,7 +145,8 @@ def service(args):
     elif args.command == "stop":
         subprocess.run(["launchctl", "bootout", target], check=True)
     elif args.command == "status":
-        return subprocess.run(["launchctl", "print", target]).returncode
+        result = subprocess.run(["launchctl", "print", target], capture_output=True)
+        print(json.dumps({"registered": result.returncode == 0, "running": result.returncode == 0 and bool(re.search(rb"^\s*pid = \d+", result.stdout, re.MULTILINE))}))
     return 0
 
 def run(args):
