@@ -21,7 +21,7 @@ const NEXUS_PREFIXES = [
 
 export default defineConfig(({ mode }) => {
   // VITE_PROXY_TARGET：仅 dev 代理目标（联调指向本机 Nexus），不影响生产 origin
-  const nexus = process.env.VITE_PROXY_TARGET || process.env.VITE_NEXUS_URL || 'http://mino.local:10104'
+  const nexus = process.env.VITE_PROXY_TARGET || process.env.VITE_NEXUS_URL || 'http://127.0.0.1:50101'
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      port: 5273,
+      port: 60101,
       strictPort: true,
       // Nexus 的接口散在 27 个顶层前缀下（没有统一的 /api 前缀）。
       //
@@ -71,6 +71,8 @@ export default defineConfig(({ mode }) => {
     },
     preview: {
       host: '0.0.0.0',
+      port: 60101,
+      strictPort: true,
     },
     build: {
       outDir: 'dist',

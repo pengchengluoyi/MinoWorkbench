@@ -1,11 +1,11 @@
 /**
  * Nexus 接入配置。
  *
- * 铁律（开发手册 §4）：origin 只来自 VITE_NEXUS_URL，默认 mino.local:10104。
+ * 铁律（开发手册 §4）：origin 只来自 VITE_NEXUS_URL，默认 mino.local:50104。
  * Nexus 启动时自己注册这个域名。不做 IP 选择器，不写死 IP，不做地址探测。
  */
 
-const DEFAULT_NEXUS = 'http://mino.local:10104'
+const DEFAULT_NEXUS = 'http://mino.local:50104'
 declare global {
   interface Window { __MINO_CONFIG__?: { nexusUrl: string; buildId: string } }
 }

@@ -89,7 +89,7 @@ def install(args):
         data_root.mkdir()
     if component == "nexus" and not data_root.is_dir():
         raise ValueError("registered data root must already exist")
-    conf = {"installation_id": str(uuid.uuid4()), "component": component, "build_id": build, "data_dir": str(data_root),
+    conf = {"environment": args.environment, "installation_id": str(uuid.uuid4()), "component": component, "build_id": build, "data_dir": str(data_root),
             "host":args.host, "port":args.port, "nexus_url":args.nexus_url,
             "release_repository": "pengchengluoyi/MinoWorkbench", "mdns":args.mdns, "label":args.label or "com.mino." + component}
     if not re.fullmatch(r"[A-Za-z0-9.-]+", conf["label"]):
@@ -177,8 +177,9 @@ def main():
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--data-dir", type=Path)
     p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, required=True)
-    p.add_argument("--nexus-url", default="http://mino.local:10104")
+    p.add_argument("--port", type=int)
+    p.add_argument("--environment", choices=["test", "production"], default="production")
+    p.add_argument("--nexus-url")
     p.add_argument("--label")
     p.add_argument("--mdns", action="store_true")
     for name in ("register", "start", "stop", "status", "run"):
@@ -230,6 +231,10 @@ def main():
         dispatch(args)
         return 0
     if args.command == "install":
+        if args.port is None:
+            args.port = 60101 if args.environment == "test" else 60104
+        if args.nexus_url is None:
+            args.nexus_url = "http://127.0.0.1:50101" if args.environment == "test" else "http://mino.local:50104"
         install(args)
         return 0
     if args.command == "run":

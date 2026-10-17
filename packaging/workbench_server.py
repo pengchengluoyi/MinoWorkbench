@@ -12,14 +12,19 @@ from urllib.parse import urlsplit, unquote
 def main():
     ap = argparse.ArgumentParser(prog="mino-workbench")
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=5273)
-    ap.add_argument("--nexus-url", default="http://mino.local:10104")
+    ap.add_argument("--port", type=int, default=None)
+    ap.add_argument("--nexus-url")
+    ap.add_argument("--environment", choices=["test", "production"], default="production")
     ap.add_argument("--web-root", type=Path)
     ap.add_argument("--releases-root", type=Path)
     ap.add_argument("--identity", action="store_true")
     ap.add_argument("--current-root", type=Path)
     ap.add_argument("--installation-id", default="standalone")
     args = ap.parse_args()
+    if args.port is None:
+        args.port = 60101 if args.environment == "test" else 60104
+    if args.nexus_url is None:
+        args.nexus_url = "http://127.0.0.1:50101" if args.environment == "test" else "http://mino.local:50104"
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     web = (args.web_root or base / "web").resolve()
     identity = json.loads((web / "BUILD.json").read_text())

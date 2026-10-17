@@ -19,7 +19,7 @@ Workbench 准入要求包声明已验证的 Nexus build，且现场 `/sys/server
 使用包中 `launcher/mino-maintain`：
 
 ```sh
-mino-maintain d2 install --root /absolute/new/nexus --data-dir /absolute/new/nexus/data --manifest /absolute/manifest.json --package /absolute/package.zip --host 127.0.0.1 --port 14104
+mino-maintain d2 install --root /absolute/new/nexus --data-dir /absolute/new/nexus/data --manifest /absolute/manifest.json --package /absolute/package.zip --host 127.0.0.1 --port 50101
 mino-maintain d2 provision-probe --root /absolute/new/nexus
 mino-maintain d2 register --root /absolute/new/nexus
 mino-maintain d2 check-update --root /absolute/new/nexus
@@ -45,3 +45,7 @@ Workbench：相同运行时的静态包可热切换；运行时变化需要已�
 GitHub Actions 在 main 上构建并上传 native-package 产物和 manifest；只有版本 tag 工作流会发布 Release。下载 Actions 产物不等于已发布 Release。未发布 manifest 时，版本检查明确报发布物缺失。
 
 维护助手稳定保留在 launcher；当前不自动升级助手自身。升级应用不能被宣传为助手修复已自动生效。未来助手合同不兼容时应安排独立基线迁移。
+
+## 固定环境端口
+
+Nexus 测试 50101、正式 50104；Workbench 测试 60101、正式 60104。测试安装使用 `--environment test`，正式默认 `production`；Nexus 源码 `--dev` 默认 50101。Vite 开发服务器使用 60101 并禁止端口占用时自动换号。Scout 主动连接对应 Nexus，不分配独立业务监听端口。既有配置不自动重写，迁移须检查现有进程与数据根。
