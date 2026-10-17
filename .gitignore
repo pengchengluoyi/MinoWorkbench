@@ -36,3 +36,6 @@ coverage/
 /scripts/mock*
 /scripts/smoke*
 /scripts/*-browser-check.py
+
+__pycache__/
+*.pyc
