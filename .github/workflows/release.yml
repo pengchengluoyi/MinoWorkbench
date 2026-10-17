@@ -60,7 +60,7 @@ jobs:
           VERSION=$(python -c "from pathlib import Path; import json; print(Path('mino_nexus/VERSION').read_text().strip() if Path('mino_nexus').is_dir() else json.loads(Path('package.json').read_text())['version'])")
           python scripts/write_manifest.py --dist dist --prefix "https://github.com/${{ github.repository }}/releases/download/v$VERSION"
       - name: Install the released Nexus integration partner
-        run: python packaging/install.py --components nexus --nexus-version 0.1.42 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
+        run: python packaging/install.py --components nexus --nexus-version 0.1.43 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
       - name: Validate installer against the actual native package
         run: |
           python - <<'PYCODE'
@@ -85,21 +85,34 @@ jobs:
           release = current_release(root)
           info = read(release/'release.json')
           evidence = api_compatibility(read(root/'config/installation.json'), info)
+          import socket
+          with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+              probe.connect(('8.8.8.8', 80))
+              lan = probe.getsockname()[0]
           failures = []
           with sync_playwright() as p:
               browser = p.chromium.launch()
               context = browser.new_context(service_workers='block')
               def route(r):
-                  if urlsplit(r.request.url).hostname not in ('127.0.0.1', 'localhost'):
+                  if urlsplit(r.request.url).hostname not in ('127.0.0.1', 'localhost', lan):
                       failures.append('unexpected remote resource'); r.abort()
                   else: r.continue_()
               context.route('**/*', route)
+              requests = []
               page = context.new_page()
+              page.on('request', lambda r: requests.append(r.url))
               page.on('pageerror', lambda e: failures.append(str(e)))
               page.on('requestfailed', lambda r: failures.append(r.url))
-              page.goto('http://127.0.0.1:60104/login', wait_until='networkidle')
+              page.goto(f'http://{lan}:60104/login', wait_until='networkidle')
               assert page.locator('#root').inner_text().strip()
               assert page.evaluate('window.__MINO_CONFIG__.nexusUrl') == 'http://127.0.0.1:50104'
+              target = page.evaluate("""async () => {
+                  const response = await fetch('/runtime-config.js');
+                  if (!response.ok) throw new Error('runtime configuration missing');
+                  return window.__MINO_CONFIG__.nexusUrl;
+              }""")
+              assert target == 'http://127.0.0.1:50104'
+              assert any(f'http://{lan}:50104/' in r for r in requests), requests
               page.get_by_role('link', name='注册账号').click()
               page.wait_for_url('**/register')
               web = release/'_internal/web'

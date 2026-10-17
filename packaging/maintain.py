@@ -195,7 +195,7 @@ def main():
     p.add_argument("--sha256", required=True)
     p.add_argument("--root", type=Path, required=True)
     p.add_argument("--data-dir", type=Path)
-    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int)
     p.add_argument("--nexus-url")
     p.add_argument("--label")

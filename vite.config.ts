@@ -23,12 +23,26 @@ export default defineConfig(({ mode }) => {
   // VITE_PROXY_TARGET：仅 dev 代理目标（联调指向本机 Nexus），不影响生产 origin
   const nexus = process.env.VITE_PROXY_TARGET || process.env.VITE_NEXUS_URL || 'http://127.0.0.1:50101'
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), {
+      name: 'local-development-only',
+      configResolved(config) {
+        if (config.command !== 'serve') return
+        for (const listener of [config.server, config.preview]) {
+          if (!['127.0.0.1', 'localhost', '::1'].includes(String(listener.host)) || listener.port !== 60101) {
+            throw new Error('源码 Workbench 仅允许 localhost:60101')
+          }
+        }
+        const target = new URL(nexus)
+        if (!['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname) || target.port !== '50101') {
+          throw new Error('开发 Workbench 只能连接本机 Nexus :50101')
+        }
+      },
+    }],
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
     server: {
-      host: '0.0.0.0',
+      host: '127.0.0.1',
       port: 60101,
       strictPort: true,
       // Nexus 的接口散在 27 个顶层前缀下（没有统一的 /api 前缀）。
@@ -70,7 +84,7 @@ export default defineConfig(({ mode }) => {
         : undefined,
     },
     preview: {
-      host: '0.0.0.0',
+      host: '127.0.0.1',
       port: 60101,
       strictPort: true,
     },

@@ -12,7 +12,7 @@ from mino_platform import current_release, watch_stop
 
 def main():
     ap = argparse.ArgumentParser(prog="mino-workbench")
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--nexus-url")
     ap.add_argument("--web-root", type=Path)
@@ -23,6 +23,8 @@ def main():
     args = ap.parse_args()
     if args.port is None:
         args.port = 60104
+    if args.current_root and args.port == 60104 and args.host in {"127.0.0.1", "localhost"}:
+        args.host = "0.0.0.0"  # Existing standard installation, effective LAN bind.
     if args.nexus_url is None:
         args.nexus_url = "http://127.0.0.1:50104"
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
