@@ -220,7 +220,7 @@
         <div class="brand"><div class="mark">MW</div><strong>测试工作台</strong></div>
         <nav class="nav">
           <a href="testing-home.html">应用</a>
-          <a href="#app" aria-current="page">Hi3d平台</a>
+          <a href="#app" aria-current="page">Mino平台</a>
           <div class="sub">
             <a href="#cases">用例</a>
             <a href="#tasks" aria-current="page">任务</a>
@@ -260,7 +260,7 @@
       "op-1-1": { title: "点击", chip: "1180, 42", x: "78%", y: "22px", rows: [["事件", "点击"], ["参数", "右上角登录按钮", true], ["坐标", "(1180, 42)"], ["控件", "button"], ["步骤", "操作 1-1"], ["状态", "通过"], ["时间", "1.2 s"]] },
       "op-1-2": { title: "输入", chip: "手机号", x: "46%", y: "140px", rows: [["事件", "输入"], ["参数", "手机号或邮箱验证码", true], ["字段", "phone"], ["步骤", "操作 1-2"], ["状态", "通过"], ["时间", "4.8 s"]] },
       "ex-1-1": { title: "弹窗展示", chip: "跳过", x: "50%", y: "120px", rows: [["事件", "弹窗展示"], ["参数", "弹窗正常居中展示", true], ["步骤", "预期 1-1"], ["状态", "跳过"], ["时间", "6.1 s"]] },
-      "ex-2-1": { title: "文案检查", chip: "title 不等于", x: "50%", y: "128px", rows: [["事件", "文案检查"], ["参数", "标题等于「你主要用 Hi3D 来做什么？」", true], ["属性", "match=equals"], ["步骤", "预期 2-1"], ["状态", "失败"], ["时间", "6.4 s"]] },
+      "ex-2-1": { title: "文案检查", chip: "title 不等于", x: "50%", y: "128px", rows: [["事件", "文案检查"], ["参数", "标题等于「你主要用 Mino 来做什么？」", true], ["属性", "match=equals"], ["步骤", "预期 2-1"], ["状态", "失败"], ["时间", "6.4 s"]] },
       "ex-2-2": { title: "文案检查", chip: "body 包含", x: "50%", y: "156px", rows: [["事件", "文案检查"], ["参数", "正文包含「选择感兴趣的场景」", true], ["属性", "match=contains"], ["步骤", "预期 2-2"], ["状态", "通过"], ["时间", "6.6 s"]] },
       "ex-2-3": { title: "推荐文案", chip: "跳过", x: "50%", y: "168px", rows: [["事件", "推荐文案"], ["参数", "为你推荐更合适的内容（可多选）", true], ["步骤", "预期 2-3"], ["状态", "跳过"], ["时间", "6.7 s"]] },
       "ex-3-1": { title: "场景选项", chip: "跳过", x: "34%", y: "150px", rows: [["事件", "场景选项"], ["参数", "9 个场景选项全部正常展示", true], ["步骤", "预期 3-1"], ["状态", "跳过"], ["时间", "7.0 s"]] },
@@ -317,7 +317,7 @@
             <div class="para">
               <span class="n">2</span>
               <div class="txt">
-                <button class="seg fail" type="button" data-id="ex-2-1"><i class="badge">1</i><span class="evt">文案检查</span><b>标题等于「你主要用 Hi3D 来做什么？」</b></button>
+                <button class="seg fail" type="button" data-id="ex-2-1"><i class="badge">1</i><span class="evt">文案检查</span><b>标题等于「你主要用 Mino 来做什么？」</b></button>
                 <span>，</span>
                 <button class="seg" type="button" data-id="ex-2-2"><i class="badge">2</i><span class="evt">文案检查</span><b>正文包含「选择感兴趣的场景」</b></button>
                 <span>，</span>
@@ -345,8 +345,8 @@
       <section class="now" aria-live="polite">
         <div class="shot" id="shot">
           <div class="fake">
-            <div class="top"><span>Hi3D</span><span>场景选择</span></div>
-            <div class="dialog-fake"><strong>你主要用 Hi3D 来做什么？</strong><span>选择感兴趣的场景</span></div>
+            <div class="top"><span>Mino</span><span>场景选择</span></div>
+            <div class="dialog-fake"><strong>你主要用 Mino 来做什么？</strong><span>选择感兴趣的场景</span></div>
           </div>
           <button class="login" type="button">登录</button>
           <div class="mark" id="mark"></div>
@@ -374,7 +374,7 @@
             <tr class="pick" data-id="op-1-1"><td>1</td><td>点击</td><td>坐标 (1180, 42) · button</td><td><span class="ref">操作 1-1</span></td><td><span class="pill pass">通过</span></td><td class="time">1.2</td></tr>
             <tr class="pick" data-id="op-1-2"><td>2</td><td>输入</td><td>文本 手机号 · 字段 phone</td><td><span class="ref">操作 1-2</span></td><td><span class="pill pass">通过</span></td><td class="time">4.8</td></tr>
             <tr class="pick" data-id="ex-1-1"><td>3</td><td>弹窗展示</td><td>无稳定断言</td><td><span class="ref">预期 1-1</span></td><td><span class="pill skip">跳过</span></td><td class="time">6.1</td></tr>
-            <tr class="pick on" data-id="ex-2-1"><td>4</td><td>文案检查</td><td>match=equals · title=你主要用 Hi3D 来做什么？</td><td><span class="ref">预期 2-1</span></td><td><span class="pill fail">失败</span></td><td class="time">6.4</td></tr>
+            <tr class="pick on" data-id="ex-2-1"><td>4</td><td>文案检查</td><td>match=equals · title=你主要用 Mino 来做什么？</td><td><span class="ref">预期 2-1</span></td><td><span class="pill fail">失败</span></td><td class="time">6.4</td></tr>
             <tr class="pick" data-id="ex-2-2"><td>5</td><td>文案检查</td><td>match=contains · body=选择感兴趣的场景</td><td><span class="ref">预期 2-2</span></td><td><span class="pill pass">通过</span></td><td class="time">6.6</td></tr>
             <tr class="pick" data-id="ex-2-3"><td>6</td><td>推荐文案</td><td>无节点可核对</td><td><span class="ref">预期 2-3</span></td><td><span class="pill skip">跳过</span></td><td class="time">6.7</td></tr>
             <tr class="pick" data-id="ex-3-1"><td>7</td><td>场景选项</td><td>9 项 · 无逐项断言</td><td><span class="ref">预期 3-1</span></td><td><span class="pill skip">跳过</span></td><td class="time">7.0</td></tr>
@@ -395,8 +395,8 @@
         <section class="sec">
           <p><span>1</span>被测应用</p>
           <div class="choices two" data-group="app">
-            <button class="choice" type="button" data-app="global" aria-pressed="true"><b>hi3d_global</b><small>webhi3d_global</small></button>
-            <button class="choice" type="button" data-app="cn" aria-pressed="false"><b>hi3d_cn</b><small>webhi3d_cn</small></button>
+            <button class="choice" type="button" data-app="global" aria-pressed="true"><b>mino_global</b><small>webmino_global</small></button>
+            <button class="choice" type="button" data-app="cn" aria-pressed="false"><b>mino_cn</b><small>webmino_cn</small></button>
           </div>
         </section>
         <section class="sec">
@@ -455,7 +455,7 @@
       <div class="para" style="border:0;padding:2px 0"><span class="n">3</span><div class="txt"><span class="seg static"><span class="evt">环境与权限</span><b>无</b></span></div></div>`;
     const stepPreview1 = `<div class="para" style="border:0;padding:2px 0"><span class="n">1</span><div class="txt"><span class="seg"><i class="badge">1</i><span class="evt">点击</span><b>右上角登录按钮</b></span>， <span class="seg"><i class="badge">2</i><span class="evt">输入</span><b>手机号或邮箱验证码</b></span></div></div>`;
     const expectPreview1 = `<div class="para" style="border:0;padding:2px 0"><span class="n">1</span><div class="txt"><span class="seg skip"><i class="badge">1</i><b>弹窗正常居中展示</b></span><span class="cant">无法执行</span></div></div>
-      <div class="para" style="border:0;padding:2px 0"><span class="n">2</span><div class="txt"><span class="seg"><i class="badge">1</i><span class="evt">文案检查</span><b>标题等于「你主要用 Hi3D 来做什么？」</b></span>， <span class="seg"><i class="badge">2</i><span class="evt">文案检查</span><b>正文包含「选择感兴趣的场景」</b></span>， <span class="seg skip"><i class="badge">3</i><b>为你推荐更合适的内容（可多选）</b></span><span class="cant">无法执行</span></div></div>
+      <div class="para" style="border:0;padding:2px 0"><span class="n">2</span><div class="txt"><span class="seg"><i class="badge">1</i><span class="evt">文案检查</span><b>标题等于「你主要用 Mino 来做什么？」</b></span>， <span class="seg"><i class="badge">2</i><span class="evt">文案检查</span><b>正文包含「选择感兴趣的场景」</b></span>， <span class="seg skip"><i class="badge">3</i><b>为你推荐更合适的内容（可多选）</b></span><span class="cant">无法执行</span></div></div>
       <div class="para" style="border:0;padding:2px 0"><span class="n">3</span><div class="txt"><span class="seg skip"><i class="badge">1</i><b>9 个场景选项全部正常展示</b></span><span class="cant">无法执行</span></div></div>
       <div class="para" style="border:0;padding:2px 0"><span class="n">4</span><div class="txt"><span class="seg"><i class="badge">1</i><span class="evt">样式检查</span><b>确认按钮为禁用</b></span>， <span class="seg skip"><i class="badge">2</i><b>跳过按钮为弱化样式</b></span><span class="cant">无法执行</span></div></div>`;
 
@@ -486,7 +486,7 @@
                 <td>web</td>
                 <td>${field(lines(["登录态：未登录", "账号与数据：未注册", "环境与权限：无"]), prePreview1)}</td>
                 <td>${field(lines(["点击右上角登录按钮，输入手机号或邮箱验证码"]), stepPreview1)}</td>
-                <td>${field(lines(["弹窗正常居中展示", "文案检查标题等于「你主要用 Hi3D 来做什么？」，正文包含「选择感兴趣的场景」，以及为你推荐更合适的内容（可多选）", "9 个场景选项全部正常展示", "样式检查确认按钮为禁用，跳过按钮为弱化样式"]), expectPreview1)}</td>
+                <td>${field(lines(["弹窗正常居中展示", "文案检查标题等于「你主要用 Mino 来做什么？」，正文包含「选择感兴趣的场景」，以及为你推荐更合适的内容（可多选）", "9 个场景选项全部正常展示", "样式检查确认按钮为禁用，跳过按钮为弱化样式"]), expectPreview1)}</td>
                 <td>无法 UI 自动化</td>
               </tr>
               <tr class="warn-row">

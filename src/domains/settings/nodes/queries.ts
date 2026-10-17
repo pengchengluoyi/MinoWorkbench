@@ -1,9 +1,9 @@
 import { useSession } from '@/lib/session'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  getNodeLogs, getScoutRelease, listRuntimeNodes, releaseTargetOf, sendNodeCommand,
+  getScoutUpdateStatus, getNodeLogs, getScoutRelease, listRuntimeNodes, releaseTargetOf, sendNodeCommand,
   createNodeInstallation, getNodeInstallationStatus, claimLegacyNode,
-  type NodeCommand, type ScoutNode, type ScoutRelease,
+  type NodeCommand, type ScoutNode, type ScoutRelease, type ScoutUpdateTarget, type ScoutUpdateStatus,
   type NodeInstallation, type NodeInstallationStatus,
 } from '@/api/nodes'
 import { unwrapList, unwrapOne } from '@/lib/unwrap'
@@ -95,8 +95,8 @@ export const useNodeLogs = (nodeId: string, lines: number, enabled: boolean) =>
 export const useNodeCommand = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ nodeId, command }: { nodeId: string; command: NodeCommand }) =>
-      sendNodeCommand(nodeId, command),
+    mutationFn: ({ nodeId, command, update }: { nodeId: string; command: NodeCommand; update?: ScoutUpdateTarget }) =>
+      sendNodeCommand(nodeId, command, update),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: nodeKeys.all })
       void qc.invalidateQueries({ queryKey: assistantKeys.status })
@@ -111,3 +111,10 @@ export const useClaimLegacyNode = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: nodeKeys.all }),
   })
 }
+
+export const useScoutUpdateStatus = (nodeId: string) => useQuery({
+  queryKey: [...nodeKeys.all, nodeId, 'fixed-update'],
+  retry: false,
+  refetchInterval: 3_000,
+  queryFn: async () => unwrapOne<ScoutUpdateStatus>(await getScoutUpdateStatus(nodeId)) || {},
+})

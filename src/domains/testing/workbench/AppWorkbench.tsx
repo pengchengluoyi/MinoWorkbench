@@ -150,7 +150,7 @@ function Panel({ tab, appId, projectId, platforms, contextLoading }: { tab: Tab;
     case 'assets':
       return contextLoading ? <Skeleton active /> : lazyPanel(<AssetsPanel projectId={projectId} />)
     case 'config':
-      return contextLoading ? <Skeleton active /> : lazyPanel(<EnvConfigPanel projectId={projectId} />)
+      return contextLoading ? <Skeleton active /> : lazyPanel(<EnvConfigPanel projectId={projectId} appId={appId} />)
     default:
       return null
   }

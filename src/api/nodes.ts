@@ -164,14 +164,20 @@ export const detectScoutSystem = (): ScoutSystem | undefined => {
   return undefined
 }
 
-export const sendNodeCommand = (nodeId: string, command: NodeCommand, reason = 'workbench') =>
-  request({
-    url: `/runtime/nodes/${encodeURIComponent(nodeId)}/command`,
+export interface ScoutUpdateTarget { operation_id: string; build_id: string; release_tag: string }
+export interface ScoutUpdateStatus { operation?: { operation_id: string; state: string; running_version_verified?: boolean; result?: { reason?: string } } }
+export const getScoutUpdateStatus = (nodeId: string) =>
+  request<ScoutUpdateStatus>({ url: `/runtime/nodes/${encodeURIComponent(nodeId)}/update-status`, method: 'get' })
+
+export const sendNodeCommand = (nodeId: string, command: NodeCommand, update?: ScoutUpdateTarget) => {
+  if (command === 'update' && !update) throw new Error('升级需要固定版本和操作编号，请先检查更新')
+  return request({
+    url: `/runtime/nodes/${encodeURIComponent(nodeId)}/${command === 'update' ? 'update' : 'command'}`,
     method: 'post',
-    data: { command, reason },
-    // 升级要拉包重启，给足时间
-    timeout: command === 'update' ? 660_000 : 60_000,
+    data: command === 'update' ? { ...update, reason: 'workbench' } : { command, reason: 'workbench' },
+    timeout: 60_000,
   })
+}
 
 export const configNodePlugin = (
   nodeId: string,
@@ -250,6 +256,8 @@ export const executableDevices = (n: ScoutNode): NodeDevice[] =>
   connectedNodeDevices(n).filter((d) => d.executable === true)
 
 export interface ScoutRelease {
+  build_id?: string
+  release_tag?: string
   version?: string
   packaging?: boolean
   manifest_ready?: boolean

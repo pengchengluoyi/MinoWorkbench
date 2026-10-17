@@ -26,13 +26,13 @@ irm https://github.com/pengchengluoyi/MinoWorkbench/releases/latest/download/ins
 
 
 > **唯一前端**：MinoWorkbench。MinoConsole 与 MinoStudio 已取消，所有管理和测试功能均在本项目实现。
-## 本地与内网访问
+## 本地开发
 
-运行 `npm run dev`，可通过 `http://localhost:60101` 或 `http://<本机内网IP>:60101` 访问。同一局域网的其他设备使用后者；启动日志中的 Network 会显示可用地址。修改配置后需重启已有服务。
+运行 `npm run dev`，通过 `http://localhost:60101` 访问，仅允许当前开发机访问；默认连接本机 Nexus `50101`。
 
 开发服务默认经 Vite 代理访问 Nexus。若显式设置 `VITE_NEXUS_URL`，该地址需能被访问页面的设备访问，并由 Nexus 允许对应来源的跨域请求。
 
-运行 `npm run build` 后，可用 `npm run preview` 预览构建结果；预览服务同样支持内网访问，默认端口为 4173，以启动日志为准。预览使用生产环境的 Nexus 地址。
+运行 `npm run build` 后，可用 `npm run preview` 在本机 `60101` 预览。正式安装使用 `60104` 并支持局域网访问。
 
 ## 测试与正式环境
 
@@ -49,3 +49,5 @@ Scout 不分配独立业务监听端口。测试与正式使用独立的数据�
 运行 `mino-workbench open`：启动服务、等待就绪并打开默认浏览器，同时输出访问地址。无桌面环境可运行 `mino-workbench open --print-url` 仅查看地址。升级后首次重启会更新旧命令入口；自定义修改的入口保留，不会覆盖。
 
 安装 Workbench（或同时安装两者）成功后默认打开浏览器。服务器或自动部署可在安装命令末尾加 `--no-open`；无法打开浏览器时仍会打印网址，安装保持成功。
+
+开发环境面板、IDE 联动与独立安装升级合同见 [安装升级合同](docs/contracts/mino-workbench-updates.md)。
