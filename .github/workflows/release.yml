@@ -115,7 +115,7 @@ jobs:
               page.get_by_placeholder('邮箱或用户名').fill('native-ci-nonexistent-account')
               page.get_by_placeholder('密码', exact=True).fill('native-ci-invalid-password')
               with page.expect_response(lambda r: r.url.startswith(f'http://{lan}:50104/auth/')) as login_response:
-                  page.get_by_role('button', name='登录', exact=True).click()
+                  page.locator('button[type=submit]').click()
               assert login_response.value.status < 500, login_response.value.status
               page.get_by_role('alert').wait_for()
               assert any(f'http://{lan}:50104/' in r for r in requests), requests
