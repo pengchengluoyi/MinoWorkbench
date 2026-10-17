@@ -8,10 +8,16 @@ import sys
 import time
 import urllib.request
 from mino_release import read, atomic
+import mino_platform
 
 
 def service_record(root, conf):
     record = read(root / "config/service.json")
+    if sys.platform != "darwin":
+        expected = [str(mino_platform.executable(root / "launcher/mino-maintain")), "run", "--root", str(root)]
+        if record.get("manager") != "user-process" or record.get("command") != expected or record.get("label") != conf['label']:
+            raise ValueError("service registration mismatch")
+        return record
     path = Path(record["plist"])
     spec = plistlib.loads(path.read_bytes())
     expected = [str(root / "launcher/mino-maintain"), "run", "--root", str(root)]
@@ -22,7 +28,9 @@ def service_record(root, conf):
 
 def stop_app(root, conf):
     if sys.platform != "darwin":
-        raise ValueError("runtime restart currently requires the macOS service adapter")
+        service_record(root, conf)
+        mino_platform.stop(root)
+        return
     service_record(root, conf)
     label = f"gui/{os.getuid()}/{conf['label']}"
     if subprocess.run(["launchctl", "print", label], capture_output=True).returncode == 0:
@@ -43,6 +51,9 @@ def stop_app(root, conf):
 
 def start_app(root, conf):
     record = service_record(root, conf)
+    if sys.platform != "darwin":
+        mino_platform.start(root, record["command"])
+        return
     target = f"gui/{os.getuid()}/{conf['label']}"
     if subprocess.run(["launchctl", "print", target], capture_output=True).returncode:
         subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", record["plist"]], check=True, capture_output=True)
@@ -83,7 +94,7 @@ def register_helper(root, conf, app_plist):
 
 
 def schedule(root, conf):
-    executable = root / "launcher/mino-maintain"
+    executable = mino_platform.executable(root / "launcher/mino-maintain")
     if not executable.is_file():
         raise ValueError("independent helper executable is missing")
     record = root / "config/updater-service.json"
@@ -99,9 +110,8 @@ def schedule(root, conf):
         subprocess.run(["launchctl", "kickstart", label], check=True, capture_output=True)
     else:
         # The stable launcher is outside current and has its own session/process group.
-        subprocess.Popen([str(executable), "update-worker", "--root", str(root)], cwd=root,
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True, close_fds=True)
+        mino_platform.spawn([str(executable), "update-worker", "--root", str(root)], root)
+
 
 
 def api_compatibility(conf, release, local_verification=False):

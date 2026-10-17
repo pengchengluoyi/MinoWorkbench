@@ -1,6 +1,5 @@
 """Workbench release validation and durable filesystem primitives (no service control)."""
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -10,6 +9,8 @@ import re
 import stat
 import tempfile
 import zipfile
+
+from mino_platform import file_lock, sync_directory, current_release, switch_release
 
 CONTRACT = {"updater": 1, "runtime_config": 1, "hot_swap": 1}
 TERMINAL = {"succeeded", "failed", "rolled_back", "cancelled", "needs_operator"}
@@ -32,11 +33,7 @@ def read(path):
 
 
 def sync_dir(path):
-    fd = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    sync_directory(path)
 
 
 def atomic(path, value):
@@ -63,9 +60,7 @@ def installation(path):
 
 
 def current(root):
-    target = (root / "current").resolve(strict=True)
-    if target.parent != root / "releases":
-        raise ValueError("current points outside releases")
+    target = current_release(root)
     identifier(target.name)
     return target
 
@@ -73,13 +68,7 @@ def current(root):
 @contextlib.contextmanager
 def lock(root):
     path = legacy_path(root / "updates/mino-update.lock")
-    if path.is_symlink():
-        raise ValueError("update lock may not be a symlink")
-    with path.open("a") as stream:
-        try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise RuntimeError("update helper is busy; query the original operation") from None
+    with file_lock(path, blocking=False):
         yield
 
 
@@ -169,10 +158,7 @@ def extract_app(package, folder):
 
 def switch(root, build):
     identifier(build)
-    link = root / (".current-" + next(tempfile._get_candidate_names()))
-    link.symlink_to(Path("releases") / build)
-    os.replace(link, root / "current")
-    sync_dir(root)
+    switch_release(root, build)
 
 
 def manifest_item(path):

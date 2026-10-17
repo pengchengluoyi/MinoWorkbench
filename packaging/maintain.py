@@ -18,6 +18,7 @@ import sys
 import zipfile
 import uuid
 from urllib.parse import urlsplit
+import mino_platform
 
 def load(root):
     root = root.expanduser().resolve(strict=True)
@@ -89,19 +90,30 @@ def install(args):
         data_root.mkdir()
     if component == "nexus" and not data_root.is_dir():
         raise ValueError("registered data root must already exist")
-    conf = {"environment": args.environment, "installation_id": str(uuid.uuid4()), "component": component, "build_id": build, "data_dir": str(data_root),
+    conf = {"environment": "production", "installation_id": str(uuid.uuid4()), "component": component, "build_id": build, "data_dir": str(data_root),
             "host":args.host, "port":args.port, "nexus_url":args.nexus_url,
             "release_repository": "pengchengluoyi/MinoWorkbench", "mdns":args.mdns, "label":args.label or "com.mino." + component}
     if not re.fullmatch(r"[A-Za-z0-9.-]+", conf["label"]):
         raise ValueError("invalid service label")
     (root / "config/installation.json").write_text(json.dumps(conf, indent=2))
-    (root / "current").symlink_to(Path("releases") / build, target_is_directory=True)
+    mino_platform.switch_release(root, build)
     print(json.dumps({"installed":str(root), "component":component, "build_id":build}))
 
 def service(args):
     root, conf = load(args.root)
     if sys.platform != "darwin":
-        raise ValueError("this baseline service adapter is macOS only")
+        record = root / "config/service.json"
+        command = [str(mino_platform.executable(root / "launcher/mino-maintain")), "run", "--root", str(root)]
+        if args.command == "register":
+            if record.exists(): raise ValueError("service already registered")
+            record.write_text(json.dumps({"label": conf["label"], "manager": "user-process", "command": command}))
+        else:
+            saved = json.loads(record.read_text())
+            if saved.get("command") != command or saved.get("label") != conf["label"]: raise ValueError("service registration mismatch")
+            if args.command == "start": mino_platform.start(root, command)
+            elif args.command == "stop": mino_platform.stop(root)
+            elif args.command == "status": print(json.dumps({"running": mino_platform.running(root)}))
+        return 0
     target = f"gui/{os.getuid()}/{conf['label']}"
     record = root / "config/service.json"
     if args.command == "register":
@@ -138,11 +150,11 @@ def service(args):
 
 def run(args):
     root, conf = load(args.root)
-    release = (root / "current").resolve(strict=True)
+    release = mino_platform.current_release(root)
     if release.parent != root / "releases":
         raise ValueError("current must resolve to a registered release")
     component = conf["component"]
-    executable = release / ("mino-" + component)
+    executable = mino_platform.executable(release / ("mino-" + component))
     command = [str(executable), "--host", conf["host"], "--port", str(conf["port"])]
     env = dict(os.environ)
     if component == "nexus":
@@ -152,6 +164,8 @@ def run(args):
     else:
         command += ["--nexus-url", conf["nexus_url"], "--releases-root", str(root / "releases"),
                     "--current-root", str(root), "--installation-id", conf["installation_id"]]
+    if sys.platform != "darwin":
+        return mino_platform.run_service(root, command, env)
     log = logging.getLogger("service")
     log.setLevel(logging.INFO)
     log.addHandler(RotatingFileHandler(root / "logs/service.log", maxBytes=5*1024*1024, backupCount=3))
@@ -178,7 +192,6 @@ def main():
     p.add_argument("--data-dir", type=Path)
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int)
-    p.add_argument("--environment", choices=["test", "production"], default="production")
     p.add_argument("--nexus-url")
     p.add_argument("--label")
     p.add_argument("--mdns", action="store_true")
@@ -232,9 +245,9 @@ def main():
         return 0
     if args.command == "install":
         if args.port is None:
-            args.port = 60101 if args.environment == "test" else 60104
+            args.port = 60104
         if args.nexus_url is None:
-            args.nexus_url = "http://127.0.0.1:50101" if args.environment == "test" else "http://mino.local:50104"
+            args.nexus_url = "http://127.0.0.1:50104"
         install(args)
         return 0
     if args.command == "run":

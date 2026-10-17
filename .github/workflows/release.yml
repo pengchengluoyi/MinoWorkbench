@@ -1,4 +1,4 @@
-name: Release native baseline
+name: Release native production
 on:
   workflow_dispatch:
   push:
@@ -8,7 +8,25 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform: linux-x64
+          - runner: windows-latest
+            platform: win32-x64
+          - runner: macos-latest
+            platform: darwin-arm64
+          - runner: macos-15-intel
+            platform: darwin-x64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -25,22 +43,25 @@ jobs:
       - name: Validate repository installer
         run: |
           bash -n packaging/bootstrap.sh
-          bash packaging/bootstrap.sh --help
+          bash -n packaging/install.sh
       - run: python scripts/build_release.py --output dist
       - name: Create install manifest for the exact build
         run: |
           VERSION=$(python -c "from pathlib import Path; import json; print(Path('mino_nexus/VERSION').read_text().strip() if Path('mino_nexus').is_dir() else json.loads(Path('package.json').read_text())['version'])")
           python scripts/write_manifest.py --dist dist --prefix "https://github.com/${{ github.repository }}/releases/download/v$VERSION"
-      - name: Install the exact released Nexus integration partner
-        run: |
-          curl -fsSL https://github.com/pengchengluoyi/MinoNexus/releases/download/v0.1.38/bootstrap.sh -o "$RUNNER_TEMP/nexus-bootstrap.sh"
-          bash "$RUNNER_TEMP/nexus-bootstrap.sh" --environment test --version 0.1.38 --root "$RUNNER_TEMP/mino-install/nexus"
+      - name: Install the released Nexus integration partner
+        run: python packaging/install.py --components nexus --nexus-version 0.1.39 --root "$RUNNER_TEMP/mino-install/nexus"
       - name: Validate installer against the actual native package
-        run: bash packaging/bootstrap.sh --environment test --package-dir "$PWD/dist" --root "$RUNNER_TEMP/mino-install/workbench"
+        run: |
+          python - <<'PYCODE'
+          import os, pathlib, subprocess
+          installer = next(p for p in pathlib.Path('dist').glob('MinoInstaller-*') if p.is_file())
+          subprocess.run([str(installer.resolve()), '--components', 'workbench', '--package-dir', str(pathlib.Path('dist').resolve()), '--root', str(pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-install'/'workbench')], check=True)
+          PYCODE
       - name: Verify native pair in a cold browser
         run: |
           python -m pip install playwright
-          python -m playwright install chromium
+          python -m playwright install --with-deps chromium
           python - <<'PYCODE'
           import json, os, sys
           from pathlib import Path
@@ -50,7 +71,8 @@ jobs:
           from mino_release import read
           from mino_update_service import api_compatibility
           root = Path(os.environ['RUNNER_TEMP'])/'mino-install/workbench'
-          release = (root/'current').resolve()
+          from mino_platform import current_release
+          release = current_release(root)
           info = read(release/'release.json')
           evidence = api_compatibility(read(root/'config/installation.json'), info)
           failures = []
@@ -65,9 +87,9 @@ jobs:
               page = context.new_page()
               page.on('pageerror', lambda e: failures.append(str(e)))
               page.on('requestfailed', lambda r: failures.append(r.url))
-              page.goto('http://127.0.0.1:60101/login', wait_until='networkidle')
+              page.goto('http://127.0.0.1:60104/login', wait_until='networkidle')
               assert page.locator('#root').inner_text().strip()
-              assert page.evaluate('window.__MINO_CONFIG__.nexusUrl') == 'http://127.0.0.1:50101'
+              assert page.evaluate('window.__MINO_CONFIG__.nexusUrl') == 'http://127.0.0.1:50104'
               page.get_by_role('link', name='注册账号').click()
               page.wait_for_url('**/register')
               web = release/'_internal/web'
@@ -85,15 +107,34 @@ jobs:
               browser.close()
           print(json.dumps({'native_pair': evidence, 'cold_browser_assets':len(assets), 'passed':True}))
           PYCODE
-      - run: cp packaging/bootstrap.sh dist/bootstrap.sh
+      - name: Verify native stop and restart
+        run: |
+          python - <<'PYCODE'
+          import json, os, pathlib, subprocess, time, urllib.request
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])/'mino-install'/'workbench'
+          helper = root/'launcher'/('mino-maintain.exe' if os.name == 'nt' else 'mino-maintain')
+          command = [str(helper)] + []
+          for action in ('stop','start'):
+              subprocess.run(command + [action, '--root', str(root)], check=True)
+          opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+          for attempt in range(60):
+              try:
+                  with opener.open('http://127.0.0.1:60104/health', timeout=2) as response: result = json.load(response)
+                  assert result.get('data',result)['build_id'] == json.loads(pathlib.Path('dist/manifest.json').read_text())['build_id']
+                  break
+              except OSError:
+                  if attempt == 59: raise
+                  time.sleep(1)
+          subprocess.run(command + ['stop', '--root', str(root)], check=True)
+          PYCODE
       - uses: actions/upload-artifact@v5
         with:
-          name: native-package
+          name: native-package-${{ matrix.platform }}
           path: |
             dist/Mino*.zip
             dist/item-*.json
-            dist/manifest.json
-            dist/bootstrap.sh
+            dist/MinoInstaller-*
+            dist/installer-*.sha256
           if-no-files-found: error
   publish:
     if: startsWith(github.ref, 'refs/tags/')
@@ -108,17 +149,37 @@ jobs:
           python-version: '3.12'
       - uses: actions/download-artifact@v6
         with:
-          name: native-package
+          pattern: native-package-*
+          merge-multiple: true
           path: dist
       - name: Validate packages and create manifest
         env:
           RELEASE_PREFIX: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
         run: python scripts/write_manifest.py --dist dist --prefix "$RELEASE_PREFIX"
+      - name: Require every native platform and assemble installer checksums
+        run: |
+          python - <<'PYCODE'
+          import json, pathlib, shutil
+          root = pathlib.Path('dist')
+          expected = {('linux','x64'), ('win32','x64'), ('darwin','arm64'), ('darwin','x64')}
+          items = json.loads((root/'manifest.json').read_text())['items']
+          assert {(x['os'],x['arch']) for x in items} == expected
+          hashes = sorted(root.glob('installer-*.sha256'))
+          assert len(hashes) == 4
+          (root/'INSTALLER-SHA256SUMS.txt').write_text(''.join(p.read_text() for p in hashes))
+          for name in ('install.sh','install.ps1','bootstrap.sh','bootstrap.ps1'):
+              shutil.copyfile(pathlib.Path('packaging')/name, root/name)
+          PYCODE
       - uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/Mino*.zip
             dist/manifest.json
             dist/bootstrap.sh
+            dist/bootstrap.ps1
+            dist/install.sh
+            dist/install.ps1
+            dist/MinoInstaller-*
+            dist/INSTALLER-SHA256SUMS.txt
           fail_on_unmatched_files: true
           generate_release_notes: true
