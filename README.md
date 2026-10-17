@@ -2,10 +2,16 @@
 
 
 > **唯一前端**：MinoWorkbench。MinoConsole 与 MinoStudio 已取消，所有管理和测试功能均在本项目实现。
-## 本地与内网访问
+## 本地开发
 
-运行 `npm run dev`，可通过 `http://localhost:5273` 或 `http://<本机内网IP>:5273` 访问。同一局域网的其他设备使用后者；启动日志中的 Network 会显示可用地址。修改配置后需重启已有服务。
+```sh
+npm run dev -- --nexus-url http://127.0.0.1:11104 --port 5274
+```
 
-开发服务默认经 Vite 代理访问 Nexus。若显式设置 `VITE_NEXUS_URL`，该地址需能被访问页面的设备访问，并由 Nexus 允许对应来源的跨域请求。
+开发必须明确指定测试 Nexus。跨机器访问时，目标地址必须能被浏览器所在机器访问；工作台默认不探测或回退到其他 Nexus。
 
-运行 `npm run build` 后，可用 `npm run preview` 预览构建结果；预览服务同样支持内网访问，默认端口为 4173，以启动日志为准。预览使用生产环境的 Nexus 地址。
+## 独立安装与升级
+
+生产由独立 Python 原生包提供静态服务和运行配置，不依赖 Node/npm。固定版本升级、回退、恢复、原生/静态包构建和来源配置见 [D3 安装升级合同](docs/contracts/hi3d-workbench-updates.md)。
+
+运行配置缺失时页面会显示错误。正式发布前须补齐真实 Nexus/Workbench build 组合验收；本地 dirty 包的验收不能作为发布准入证据。

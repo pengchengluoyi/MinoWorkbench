@@ -36,3 +36,7 @@ coverage/
 /scripts/mock*
 /scripts/smoke*
 /scripts/*-browser-check.py
+
+# Python native packaging cache
+__pycache__/
+*.py[cod]

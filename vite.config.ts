@@ -19,11 +19,19 @@ const NEXUS_PREFIXES = [
   'workflow', 'workflow_run',
 ]
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   // VITE_PROXY_TARGET：仅 dev 代理目标（联调指向本机 Nexus），不影响生产 origin
-  const nexus = process.env.VITE_PROXY_TARGET || process.env.VITE_NEXUS_URL || 'http://mino.local:10104'
+  const explicit = process.env.MINO_DEV_NEXUS_URL || process.env.VITE_PROXY_TARGET || process.env.VITE_NEXUS_URL
+  if (command === 'serve' && mode === 'development' && !explicit) throw new Error('开发环境必须显式指定测试 Nexus 地址')
+  const nexus = explicit || 'http://mino.local:10104'
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), {
+      name: 'mino-development-target',
+      apply: 'serve',
+      transformIndexHtml() {
+        return [{ tag: 'script', injectTo: 'head-prepend', children: `window.__MINO_DEV_TARGET__=${JSON.stringify(nexus).replace(/</g, '\\u003c')};` }]
+      },
+    }],
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
