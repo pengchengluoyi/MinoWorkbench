@@ -135,19 +135,11 @@ def service(args):
             register_helper(root, conf, dest)
         print("service definition registered; use start to bootstrap")
     elif args.command == "start":
-        saved = json.loads(record.read_text())
-        if saved["label"] != conf["label"]:
-            raise ValueError("service registration mismatch")
-        probe = subprocess.run(["launchctl", "print", target], capture_output=True)
-        if probe.returncode:
-            subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", saved["plist"]], check=True)
-        subprocess.run(["launchctl", "kickstart", target], check=True)
+        from mino_update_service import start_app
+        start_app(root, conf)
     elif args.command == "stop":
-        probe = subprocess.run(["launchctl", "print", target], capture_output=True)
-        if probe.returncode == 0:
-            subprocess.run(["launchctl", "bootout", target], check=True)
-        elif b"Could not find service" not in probe.stderr:
-            raise RuntimeError("Cannot inspect service before stop")
+        from mino_update_service import stop_app
+        stop_app(root, conf)
     elif args.command == "status":
         result = subprocess.run(["launchctl", "print", target], capture_output=True)
         print(json.dumps({"registered": result.returncode == 0, "running": result.returncode == 0 and bool(re.search(rb"^\s*pid = \d+", result.stdout, re.MULTILINE))}))

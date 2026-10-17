@@ -26,6 +26,15 @@ def service_record(root, conf):
     return record
 
 
+def _service_present(target):
+    result = subprocess.run(["launchctl", "print", target], capture_output=True)
+    if result.returncode == 0:
+        return True
+    if result.returncode == 113 or b"Could not find service" in result.stderr:
+        return False
+    result.check_returncode()
+
+
 def stop_app(root, conf):
     if sys.platform != "darwin":
         service_record(root, conf)
@@ -33,9 +42,9 @@ def stop_app(root, conf):
         return
     service_record(root, conf)
     label = f"gui/{os.getuid()}/{conf['label']}"
-    if subprocess.run(["launchctl", "print", label], capture_output=True).returncode == 0:
+    if _service_present(label):
         subprocess.run(["launchctl", "bootout", label], check=True, capture_output=True)
-    # bootout does not prove the listener has exited; require the port to be free.
+    # bootout is asynchronous: require both job removal and listener exit.
     import socket
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
@@ -43,10 +52,12 @@ def stop_app(root, conf):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 sock.bind((conf["host"], conf["port"]))
-                return
+                if not _service_present(label):
+                    return
             except OSError:
-                time.sleep(.2)
-    raise RuntimeError("Workbench listener did not stop; no forced kill performed")
+                pass
+        time.sleep(.2)
+    raise RuntimeError("Workbench service or listener did not stop; no forced kill performed")
 
 
 def start_app(root, conf):
@@ -55,9 +66,18 @@ def start_app(root, conf):
         mino_platform.start(root, record["command"])
         return
     target = f"gui/{os.getuid()}/{conf['label']}"
-    if subprocess.run(["launchctl", "print", target], capture_output=True).returncode:
-        subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", record["plist"]], check=True, capture_output=True)
-    subprocess.run(["launchctl", "kickstart", target], check=True, capture_output=True)
+    deadline = time.monotonic() + 20
+    while True:
+        if not _service_present(target):
+            subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", record["plist"]], check=True, capture_output=True)
+        result = subprocess.run(["launchctl", "kickstart", target], capture_output=True)
+        if result.returncode == 0:
+            return
+        # A previous bootout can finish between print and kickstart. Only the
+        # missing-service result may retry registration; other errors stay fatal.
+        if result.returncode != 113 or time.monotonic() >= deadline:
+            result.check_returncode()
+        time.sleep(.2)
 
 
 def health(conf, build, runtime_id, timeout=15):
