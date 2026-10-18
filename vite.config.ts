@@ -2,6 +2,32 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
+import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, relative } from 'node:path'
+
+const sourceRoot = fileURLToPath(new URL('.', import.meta.url))
+const sourceDigest = () => {
+  const hash = createHash('sha256')
+  const visit = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory()) visit(path)
+      else if (entry.isFile()) hash.update(relative(sourceRoot, path)).update('\0').update(readFileSync(path)).update('\0')
+    }
+  }
+  visit(join(sourceRoot, 'src'))
+  for (const name of ['index.html', 'package.json', 'package-lock.json', 'vite.config.ts']) {
+    hash.update(name).update('\0').update(readFileSync(join(sourceRoot, name))).update('\0')
+  }
+  return hash.digest('hex')
+}
+
+const sourceCommit = () => {
+  try { return execFileSync('git', ['-C', sourceRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() }
+  catch { return '' }
+}
 
 /**
  * dev 下若未显式指定 VITE_NEXUS_URL，用 proxy 走同源，避免 CORS。
@@ -23,8 +49,20 @@ export default defineConfig(({ mode }) => {
   // VITE_PROXY_TARGET：仅 dev 代理目标（联调指向本机 Nexus），不影响生产 origin
   const env = loadEnv(mode, process.cwd(), 'VITE_')
   const nexus = env.VITE_PROXY_TARGET || env.VITE_NEXUS_URL || 'http://127.0.0.1:50101'
+  const digest = sourceDigest()
+  const build = { build_id: `dev-${digest.slice(0, 24)}`, source_digest: digest, source_commit: sourceCommit(), identity_kind: 'source', source_unchanged: true }
   return {
+    define: { __MINO_WORKBENCH_BUILD__: JSON.stringify(build) },
     plugins: [react(), tailwindcss(), {
+      name: 'workbench-process-build',
+      configureServer(server) {
+        server.middlewares.use('/__mino/workbench-build', (_request, response) => {
+          response.setHeader('Content-Type', 'application/json')
+          response.setHeader('Cache-Control', 'no-store')
+          response.end(JSON.stringify({ ...build, source_unchanged: sourceDigest() === digest }))
+        })
+      },
+    }, {
       name: 'local-development-only',
       configResolved(config) {
         if (config.command !== 'serve') return

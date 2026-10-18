@@ -187,6 +187,7 @@ function DevelopmentEditor({ appId, android }: { appId: string; android: boolean
       <details><summary>高级设置：构建、版本核对与日志（可选）</summary><div className="space-y-3 mt-3">
       <label className="block">构建配置（可选）<Select className="w-full" allowClear value={draft.build_configuration || undefined} disabled={busy} options={(check?.configurations ?? []).map(name => ({ value: name, label: name }))} onChange={name => patch({ build_configuration: name || '' })} /></label>
       <Space.Compact className="w-full"><Input addonBefore="预期 build（可选）" value={draft.expected_build} onChange={e => patch({ expected_build: e.target.value })} /><Input addonBefore="JSON 字段" value={draft.build_field} onChange={e => patch({ build_field: e.target.value })} /></Space.Compact>
+      <label className="block">预期测试实例 ID（可选）<Input value={draft.expected_instance_id || ''} onChange={e => patch({ expected_instance_id: e.target.value })} placeholder="MINO 服务使用 /sys/server_info 的 instance_id；核对测试环境后填写" /></label>
       <label className="block">服务日志（可选，只读）<Input value={draft.service_log_path} placeholder="应用源码目录内的日志绝对路径" onChange={e => patch({ service_log_path: e.target.value })} /></label>
       <Space><Button disabled={dirty || busy || !draft.service_log_path} onClick={() => action.mutate('logs')}>读取日志末尾（最多 32 KiB）</Button><Switch checked={followLogs} disabled={!draft.service_log_path || dirty} onChange={value => { followStarted.current = Date.now(); setFollowLogs(value) }} /><span>定时刷新日志快照（3 秒，最多 10 分钟；隐藏页面暂停）</span></Space>
       </div></details>
@@ -223,6 +224,7 @@ function DevelopmentEditor({ appId, android }: { appId: string; android: boolean
       {op.result.stages && <p>{op.result.stages.map(s => `${new Date(s.at * 1000).toLocaleTimeString()} ${stages[s.name] || s.name}`).join(' → ')}</p>}
       {op.result.target_ready !== undefined && <Tag color={op.result.target_ready ? 'green' : 'orange'}>目标：{op.result.target_ready ? '可访问' : '未就绪'}</Tag>}
       {op.result.build_verified !== undefined && <Tag color={op.result.build_verified ? 'green' : 'orange'}>版本：{op.result.build_verified ? '核验通过' : '未核验通过'}</Tag>}
+      {op.result.actual_instance_id && <p>实际实例：{op.result.actual_instance_id}（{op.result.instance_verified ? '与预期一致' : '未核对预期'}）</p>}
       {(op.result.actual_build || op.result.build) && <p>实际 build：{op.result.actual_build || op.result.build}</p>}
       {op.result.expected_build && <p>预期 build：{op.result.expected_build}</p>}
       {op.result.package && <p>APK：{op.result.package} · versionCode {op.result.version_code} · 设备 {op.result.device} · SHA256 {op.result.apk_sha256}</p>}

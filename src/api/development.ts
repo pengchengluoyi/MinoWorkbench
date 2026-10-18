@@ -11,6 +11,7 @@ export interface DevelopmentConfig {
   build_configuration: string
   target_url: string
   expected_build: string
+  expected_instance_id?: string
   build_field: string
   service_log_path: string
   apk_path: string
@@ -30,6 +31,8 @@ export interface PreparationResult {
   actual_build?: string
   build?: string
   expected_build?: string
+  actual_instance_id?: string
+  instance_verified?: boolean
   support?: { read: boolean; execute: boolean; restart: boolean; restart_mode?: string; logs: boolean }
   recovery?: { at: number; source: string }
   receipt_lookup?: { reason?: string }

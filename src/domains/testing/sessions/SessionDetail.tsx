@@ -15,6 +15,7 @@ import { reportedCount, tokenUsage } from './sessionUsage'
 import { inStepScope, inTurnScope, knownTurns, linkedTurns, turnOf, type ExecutionEntry, type ExecutionScope } from './executionLinks'
 import { DesktopEvidence } from './DesktopEvidence'
 import { V5Evidence } from './V5Evidence'
+import { ExecutionEvidence } from './ExecutionEvidence'
 import { RawParameters, SessionModelCalls, SessionTurns, type TurnFocus } from './SessionLogViews'
 import './SessionDetail.css'
 
@@ -213,6 +214,7 @@ export function SessionDetail({ sessionId, live = false, entry, onReturn }: { se
         <Button size="small" loading={detail.isFetching} onClick={() => void detail.refetch()}>重试缺失数据</Button>
       </div> : null}
       {data.meta && <V5Evidence meta={data.meta} events={events} hasMore={hasMore} loadMore={() => void loadMore()} />}
+      {data.meta && <ExecutionEvidence key={sessionId} sessionId={sessionId} eventCount={data.meta.event_count || 0} />}
       <p style={{ margin: 0, color: 'var(--w-text-tertiary)' }}>当前视图和回合范围可通过地址复现；关键词检索已加载记录及脱敏参数，可按需补读后续历史。</p>
       <section className="session-overview" aria-label="执行概览">
         <div className="session-overview-heading">
