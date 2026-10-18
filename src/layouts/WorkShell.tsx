@@ -5,7 +5,7 @@ import { Bot, ChevronRight, Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeft
 import { Button, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
 import { CommandPalette } from './CommandPalette'
 import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab, type Tab } from '@/domains/testing/workbench/nav'
-import { useAppDetail } from '@/domains/testing/workbench/queries'
+import { useProjects } from '@/domains/testing/apps/queries'
 import { preloadAppPanel } from '@/domains/testing/workbench/listPrefetch'
 import { beginListNavigation } from '@/domains/testing/workbench/performance'
 
@@ -29,8 +29,8 @@ const GLOBAL_NAV = [
 export function WorkShell() {
   const location = useLocation()
   const uid = useSession((state) => state.user?.user_id || '')
-  const appMatch = useMatch('/testing/:appId')
-  const appId = appMatch?.params.appId || ''
+  const projectMatch = useMatch('/testing/projects/:projectId')
+  const projectId = projectMatch?.params.projectId || ''
   const [collapsed, setCollapsed] = useState(readCollapsed)
 
   const toggle = useCallback(() => {
@@ -90,10 +90,10 @@ export function WorkShell() {
         </div>
 
         <nav className="flex-1 overflow-y-auto overflow-x-hidden" style={{ padding: '8px 8px 4px' }}>
-          <RailLink to="/testing" end label="应用" icon={LayoutGrid} collapsed={collapsed} />
+          <RailLink to="/testing" end label="项目" icon={LayoutGrid} collapsed={collapsed} />
 
           {/* 进入某个应用后，应用内导航嵌在「应用」下面——不再另开一条左栏 */}
-          {appId && <AppNavBlock appId={appId} collapsed={collapsed} />}
+          {projectId && <ProjectNavBlock projectId={projectId} collapsed={collapsed} />}
 
           <div
             style={{
@@ -130,22 +130,25 @@ export function WorkShell() {
     </div>
   )
 
-  function AppNavBlock({ appId: id, collapsed: narrow }: { appId: string; collapsed: boolean }) {
+  function ProjectNavBlock({ projectId: id, collapsed: narrow }: { projectId: string; collapsed: boolean }) {
     const [params, setParams] = useSearchParams()
-    const detail = useAppDetail(id)
+    const projects = useProjects()
+    const project = projects.data?.find(row => row.id === id)
+    const selected = params.get('appId')
+    const appId = (selected ? project?.apps?.find(app => app.id === selected)?.id : project?.apps?.length === 1 ? project.apps[0].id : '') || ''
     const tab = resolveTab(params.get('tab'))
-    const appName = detail.data?.name || params.get('appName') || '应用'
+    const projectName = project?.name || '项目'
     const warm = (next: Tab) => {
       const result = params.get('caseResult')
-      void preloadAppPanel(id, next, Number(params.get('taskPage')) || 1, {
-        appId: id, page: Number(params.get('casePage')) || 1, size: Number(params.get('caseSize')) || 50,
+      void preloadAppPanel(appId, next, Number(params.get('taskPage')) || 1, {
+        appId, page: Number(params.get('casePage')) || 1, size: Number(params.get('caseSize')) || 50,
         search: params.get('caseSearch') || '', module: params.get('caseModule') || '',
         result: result === 'failed' || result === 'never' ? result : 'all',
       }, Number(params.get('taskSize')) || 50).catch(() => {})
     }
 
     const go = (next: Tab, sub?: { key: string; value: string }) => {
-      if (next !== tab && (next === 'cases' || next === 'tasks')) beginListNavigation(id, next)
+      if (next !== tab && (next === 'cases' || next === 'tasks')) beginListNavigation(appId, next)
       const p = new URLSearchParams(params)
       p.set('tab', next)
       if (sub) p.set(sub.key, sub.value)
@@ -172,9 +175,9 @@ export function WorkShell() {
               color: 'var(--w-text-quaternary)',
               letterSpacing: '0.03em',
             }}
-            title={appName}
+            title={projectName}
           >
-            {appName}
+            {projectName}
           </div>
         )}
         {APP_NAV.map((item) => {

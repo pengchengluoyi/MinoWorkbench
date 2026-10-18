@@ -14,7 +14,9 @@ const LoginPage = lazy(() => import('@/domains/auth/LoginPage').then((m) => ({ d
 const RegisterPage = lazy(() => import('@/domains/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })))
 const HealthPage = lazy(() => import('@/domains/admin/health/HealthPage').then((m) => ({ default: m.HealthPage })))
 const AuditPage = lazy(() => import('@/domains/admin/audit/AuditPage').then((m) => ({ default: m.AuditPage })))
-const AppListPage = lazy(() => import('@/domains/testing/apps/AppListPage').then((m) => ({ default: m.AppListPage })))
+const ProjectListPage = lazy(() => import('@/domains/testing/apps/AppListPage').then((m) => ({ default: m.ProjectListPage })))
+const ProjectWorkbench = lazy(() => import('@/domains/testing/workbench/ProjectWorkbench').then(m => ({ default: m.ProjectWorkbench })))
+const ProjectConfigurationRedirect = lazy(() => import('@/domains/testing/workbench/AppWorkbench').then(m => ({ default: m.ProjectConfigurationRedirect })))
 const AppWorkbench = lazy(() => import('@/domains/testing/workbench/AppWorkbench').then((m) => ({ default: m.AppWorkbench })))
 const NodesPage = lazy(() => import('@/domains/settings/nodes/NodesPage').then((m) => ({ default: m.NodesPage })))
 const DeviceDetailPage = lazy(() => import('@/domains/settings/devices/DeviceDetailPage').then((m) => ({ default: m.DeviceDetailPage })))
@@ -54,7 +56,8 @@ export const router = createBrowserRouter([{ element: <><DraftNavigationGuard />
     element: <RequireAuth><WorkShell /></RequireAuth>,
     children: [
       { path: '/', element: <Navigate to="/testing" replace /> },
-      { path: '/testing', element: lazyPage(<AppListPage />) },
+      { path: '/testing', element: lazyPage(<ProjectListPage />) },
+      { path: '/testing/projects/:projectId', element: lazyPage(<ProjectWorkbench />) },
       { path: '/testing/:appId', element: lazyPage(<AppWorkbench />) },
       { path: '/settings', element: <Navigate to="/settings/runtime" replace /> },
       { path: '/assistant', element: lazyPage(<AssistantPage />) },
@@ -69,8 +72,8 @@ export const router = createBrowserRouter([{ element: <><DraftNavigationGuard />
       { path: '/settings/plugins', element: <Navigate to="/settings/runtime" replace /> },
       { path: '/settings/plugins/:pluginId', element: <Navigate to="/settings/runtime" replace /> },
       { path: '/settings/keys', element: lazyPage(<KeysPage />) },
-      { path: '/settings/apps/:appId/:section', element: <Planned title="应用配置" phase="阶段 3" note="只保留环境配置一项。" source="Settings/AppConfigPage.vue 546 行" /> },
-      { path: '/settings/projects/:projectId/env', element: <Planned title="项目环境" phase="阶段 3" source="Settings/ProjectEnvPage.vue 42 行" /> },
+      { path: '/settings/apps/:appId/:section', element: lazyPage(<AppWorkbench configuration />) },
+      { path: '/settings/projects/:projectId/env', element: lazyPage(<ProjectConfigurationRedirect />) },
 
       // 已下线功能的旧 URL：不保留页面，收敛回落地页
       { path: '/dialogue', element: <Navigate to="/testing" replace /> },
@@ -88,9 +91,9 @@ export const router = createBrowserRouter([{ element: <><DraftNavigationGuard />
       { path: '/dashboard', element: <Navigate to="/health" replace /> },
       { path: '/health', element: lazyPage(<HealthPage />) },
       { path: '/audit', element: lazyPage(<AuditPage />) },
-      { path: '/catalog', element: <Planned title="项目与应用" phase="阶段 2" source="Catalog/index.vue 121 行" /> },
-      { path: '/catalog/:projectId', element: <Planned title="项目" phase="阶段 2" source="Catalog/ProjectPage.vue 199 行" /> },
-      { path: '/catalog/:projectId/apps/:appId/*', element: <Planned title="应用" phase="阶段 2" note="4 个 tab：概览 / 知识 / 文档 / 信息基座。" source="Catalog/AppShell.vue 132 行" /> },
+      { path: '/catalog', element: <Navigate to="/testing" replace /> },
+      { path: '/catalog/:projectId', element: lazyPage(<ProjectConfigurationRedirect />) },
+      { path: '/catalog/:projectId/apps/:appId/*', element: lazyPage(<AppWorkbench />) },
       { path: '/nodes', element: <Planned title="节点与设备" phase="阶段 2" source="Catalog/NodesPage.vue 171 行" /> },
       { path: '/account-pool-templates', element: <Planned title="号池模板" phase="阶段 2" source="Settings/AccountPoolTemplatesPage.vue 297 行" /> },
       { path: '/case-resource', element: lazyPage(<CaseResourcePage />) },

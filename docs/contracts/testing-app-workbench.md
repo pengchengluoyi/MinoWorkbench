@@ -1,3 +1,5 @@
+> 2026-10-17：全局入口已按用户要求调整为项目，应用统一在项目配置中创建。当前合同以 [项目入口与应用配置](testing-project-workbench.md) 为准；下文保留旧应用导航的历史设计。
+
 # 行为契约 · 应用工作台（外壳）
 
 **原始实现**：`MinoStudio/src/views/Testing/AppShell.vue` **2,387 行**

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, FormField, FormSection, Input, Select, Skeleton, errText } from '@/ui'
 import { getLoginEvidencePolicy, saveLoginEvidencePolicy, type LoginEvidencePolicy } from '@/api/loginEvidencePolicy'
@@ -8,8 +7,7 @@ import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 
 const INITIAL: LoginEvidencePolicy = { mode: 'ui_identity', env_profiles: [], env_surfaces: [], authenticated_content_hint: '', logout_navigation_hint: '' }
 const split = (text: string) => [...new Set(text.split(/[,，]/).map(s => s.trim()).filter(Boolean))].sort()
-export function LoginEvidencePolicyPanel() {
-  const { appId = '' } = useParams()
+export function LoginEvidencePolicyPanel({ appId }: { appId: string }) {
   const qc = useQueryClient()
   const query = useQuery({ queryKey: ['login-evidence-policy', appId], enabled: !!appId, queryFn: async () => unwrapOne<{ policy: LoginEvidencePolicy }>(await getLoginEvidencePolicy(appId)).policy })
   const [draft, setDraft] = useState(INITIAL)

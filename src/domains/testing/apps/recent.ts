@@ -1,3 +1,4 @@
+import { useSession } from '@/lib/session'
 const KEY = 'mino.testing.recentApps'
 const MAX = 12
 
@@ -19,4 +20,13 @@ export const markAppOpened = (appId: string) => {
   if (!appId) return
   const next = [appId, ...read().filter((id) => id !== appId)].slice(0, MAX)
   try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* 隐私模式 */ }
+}
+
+// Project history is separate from legacy application IDs and scoped to the account.
+const projectKey = () => `mino.testing.recentProjects:${useSession.getState().user?.user_id || ''}`
+export const recentProjectIds = (): string[] => {
+  try { const rows = JSON.parse(localStorage.getItem(projectKey()) || '[]'); return Array.isArray(rows) ? rows.filter(value => typeof value === 'string') : [] } catch { return [] }
+}
+export const markProjectOpened = (projectId: string) => {
+  try { localStorage.setItem(projectKey(), JSON.stringify([projectId, ...recentProjectIds().filter(id => id !== projectId)].slice(0, MAX))) } catch { /* private mode */ }
 }

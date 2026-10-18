@@ -1,7 +1,7 @@
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Button, Input, Switch, errText, useFeedback } from '@/ui'
+import { Alert, Button, Input, Switch, errText, useFeedback } from '@/ui'
 import {
   callNodePlugin,
   configNodePlugin,
@@ -175,7 +175,8 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
     }
   }
 
-  const locked = !online || !known
+  const lockReason = !online ? '节点离线，恢复连接后才能编辑和保存配置。' : !known ? '节点尚未上报插件状态，暂不能编辑配置。请刷新状态或检查节点版本。' : ''
+  const locked = !!lockReason
 
   const dynamicIm: ItemDef[] = (node.plugins || [])
     .filter((row) => row.class === 'im' && row.id !== 'wechat')
@@ -245,8 +246,11 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
   }, [node.node_id, online, known, selected.item.wechat, wechatReported])
 
   return (
-    <div className="flex h-full min-h-0">{unknownJob && <p role="alert">插件 {unknownJob} 的执行结果待确认，未重新提交。<button type="button" onClick={() => { void refresh(); setUnknownJob('') }}>已核对节点状态，解除本地派发锁</button></p>}
-      <nav className="shrink-0 overflow-y-auto" aria-label="接入项" style={{ width: 'clamp(180px, 22%, 280px)', borderRight: '1px solid var(--w-border)' }}>
+    <div className="w-node-config-shell">
+      <div className="w-node-config-context"><span>配置目标：<strong>{node.hostname || node.node_id}</strong></span><Button size="small" disabled={!!busy} onClick={() => void refresh()}>刷新配置状态</Button></div>
+      {lockReason && <Alert type="warning" showIcon message={lockReason} />}
+      <div className="w-node-config-layout">{unknownJob && <p role="alert">插件 {unknownJob} 的执行结果待确认，未重新提交。<button type="button" onClick={() => { void refresh(); setUnknownJob('') }}>已核对节点状态，解除本地派发锁</button></p>}
+      <nav className="w-node-config-nav" aria-label="接入项">
         {online && !known ? (
           <div style={{ padding: '10px 12px', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-secondary)' }}>
             节点尚未上报可用插件状态。请稍后刷新；持续无状态时检查 Scout 的版本与账号归属。
@@ -271,6 +275,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
                   key={item.navId || item.id}
                   type="button"
                   data-active={on ? 'true' : 'false'}
+                  aria-current={on ? 'true' : undefined}
                   className="w-hit flex w-full items-center gap-2"
                   onClick={() => setOpenId(navKey(group.id, item))}
                   style={{ border: 'none', cursor: 'pointer', textAlign: 'left', padding: '8px 12px', minHeight: 40 }}
@@ -288,8 +293,8 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
           </div>
         ))}
       </nav>
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ padding: '16px 20px 40px' }}>
-        <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>{selected.item.label}</div>
+      <div className="w-node-config-editor">
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{selected.item.label}</h2>
         <p style={{ margin: '4px 0 16px', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>{selected.item.hint || HINT[selected.item.id]}</p>
         {selected.item.conn ? <ConnLine st={selectedPlatform ? { ...selectedSt, status: selectedPlatform } : selectedSt} /> : null}
         {selected.item.groupId && selectedChannel ? (
@@ -316,8 +321,8 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
             {wechat.need_verify ? (
               <label className="flex items-center gap-2">
                 <span style={{ width: 72, fontSize: 'var(--w-font-sm)' }}>配对码</span>
-                <Input value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} style={{ maxWidth: 220 }} autoComplete="off" />
-                <Button size="small" disabled={!!busy} onClick={() => wechatAct('verify', { verify_code: verifyCode })}>提交</Button>
+                <Input disabled={!!busy || locked} value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} style={{ maxWidth: 220 }} autoComplete="off" />
+                <Button size="small" disabled={!!busy || locked || !verifyCode.trim()} onClick={() => wechatAct('verify', { verify_code: verifyCode })}>提交</Button>
               </label>
             ) : null}
           </div>
@@ -356,6 +361,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
                   ) : (
                     <Input.Password
                       value={draft || ''}
+                      disabled={!!busy || locked}
                       placeholder={field.placeholder || '填写新密钥后保存'}
                       autoComplete="off"
                       onChange={(e) => setField(selectedKind, selectedPluginId, field.key, e.target.value)}
@@ -364,6 +370,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
                 ) : (
                   <Input
                     value={draft !== undefined ? draft : savedText}
+                    disabled={!!busy || locked}
                     placeholder={field.placeholder}
                     autoComplete="off"
                     onChange={(e) => setField(selectedKind, selectedPluginId, field.key, e.target.value)}
@@ -371,7 +378,8 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
                 )}
               </label>
             )})}
-            <div className="flex flex-wrap gap-2">
+            <div className="w-node-config-actions">
+              {Object.keys(drafts[selectedBag] || {}).length > 0 && <span className="w-form-hint" role="status" style={{ width: '100%' }}>当前配置有未保存的修改</span>}
               {selected.item.groupId && selectedMissing ? (
                 <Button
                   size="small"
@@ -398,7 +406,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
                 <span style={{ width: '100%', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>{testExplain(selected.item)}</span>
               ) : null}
               {selected.item.needsInstall && selectedSt?.installed ? (
-                <Button size="small" type="text" disabled={!!busy || locked} onClick={() => {
+                <Button size="small" type="text" danger disabled={!!busy || locked} onClick={() => {
                   const title = selected.item.groupId ? '移除 LangBot？' : '移除这个插件？'
                   const content = selected.item.groupId ? 'LangBot 是共用的运行层。移除后，飞书、钉钉、企业微信的配置都会从这台机器清掉。' : '移除后需要重新安装才能再用。'
                   void fb.confirm({ title, content, okText: '移除' }).then((ok) => {
@@ -415,6 +423,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
           </div>
         )}
         {selected.group.id === 'im' ? <ImNotes node={node} hasDynamic={dynamicIm.length > 0} /> : null}
+      </div>
       </div>
     </div>
   )

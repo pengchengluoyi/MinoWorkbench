@@ -15,7 +15,7 @@ export const DEFAULT_TAB: Tab = 'cases'
 /** 已砍功能的旧 tab 值，统一重定向到默认 tab。 */
 export const RETIRED_TABS = ['process', 'knowledge', 'docs', 'intel', 'dispatch'] as const
 
-export type SubParamKey = 'view' | 'nview' | 'section' | 'configSection'
+export type SubParamKey = 'view' | 'nview' | 'section' | 'configSection' | 'configView'
 
 export interface SubItem {
   label: string
@@ -60,7 +60,9 @@ export const APP_NAV: NavItem[] = [
     id: 'config',
     label: '配置',
     icon: Settings2,
-    children: [{ label: '环境配置', param: { key: 'configSection', value: 'env' } }],
+    children: [
+      { label: '应用与环境', param: { key: 'configView', value: 'apps' } },
+    ],
   },
 ]
 
@@ -69,7 +71,7 @@ export const SUB_VIEW_DEFAULTS: Partial<Record<Tab, { key: SubParamKey; value: s
   cases: { key: 'view', value: 'library' },
   navigation: { key: 'nview', value: 'arch' },
   assets: { key: 'section', value: 'accounts' },
-  config: { key: 'configSection', value: 'env' },
+  config: { key: 'configView', value: 'apps' },
 }
 
 export const resolveTab = (raw: unknown): Tab => {

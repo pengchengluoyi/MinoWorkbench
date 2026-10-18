@@ -156,7 +156,7 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
         <EmptyState
           icon={<TriangleAlert size={28} strokeWidth={1.5} style={{ color: 'var(--w-warn)' }} />}
           title="缺少项目信息"
-          hint="用例挂在项目下，这个链接里没有 projectId。从应用列表重新进入即可。"
+          hint="用例挂在项目下，这个链接里没有 projectId。从项目列表重新进入即可。"
         />
       </Card>
     )
@@ -223,7 +223,7 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
           <Button
             size="small"
             icon={<ExternalLink size={13} />}
-            href={`?tab=tasks&run=${encodeURIComponent(dispatched.runId)}&projectId=${projectId}`}
+            href={`?tab=tasks&run=${encodeURIComponent(dispatched.runId)}&appId=${encodeURIComponent(appId)}`}
           >
             查看执行详情
           </Button>

@@ -3,6 +3,7 @@ import { environmentChannel } from '@/constants/platformContract'
 
 export interface EnvChannel {
   id: string
+  app_id?: string
   kind: string
   platform?: string
   alias: string
@@ -183,6 +184,7 @@ function normalizeChannel(raw: unknown, seen: Set<string>): EnvChannel | null {
   const field = slugEnvKey(String(src.field || preset?.field || 'value'), 'value')
   return {
     id,
+    ...(src.app_id ? { app_id: String(src.app_id) } : {}),
     kind,
     ...(kind !== 'server' || Object.hasOwn(src, 'platform') ? { platform } : {}),
     alias,

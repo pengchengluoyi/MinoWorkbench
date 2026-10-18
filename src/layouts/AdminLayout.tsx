@@ -19,7 +19,7 @@ const GROUPS = [
   },
   {
     id: 'inventory', label: '库存', items: [
-      { to: '/catalog', label: '项目与应用', icon: FolderTree },
+      { to: '/testing', label: '项目', icon: FolderTree },
       { to: '/nodes', label: '节点与设备', icon: Cpu },
       { to: '/account-pool-templates', label: '号池模板', icon: NotebookTabs },
       { to: '/case-resource', label: '用例资源', icon: KeyRound },

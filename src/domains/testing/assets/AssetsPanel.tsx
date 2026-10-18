@@ -25,7 +25,7 @@ export function AssetsPanel({ projectId }: { projectId: string }) {
         <EmptyState
           icon={<TriangleAlert size={28} strokeWidth={1.5} style={{ color: 'var(--w-warn)' }} />}
           title="缺少项目信息"
-          hint="测试资源挂在项目下，这个链接里没有 projectId。从应用列表重新进入即可。"
+          hint="测试资源挂在项目下，这个链接里没有 projectId。从项目列表重新进入即可。"
         />
       </Card>
     )

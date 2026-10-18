@@ -12,7 +12,7 @@ interface Command {
 }
 
 const STATIC: Command[] = [
-  { id: 'apps', label: '应用', hint: '工作台', to: '/testing' },
+  { id: 'projects', label: '项目', hint: '工作台', to: '/testing' },
   { id: 'assistant', label: '我的助手', hint: '设置', to: '/assistant' },
   { id: 'nodes', label: 'Scout 节点', hint: '设置', to: '/settings/runtime' },
   { id: 'keys', label: '模型密钥', hint: '设置', to: '/settings/keys' },
@@ -21,7 +21,7 @@ const STATIC: Command[] = [
 ]
 
 /**
- * ⌘K 命令面板。跳页面、跳应用。
+ * ⌘K 命令面板。跳页面、跳项目。
  * 高密度工作台里，导航折叠之后这是最快的路，不靠装饰动效。
  */
 export function CommandPalette() {
@@ -35,24 +35,20 @@ export function CommandPalette() {
   useEffect(() => { if (!open) return; const previous = document.activeElement as HTMLElement | null; return () => previous?.focus() }, [open])
 
   const commands = useMemo(() => {
-    const apps: Command[] = []
+    const entries: Command[] = []
     for (const project of projects.data || []) {
-      for (const app of project.apps || []) {
         const params = new URLSearchParams({
-          appName: app.name || '',
-          projectId: project.id,
-          projectName: project.name || '',
-          tab: 'cases',
+          tab: project.apps?.length ? 'cases' : 'config',
+          ...(project.apps?.length ? {} : { configView: 'apps' }),
         })
-        apps.push({
-          id: `app-${app.id}`,
-          label: app.name || app.id,
-          hint: project.name || '应用',
-          to: `/testing/${app.id}?${params.toString()}`,
+        entries.push({
+          id: `project-${project.id}`,
+          label: project.name || project.id,
+          hint: '项目',
+          to: `/testing/projects/${encodeURIComponent(project.id)}?${params.toString()}`,
         })
-      }
     }
-    const all = [...STATIC.filter((command) => command.hint !== '管理后台' || isAdmin(role)), ...apps]
+    const all = [...STATIC.filter((command) => command.hint !== '管理后台' || isAdmin(role)), ...entries]
     const needle = q.trim().toLowerCase()
     if (!needle) return all.slice(0, 12)
     return all.filter((c) => `${c.label} ${c.hint || ''}`.toLowerCase().includes(needle)).slice(0, 12)
@@ -121,7 +117,7 @@ export function CommandPalette() {
         <input
           autoFocus
           value={q}
-          placeholder="跳转到页面或应用"
+          placeholder="跳转到页面或项目"
           aria-label="搜索命令"
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {

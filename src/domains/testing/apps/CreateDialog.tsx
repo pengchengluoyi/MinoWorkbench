@@ -4,6 +4,7 @@ import { Button, Form, Input, Modal, errText, useFeedback } from '@/ui'
 import { createAppInProject, createProject } from '@/api/project'
 import { APP_PLATFORM_OPTIONS } from '@/constants/appPlatforms'
 import { projectKeys } from './queries'
+import { unwrapOne } from '@/lib/unwrap'
 
 export type CreateProjectRef = { id: string; name: string }
 export type CreateKind =
@@ -14,9 +15,11 @@ export type CreateKind =
 export function CreateDialog({
   target,
   onClose,
+  onCreated,
 }: {
   target: CreateKind | null
   onClose: () => void
+  onCreated?: (row: { id: string }) => void
 }) {
   const [form] = Form.useForm()
   const fb = useFeedback()
@@ -49,10 +52,13 @@ export function CreateDialog({
         platforms: values.platform,
       })
     },
-    onSuccess: () => {
+    onSuccess: response => {
       void qc.invalidateQueries({ queryKey: projectKeys.all })
-      fb.ok(target?.kind === 'project' ? '项目已创建，可在项目中添加应用' : '应用已创建，进入应用后先配置环境与渠道，再导入用例')
+      void qc.invalidateQueries({ queryKey: ['project'] })
+      fb.ok(target?.kind === 'project' ? '项目已创建，请在配置中管理应用与环境' : '应用已添加到当前项目')
       onClose()
+      const row = unwrapOne<{ id: string }>(response)
+      if (row?.id) onCreated?.(row)
     },
     onError: (e) => fb.fail(errText(e, '创建失败')),
   })

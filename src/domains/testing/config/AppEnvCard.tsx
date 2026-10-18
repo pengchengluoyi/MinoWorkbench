@@ -8,7 +8,7 @@ const KIND_OPTIONS = [{ value: 'phone', label: '手机号（号池 phone）' }, 
 
 export function AppEnvCard({ channel, value, inheritHint, secrets, phone, gmail, onValue, onSecrets, onPhoneStart, onGmailStart, onRemove, onCopy, disabled = false }: {
   channel: EnvChannel; value: string; inheritHint: string; secrets: EnvSecrets; phone: SeqSlot; gmail: SeqSlot
-  onValue: (v: string) => void; onSecrets: (next: EnvSecrets) => void; onPhoneStart: (v: string) => void; onGmailStart: (v: string) => void; onRemove: () => void; onCopy: () => void; disabled?: boolean
+  onValue: (v: string) => void; onSecrets: (next: EnvSecrets) => void; onPhoneStart: (v: string) => void; onGmailStart: (v: string) => void; onRemove?: () => void; onCopy: () => void; disabled?: boolean
 }) {
   const patch = (next: EnvSecrets) => onSecrets(next)
   return <article className="w-surface-card" style={{ minWidth: 0 }}>
@@ -43,7 +43,7 @@ export function AppEnvCard({ channel, value, inheritHint, secrets, phone, gmail,
     </fieldset>
     <footer className="flex flex-wrap items-center gap-3" style={{ padding: '16px 24px', borderTop: '1px solid var(--w-border)' }}>
       <span className="w-form-hint" style={{ flex: 1 }}>参数引用：<code style={{ overflowWrap: 'anywhere' }}>{channelConfigVar(channel)}</code></span>
-      <Button danger type="text" disabled={disabled} onClick={onRemove}>移除渠道</Button>
+      {onRemove && <Button danger type="text" disabled={disabled} onClick={onRemove}>移除渠道</Button>}
     </footer>
   </article>
 }

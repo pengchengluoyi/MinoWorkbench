@@ -1,3 +1,5 @@
+import { appRuntimeChannels } from '../config/appRuntimeChannels'
+import { useProjects } from '../apps/queries'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useEffect, useMemo, useState, useRef, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -37,7 +39,12 @@ export function CreateTaskDialog({
     queryFn: async () => normalizeEnvDoc(unwrapOne(await getProjectEnv(projectId))),
   })
 
-  const doc = env.data
+  const projects = useProjects()
+  const runtime = useMemo(() => {
+    const apps = projects.data?.find(p => p.id === projectId)?.apps || []
+    return appRuntimeChannels(env.data, apps.find(a => a.id === appId), apps)
+  }, [env.data, projects.data, projectId, appId])
+  const doc = useMemo(() => env.data ? { ...env.data, channels: runtime.channels } : undefined, [env.data, runtime])
   const [surface, setSurface] = useState('')
   const [profile, setProfile] = useState('')
   const [sn, setSn] = useState('')
@@ -64,9 +71,9 @@ export function CreateTaskDialog({
   }, [open])
   useEffect(() => {
     if (!open || !doc) return
-    setSurface((cur) => doc.channels.some(row => row.id === cur) ? cur : doc.channels[0]?.id || '')
+    setSurface((cur) => doc.channels.some(row => row.id === cur) ? cur : runtime.needsSelection ? '' : doc.channels[0]?.id || '')
     setProfile((cur) => doc.environments.some(row => row.key === cur) ? cur : doc.default_profile || '')
-  }, [open, doc])
+  }, [open, doc, runtime.needsSelection])
 
   const groups = useMemo(() => {
     const q = kw.trim().toLowerCase()
@@ -241,7 +248,7 @@ export function CreateTaskDialog({
           <Input size="small" value={kw} placeholder="按名称或编号筛选" onChange={(event) => { setKw(event.target.value); setPage(1) }} style={{ marginBottom: 8 }} />
           <div className="flex flex-col" style={{ gap: 4, maxHeight: 220, overflow: 'auto' }}>
             {cases.isLoading ? <p style={hint}>正在读取用例…</p> : null}
-            {!cases.isLoading && !groups.length ? <p style={hint}>{projectId ? '没有可选用例' : '链接里没有项目，从应用列表重新进入后才能勾选用例。'}</p> : null}
+            {!cases.isLoading && !groups.length ? <p style={hint}>{projectId ? '没有可选用例' : '链接里没有项目，从项目列表重新进入后才能勾选用例。'}</p> : null}
             {groups.map((group) => (
               <div key={group.name}>
                 <div style={{ margin: '8px 0 4px', fontSize: 12, fontWeight: 750, color: 'var(--w-text-tertiary)' }}>{group.name}</div>

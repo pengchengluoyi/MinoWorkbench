@@ -1,5 +1,5 @@
 import { recordAudit } from '@/domains/admin/audit/auditLog'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Checkbox, EmptyState, Input, Select, Skeleton, errText } from '@/ui'
@@ -7,9 +7,8 @@ import { listV5Controls, probeV5Control, saveV5Control, type V5Control } from '@
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { unwrapOne } from '@/lib/unwrap'
 
-export function ControlRegistry({ projectId }: { projectId: string }) {
+export function ControlRegistry({ projectId, appId }: { projectId: string; appId?: string }) {
   const qc = useQueryClient()
-  const { appId } = useParams()
   const query = useQuery({ queryKey: ['v5-controls', projectId], queryFn: async () => {
     const data = unwrapOne<{ items: V5Control[]; identity_conflicts: { control_id: string; count: number }[] }>(await listV5Controls(projectId))
     if (!Array.isArray(data?.items) || !Array.isArray(data?.identity_conflicts)) throw new Error('控件注册表返回不完整，无法确认控件清单与身份冲突。请重新读取。')
@@ -70,7 +69,7 @@ export function ControlRegistry({ projectId }: { projectId: string }) {
     catch (error) { setNotice(errText(error, '只读探测失败')) }
     finally { setBusy(false) }
   }
-  if (!projectId) return <EmptyState title="缺少项目归属" hint="请从应用工作台进入控件配置。" />
+  if (!projectId) return <EmptyState title="缺少项目归属" hint="请从项目工作台进入控件配置。" />
   if (query.isLoading) return <Skeleton active paragraph={{ rows: 6 }} />
   if (query.error) return <EmptyState title="控件读取失败" hint={errText(query.error)} action={<Button onClick={() => void query.refetch()}>重试</Button>} />
   return <section aria-label="控件注册表" className="flex min-h-0 flex-1 flex-col overflow-auto" style={{ gap: 12 }}>
@@ -102,6 +101,6 @@ export function ControlRegistry({ projectId }: { projectId: string }) {
       </details>
     </>}
     {notice && <p role="status">{notice}</p>}
-    {appId && <p>服务端未返回控件影响的用例清单；<Link to={`/testing/${encodeURIComponent(appId)}?tab=cases`}>返回当前应用用例核对理解与发布版本</Link>。</p>}
+    {appId && <p>服务端未返回控件影响的用例清单；<Link to={`/testing/${encodeURIComponent(appId)}?tab=cases`}>返回当前目标用例核对理解与发布版本</Link>。</p>}
   </section>
 }
