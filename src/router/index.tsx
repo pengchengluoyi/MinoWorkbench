@@ -12,6 +12,7 @@ import { Planned } from '@/ui/Planned'
 /** 页面级懒加载。新增真实页面一律走这里，不要直接 import。 */
 const LoginPage = lazy(() => import('@/domains/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
 const RegisterPage = lazy(() => import('@/domains/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })))
+const UpdatesPage = lazy(() => import('@/domains/admin/updates/UpdatesPage').then(m => ({ default: m.UpdatesPage })))
 const HealthPage = lazy(() => import('@/domains/admin/health/HealthPage').then((m) => ({ default: m.HealthPage })))
 const AuditPage = lazy(() => import('@/domains/admin/audit/AuditPage').then((m) => ({ default: m.AuditPage })))
 const ProjectListPage = lazy(() => import('@/domains/testing/apps/AppListPage').then((m) => ({ default: m.ProjectListPage })))
@@ -90,6 +91,7 @@ export const router = createBrowserRouter([{ element: <><DraftNavigationGuard />
     children: [
       { path: '/dashboard', element: <Navigate to="/health" replace /> },
       { path: '/health', element: lazyPage(<HealthPage />) },
+      { path: '/updates', element: lazyPage(<UpdatesPage />) },
       { path: '/audit', element: lazyPage(<AuditPage />) },
       { path: '/catalog', element: <Navigate to="/testing" replace /> },
       { path: '/catalog/:projectId', element: lazyPage(<ProjectConfigurationRedirect />) },
