@@ -48,8 +48,6 @@ def main():
         ap.error("invalid Nexus port")
     config = {"nexusUrl":args.nexus_url.rstrip("/"), "buildId":build}
     runtime_file = base / "mino-runtime.json"
-    if not runtime_file.exists():
-        runtime_file = base / "hi3d-runtime.json"
     runtime_id = json.loads(runtime_file.read_text())["runtime_id"] if runtime_file.exists() else "unmanaged"
     runtime_build = build
     def active():

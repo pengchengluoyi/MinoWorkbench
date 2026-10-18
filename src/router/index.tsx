@@ -14,6 +14,7 @@ const LoginPage = lazy(() => import('@/domains/auth/LoginPage').then((m) => ({ d
 const RegisterPage = lazy(() => import('@/domains/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })))
 const HealthPage = lazy(() => import('@/domains/admin/health/HealthPage').then((m) => ({ default: m.HealthPage })))
 const AuditPage = lazy(() => import('@/domains/admin/audit/AuditPage').then((m) => ({ default: m.AuditPage })))
+const IntegrationsPage = lazy(() => import('@/domains/admin/integrations/IntegrationsPage').then((module) => ({ default: module.IntegrationsPage })))
 const ProjectListPage = lazy(() => import('@/domains/testing/apps/AppListPage').then((m) => ({ default: m.ProjectListPage })))
 const ProjectWorkbench = lazy(() => import('@/domains/testing/workbench/ProjectWorkbench').then(m => ({ default: m.ProjectWorkbench })))
 const ProjectConfigurationRedirect = lazy(() => import('@/domains/testing/workbench/AppWorkbench').then(m => ({ default: m.ProjectConfigurationRedirect })))
@@ -91,6 +92,7 @@ export const router = createBrowserRouter([{ element: <><DraftNavigationGuard />
       { path: '/dashboard', element: <Navigate to="/health" replace /> },
       { path: '/health', element: lazyPage(<HealthPage />) },
       { path: '/audit', element: lazyPage(<AuditPage />) },
+      { path: '/integrations', element: lazyPage(<IntegrationsPage />) },
       { path: '/catalog', element: <Navigate to="/testing" replace /> },
       { path: '/catalog/:projectId', element: lazyPage(<ProjectConfigurationRedirect />) },
       { path: '/catalog/:projectId/apps/:appId/*', element: lazyPage(<AppWorkbench />) },

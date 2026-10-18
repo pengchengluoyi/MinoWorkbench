@@ -24,9 +24,7 @@ def identifier(value):
 
 
 def legacy_path(path):
-    """Keep pre-branding installation records usable without rewriting user data."""
-    old = path.with_name(path.name.replace("mino-", "hi3d-", 1))
-    return old if not path.exists() and old.exists() else path
+    return path
 
 def read(path):
     return json.loads(legacy_path(path).read_text())
@@ -90,7 +88,7 @@ def runtime_digest(folder):
             paths.append(path)
     for path in sorted(paths):
         relative = path.relative_to(folder).as_posix()
-        if relative.startswith("_internal/web/") or relative in {"release.json", "mino-installed.json", "_internal/mino-runtime.json", "hi3d-installed.json", "_internal/hi3d-runtime.json"}:
+        if relative.startswith("_internal/web/") or relative in {"release.json", "mino-installed.json", "_internal/mino-runtime.json"}:
             continue
         digest.update(relative.encode() + b"\0" + sha(path).encode() + b"\0")
     return digest.hexdigest()

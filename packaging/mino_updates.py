@@ -14,7 +14,7 @@ def record_path(root, operation):
 
 
 def records(root):
-    return [read(path) for path in sorted(set((root / "updates").glob("mino-*.json")) | set((root / "updates").glob("hi3d-*.json")))]
+    return [read(path) for path in sorted((root / "updates").glob("mino-*.json"))]
 
 
 def save(root, row, state, **fields):
@@ -46,7 +46,7 @@ def stage(root, row):
             raise ValueError("static package requires a different runtime")
         # Copy only the runtime; the new web payload never overwrites the old release.
         for path in source.iterdir():
-            if path.name in {"release.json", "mino-installed.json", "hi3d-installed.json"}:
+            if path.name in {"release.json", "mino-installed.json"}:
                 continue
             if path.is_dir():
                 shutil.copytree(path, temporary / path.name,

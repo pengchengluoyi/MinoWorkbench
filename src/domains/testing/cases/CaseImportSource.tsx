@@ -19,7 +19,7 @@ const messages: Record<string, string> = {
   source_api_credentials_missing: '请先在此节点的接入配置中连接用例服务。',
   source_api_auth_denied: '用例服务登录失败，请检查节点中保存的账号配置。',
   source_api_unavailable: '用例服务无法连接，请检查服务地址和网络。',
-  source_api_service_mismatch: '节点连接的服务已改变，请重新读取项目列表。',
+  source_api_service_mismatch: '用例服务地址已更新，请重新读取项目列表；旧版 Scout 需要更新后使用。',
   source_sheets_read_denied: '无法读取飞书表格，请检查节点的飞书接入配置和表格权限。',
   source_import_empty: '所选范围没有可导入的用例，请检查工作表、读取范围或会话。',
 }

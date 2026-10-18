@@ -107,9 +107,8 @@ export const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
       {
         id: 'case_api',
         label: '用例服务 API',
-        hint: '填写用例服务的地址和登录账号；密码由所选 Scout 的凭据管理保存。每个节点配置一个服务账号，来源维护通过该节点读取项目和会话。',
+        hint: '服务地址在「管理 → 集成配置」统一设置。这里保存此节点的登录账号，密码由该 Scout 的凭据管理保存。',
         fields: [
-          { key: 'base_url', label: '服务地址', placeholder: 'http://SERVER_IP:8001' },
           { key: 'email', label: '登录邮箱' },
           { key: 'password', label: '登录密码', secret: true },
         ],

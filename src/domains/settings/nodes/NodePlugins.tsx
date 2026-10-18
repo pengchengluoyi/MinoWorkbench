@@ -187,7 +187,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
     const items = g.items.map((item) => {
       const kind = item.kind ?? g.id
       const row = (node.plugins || []).find((plugin) => plugin.class === kind && plugin.id === item.id)
-      if (row?.fields?.length) return { ...item, fields: row.fields, label: row.label || item.label }
+      if (row?.fields?.length) return { ...item, fields: item.id === 'case_api' ? row.fields.filter(field => field.key !== 'base_url') : row.fields, label: row.label || item.label }
       return item
     })
     if (g.id !== 'im') return { ...g, items }
