@@ -7,12 +7,13 @@ import { Button, Checkbox, Input, Modal, errText, useFeedback } from '@/ui'
 import { previewExecution, type ExecutionPreview } from '@/api/v5'
 import { getProjectEnv } from '@/api/projectEnv'
 import type { CaseRow } from '@/api/projectCases'
-import { runCaseRunner, isExecutable } from '@/api/run'
+import { runCaseRunner, getRunRequest, isExecutable, type RunPayload } from '@/api/run'
 import { unwrapOne } from '@/lib/unwrap'
 import { useRunDevices, casePageOptions } from '../cases/queries'
 import { channelKindText, channelTitle, normalizeEnvDoc, type EnvChannel, type EnvDocument } from '../config/envModel'
 import { taskKeys } from './queries'
 import { DeviceSelect } from '../cases/DeviceSelect'
+import { useSession } from '@/lib/session'
 
 /**
  * 从任务页直接开跑。
@@ -32,6 +33,9 @@ export function CreateTaskDialog({
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
   const [uncertain, setUncertain] = useState(false)
+  const ownerId = useSession(state => state.user?.user_id || '')
+  const pendingKey = `mino:run-request:${ownerId}:${projectId}:${appId}`
+  const pending = useRef<RunPayload | null>(null)
   const [caseCache, setCaseCache] = useState<Record<string, CaseRow>>({})
   const env = useQuery({
     queryKey: ['project', projectId, 'env'],
@@ -66,9 +70,10 @@ export function CreateTaskDialog({
     setPicked(initialSelection.current || [])
     setCaseCache({})
     setPage(1)
-    setUncertain(false)
+    try { pending.current = JSON.parse(sessionStorage.getItem(pendingKey) || 'null') as RunPayload | null } catch { pending.current = null }
+    setUncertain(!!pending.current)
     setKw('')
-  }, [open])
+  }, [open, pendingKey])
   useEffect(() => {
     if (!open || !doc) return
     setSurface((cur) => doc.channels.some(row => row.id === cur) ? cur : runtime.needsSelection ? '' : doc.channels[0]?.id || '')
@@ -128,7 +133,8 @@ export function CreateTaskDialog({
   const start = useMutation({
     mutationFn: async () => {
       if (block) throw new Error(block)
-      const res = await runCaseRunner({
+      const payload: RunPayload = {
+        client_request_id: crypto.randomUUID(),
         app_id: appId,
         case_ids: picked,
         sn,
@@ -140,18 +146,41 @@ export function CreateTaskDialog({
         run_type: 'manual',
         execution_mode: mode,
         playwright_headless: true,
-      })
+      }
+      pending.current = payload
+      sessionStorage.setItem(pendingKey, JSON.stringify(payload))
+      const res = await runCaseRunner(payload)
       const runId = res?.data?.run_id || res?.data?.task_id
       if (!runId) throw new Error('没有返回任务编号，无法跟踪这次执行')
       return runId
     },
     onSuccess: (runId) => {
+      sessionStorage.removeItem(pendingKey)
+      pending.current = null
+      setUncertain(false)
       void qc.invalidateQueries({ queryKey: taskKeys.list(appId) })
       fb.ok(`已下发 ${picked.length} 条用例`)
       onStarted(runId)
     },
     onError: (error) => { setUncertain(true); void qc.invalidateQueries({ queryKey: taskKeys.list(appId) }); fb.fail(errText(error, '请求未得到受理结果，请核对任务列表')) },
   })
+
+  const recover = useMutation({ mutationFn: async () => {
+    const payload = pending.current
+    if (!payload?.client_request_id) throw new Error('缺少原请求编号')
+    try { return unwrapOne<{ run_id: string }>(await getRunRequest(payload.client_request_id)).run_id }
+    catch (error) {
+      if ((error as { response?: { status?: number } }).response?.status !== 404) throw error
+      // 原请求可能仍在受理中。使用相同编号、相同选择，服务端原子去重。
+      const res = await runCaseRunner(payload)
+      const runId = res.data?.run_id || res.data?.task_id
+      if (!runId) throw new Error('仍未获得受理回执，请稍后恢复')
+      return runId
+    }
+  }, onSuccess: runId => {
+    sessionStorage.removeItem(pendingKey); pending.current = null; setUncertain(false)
+    void qc.invalidateQueries({ queryKey: taskKeys.list(appId) }); onStarted(runId)
+  }, onError: error => fb.fail(errText(error)) })
 
   return (
     <Modal
@@ -243,7 +272,7 @@ export function CreateTaskDialog({
           </section>}
           {env.isError && <p role="alert">{errText(env.error)} <Button onClick={() => void env.refetch()}>重试环境</Button></p>}
           {cases.isError && <p role="alert">{errText(cases.error)} <Button onClick={() => void cases.refetch()}>重试用例</Button></p>}
-          {uncertain && <p role="alert">受理状态待确认。请关闭弹窗并核对任务列表，确认没有新任务后再开始新的请求。</p>}
+          {uncertain && <p role="alert">原请求受理状态待确认，选择与请求编号已保留。<Button loading={recover.isPending} onClick={() => recover.mutate()}>恢复原请求</Button></p>}
           <label><Checkbox checked={mode === 'v5'} onChange={event => { setMode(event.target.checked ? 'v5' : 'legacy'); if (event.target.checked) setScheme('dom_preferred') }} /> V5：冻结计划、严格 Web 执行、原子核验（headless）</label>
           <Input size="small" value={kw} placeholder="按名称或编号筛选" onChange={(event) => { setKw(event.target.value); setPage(1) }} style={{ marginBottom: 8 }} />
           <div className="flex flex-col" style={{ gap: 4, maxHeight: 220, overflow: 'auto' }}>

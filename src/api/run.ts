@@ -22,6 +22,7 @@ export interface RunDevice {
 
 /** 下发参数按原实现的 payload 对齐，字段名不改。 */
 export interface RunPayload {
+  client_request_id?: string
   app_id: string
   case_ids: string[]
   sn?: string
@@ -36,6 +37,10 @@ export interface RunPayload {
   execution_mode?: 'legacy' | 'v5'
   playwright_headless?: boolean
 }
+
+export const getRunRequest = (requestId: string) => request<{ request_id: string; run_id: string }>({
+  url: `/case-runner/requests/${encodeURIComponent(requestId)}`, method: 'get',
+})
 
 export const runCaseRunner = (data: RunPayload) =>
   request<{ run_id?: string; task_id?: string }>({

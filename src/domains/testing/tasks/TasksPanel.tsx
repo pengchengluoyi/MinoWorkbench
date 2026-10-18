@@ -15,6 +15,7 @@ import { taskCount, taskDate, taskName, taskProgress, taskStatus } from './prese
 import { beginListNavigation, useListPerformance } from '../workbench/performance'
 
 const CaseRunView = lazy(() => import('./CaseRunView').then((module) => ({ default: module.CaseRunView })))
+const RunComparison = lazy(() => import('./RunComparison').then(module => ({ default: module.RunComparison })))
 
 /**
  * 执行结果分三层，每层只回答一个问题：
@@ -213,6 +214,7 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
         {createButton}
       </header>
       {cancelNotice && <p role="status">{cancelNotice}</p>}
+      <Suspense fallback={<p>正在读取报告对比入口</p>}><RunComparison key={urlRun} runId={urlRun} derivedFrom={String(task?.derived_from || '')} /></Suspense>
       {counts.fail > 0 && <p style={{ margin: 0, color: 'var(--w-text-tertiary)' }}>失败重试暂不开放：现有接口未返回停止确认、写效果与资源隔离的安全重试条件。</p>}
       <div className="flex shrink-0 flex-wrap gap-2" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>
         <span>原请求总数：{typeof task?.requested_total === 'number' ? task.requested_total : '服务端未报告'} · 本批次返回 {allCases.length} 个执行单元</span>

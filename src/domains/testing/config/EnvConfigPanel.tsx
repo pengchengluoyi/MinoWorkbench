@@ -1,5 +1,6 @@
 import { appRuntimeChannels } from './appRuntimeChannels'
 import { AccountFactsPanel } from './AccountFactsPanel'
+import { ExecutionResourcesPanel } from './ExecutionResourcesPanel'
 import { ProjectAppsPanel } from './ProjectAppsPanel'
 import type { AppRow } from '@/types/project'
 import { useProjects } from '../apps/queries'
@@ -30,12 +31,13 @@ import {
  * 右边只编辑当前选中的应用，避免两张完整表单叠在一起上下翻。
  */
 export function EnvConfigPanel({ projectId, appId }: { projectId: string; appId: string }) {
-  const [view, setView] = useUrlState<string>('configView', 'apps', ['apps', 'environment', 'development', 'login-evidence', 'controls', 'maintainers', 'account-facts'])
+  const [view, setView] = useUrlState<string>('configView', 'apps', ['apps', 'environment', 'development', 'login-evidence', 'controls', 'maintainers', 'account-facts', 'execution-resources'])
   return <div className="w-workspace flex min-h-0 flex-1 flex-col" style={{ gap: 12 }}>
-    <Segmented value={['environment', 'development', 'login-evidence'].includes(view) ? 'apps' : view} onChange={value => setView(String(value))} options={[{ value: 'apps', label: '应用与环境' }, { value: 'controls', label: '控件定位' }, { value: 'account-facts', label: '账号事实' }, { value: 'maintainers', label: '项目维护者' }]} />
+    <Segmented value={['environment', 'development', 'login-evidence'].includes(view) ? 'apps' : view} onChange={value => setView(String(value))} options={[{ value: 'apps', label: '应用与环境' }, { value: 'controls', label: '控件定位' }, { value: 'account-facts', label: '账号事实' }, { value: 'execution-resources', label: '执行资源' }, { value: 'maintainers', label: '项目维护者' }]} />
     {['apps', 'environment', 'development', 'login-evidence'].includes(view) && <ProjectAppsPanel projectId={projectId} legacySection={view === 'environment' ? 'environment' : view === 'development' ? 'development' : view === 'login-evidence' ? 'login' : undefined} />}
     {view === 'controls' && <ControlRegistry projectId={projectId} appId={appId} />}
     {view === 'account-facts' && <AccountFactsPanel projectId={projectId} />}
+    {view === 'execution-resources' && <ExecutionResourcesPanel projectId={projectId} />}
     {view === 'maintainers' && <MaintainersPanel projectId={projectId} />}
   </div>
 }

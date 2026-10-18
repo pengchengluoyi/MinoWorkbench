@@ -1,17 +1,16 @@
 import { usesDesktopExecutor } from '@/constants/platformContract'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Cpu, PanelLeftClose, PanelLeftOpen, Plus, Power, RefreshCw, RotateCw, TriangleAlert, Upload } from 'lucide-react'
+import { Cpu, PanelLeftClose, PanelLeftOpen, Plus, Power, RefreshCw, RotateCw, TriangleAlert } from 'lucide-react'
 import { Alert, Button, EmptyState, FormSection, Input, Skeleton, StatusPill, Tooltip, errText, useFeedback } from '@/ui'
 import { usePersistedFlag } from '@/hooks/usePersistedFlag'
-import { connectedNodeDevices, executableDevices, heldChannels, releaseTargetOf, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
+import { connectedNodeDevices, executableDevices, heldChannels, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
-import { useNodeCommand, useNodes, useScoutRelease, useScoutUpdateStatus, useClaimLegacyNode } from './queries'
+import { useNodeCommand, useNodes, useClaimLegacyNode } from './queries'
 import { useSession } from '@/lib/session'
 import { NodeLogs } from './NodeLogs'
 import { NodePlugins, PLUGIN_PANES, type PluginPane } from './NodePlugins'
 import { AddNodeModal } from './AddNodeModal'
-import { scoutReleaseState } from './releaseState'
 
 import './NodesPage.css'
 
@@ -306,33 +305,11 @@ function paneOf(raw: string | null): Pane {
 function NodeToolbar({ node, pane, onPane }: { node: ScoutNode; pane: Pane; onPane: (id: Pane) => void }) {
   const fb = useFeedback()
   const cmd = useNodeCommand()
-  const release = useScoutRelease(node)
   const online = nodeIsOnline(node)
   const asleep = nodeIsAsleep(node)
   const current = String(node.scout_version || '')
-  const latest = String(release.data?.version || '')
-  const releaseTarget = releaseTargetOf(node)
-  const updateKey = `mino.nodes.update.${node.owner_user_id || ''}.${node.node_id}`
-  const [pendingVersion, setPendingVersion] = useState(() => { try { return sessionStorage.getItem(updateKey) || '' } catch { return '' } })
-  const [pendingOperation, setPendingOperation] = useState(() => { try { return sessionStorage.getItem(updateKey + '.operation') || '' } catch { return '' } })
   const [commandError, setCommandError] = useState('')
-  const updateStatus = useScoutUpdateStatus(node.node_id)
-  const operation = updateStatus.data?.operation
-  const activeOperation = !!operation && !['succeeded', 'failed', 'rolled_back', 'cancelled', 'expired'].includes(operation.state)
-  const state = scoutReleaseState(node, release)
-  const downloading = !!node.update_job?.active
-  const versionConfirmed = !!pendingVersion && operation?.operation_id === pendingOperation && operation?.state === 'succeeded' && operation.running_version_verified === true
-  const waiting = activeOperation || (!!pendingVersion && !versionConfirmed)
-  const upgradeLabel = downloading ? (node.update_job?.label || '正在升级') : waiting ? '等待节点版本确认' : state.label
-  const upgradeBlocked = !online ? '节点离线，无法接收升级命令。' : waiting ? '升级结果待确认，请读取同一节点状态，避免重复下发。' : updateStatus.isPending || updateStatus.isError ? '需先确认原升级状态' : !release.data?.build_id || !release.data.release_tag ? '发布信息缺少固定版本标识' : state.canUpgrade ? '' : state.detail
-  const commandBlocked = !online ? '节点离线，恢复连接后才能操作。' : downloading || waiting ? '升级尚未结束，暂不能休眠或重启。' : cmd.isPending ? '命令正在下发，请稍候。' : ''
-  useEffect(() => {
-    const ended = operation?.operation_id === pendingOperation && ['failed', 'rolled_back', 'cancelled', 'expired'].includes(operation.state)
-    if ((!versionConfirmed && !ended) || !pendingVersion) return
-    setPendingVersion('')
-    setPendingOperation('')
-    try { sessionStorage.removeItem(updateKey); sessionStorage.removeItem(updateKey + '.operation') } catch { /* 不影响版本展示 */ }
-  }, [versionConfirmed, pendingVersion, pendingOperation, updateKey, operation])
+  const commandBlocked = !online ? '节点离线，恢复连接后才能操作。' : cmd.isPending ? '命令正在下发，请稍候。' : ''
 
   const run = async (command: NodeCommand, label: string, danger = false) => {
     const ok = await fb.confirm({
@@ -344,27 +321,13 @@ function NodeToolbar({ node, pane, onPane }: { node: ScoutNode; pane: Pane; onPa
       okText: label,
     })
     if (!ok) return
-    const operationId = command === 'update' ? crypto.randomUUID() : ''
-    if (command === 'update') {
-      if (upgradeBlocked || downloading || cmd.isPending) return
-      setPendingVersion(latest)
-      setPendingOperation(operationId)
-      try { sessionStorage.setItem(updateKey + '.operation', operationId) } catch { /* 页面内仍保留操作身份 */ }
-      try { sessionStorage.setItem(updateKey, latest) } catch { /* 页面内仍保留待确认状态 */ }
-    }
     setCommandError('')
     try {
-      await cmd.mutateAsync({ nodeId: node.node_id, command, update: command === 'update' ? { operation_id: operationId, build_id: release.data!.build_id!, release_tag: release.data!.release_tag! } : undefined })
-      void updateStatus.refetch()
+      await cmd.mutateAsync({ nodeId: node.node_id, command })
       fb.ok(`${label}命令已下发`)
     } catch (e) {
-      if (command === 'update' && requestDropped(e)) {
-        fb.warn('页面连接中断，下载可能仍在进行。请先查看同一节点的升级任务状态，避免重复下发。')
-        return
-      }
       const text = errText(e, `${label}失败`)
       setCommandError(text)
-      if (command === 'update' && !requestDropped(e)) { setPendingVersion(''); setPendingOperation(''); try { sessionStorage.removeItem(updateKey); sessionStorage.removeItem(updateKey + '.operation') } catch { /* 可再次检查状态 */ } }
       fb.fail(text)
     }
   }
@@ -373,23 +336,10 @@ function NodeToolbar({ node, pane, onPane }: { node: ScoutNode; pane: Pane; onPa
     <div className="w-node-maintenance">
       <div className="w-node-maintenance-summary">
         <div className="min-w-0"><strong className="w-node-name">{node.hostname || node.node_id}</strong><div className="w-form-hint">运行版本：{current || '未上报'} · {node.host?.os || node.platform || '系统未上报'} / {node.arch || node.host?.arch || '架构未上报'}</div></div>
-        <StatusPill status={waiting ? 'warn' : state.kind === 'available' ? 'pass' : state.kind === 'failed' ? 'warn' : 'muted'}>{upgradeLabel}</StatusPill>
-      </div>
-      <div className="w-node-maintenance-row">
-        <div className="w-node-maintenance-copy" role="status">
-          <div className="w-form-hint">{waiting ? '升级已提交，等待原操作确认完成。请勿重复下发。' : state.detail}</div>
-          {upgradeBlocked && upgradeBlocked !== state.detail && <div className="w-form-hint">{upgradeBlocked}</div>}
-          {downloading && typeof node.update_job?.percent === 'number' && <div>升级进度 {Math.round(Math.max(0, Math.min(100, node.update_job.percent)))}%</div>}
-          {release.dataUpdatedAt > 0 && <div className="w-form-hint">检查于 {new Date(release.dataUpdatedAt).toLocaleTimeString()}</div>}
-        </div>
-        <div className="w-node-actions" role="group" aria-label="版本管理">
-          <Button disabled={release.isFetching || !releaseTarget.os || !releaseTarget.arch} loading={release.isFetching} onClick={() => void release.refetch()}>检查更新</Button>
-          {(waiting || updateStatus.isError) && <Button loading={updateStatus.isFetching} onClick={() => void updateStatus.refetch()}>刷新升级状态</Button>}
-          <Tooltip title={upgradeBlocked || state.detail}><span><Button type="primary" icon={<Upload size={14} />} disabled={!!upgradeBlocked || downloading || cmd.isPending} loading={cmd.isPending && cmd.variables?.command === 'update'} onClick={() => void run('update', `升级至 ${latest}`)}>升级</Button></span></Tooltip>
-        </div>
+        <StatusPill status={online ? 'pass' : 'muted'}>{online ? '在线' : '离线'}</StatusPill>
       </div>
     </div>
-    {(commandError || operation?.result?.reason || node.update_job?.error) && <Alert type="warning" message="节点操作需要核对" description={commandError || operation?.result?.reason || node.update_job?.error} />}
+    {commandError && <Alert type="warning" message="节点操作需要核对" description={commandError} />}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="w-node-tabs" role="group" aria-label="节点内容">
         {PANES.map(item => <button key={item.id} type="button" aria-pressed={pane === item.id} data-active={pane === item.id ? 'true' : 'false'} className="w-hit" onClick={() => onPane(item.id)}>{item.label}</button>)}
@@ -498,13 +448,6 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
       {pane === 'logs' ? <div style={{ padding: 'var(--w-space-3)' }}><NodeLogs nodeId={node.node_id} embedded /></div> : null}
     </section>
   )
-}
-
-function requestDropped(e: unknown): boolean {
-  const any = e as { response?: unknown; code?: string; message?: string }
-  if (any?.response) return false
-  const msg = String(any?.message || any?.code || '')
-  return /network error|timeout|ECONNABORTED|ECONNRESET/i.test(msg)
 }
 
 function Card({ children }: { children: React.ReactNode }) {

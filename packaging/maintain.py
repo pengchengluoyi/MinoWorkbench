@@ -197,54 +197,12 @@ def main():
         p.add_argument("--root", type=Path, required=True)
         if name == "register":
             p.add_argument("--service-file", type=Path, required=True)
-    for name in ("check-update", "update", "rollback", "operation", "recover", "cancel-update", "update-worker"):
+    for name in ("operation", "cancel-update"):
         p = sub.add_parser(name)
         p.add_argument("--root", type=Path, required=True)
-        if name not in {"check-update", "update-worker"}:
-            p.add_argument("--operation", required=True)
-        if name in {"check-update", "update"}:
-            p.add_argument("--manifest", type=Path, required=True)
-        if name == "update":
-            p.add_argument("--package", type=Path, required=True)
-        if name == "rollback":
-            p.add_argument("--build", required=True)
-        if name in {"update", "rollback"}:
-            p.add_argument("--defer", action="store_true", help="persist request without starting helper")
-            p.add_argument("--local-verification", action="store_true", help="explicitly test dirty packages; does not certify business compatibility")
-    for name in ("github-check", "github-fetch"):
-        p = sub.add_parser(name)
-        p.add_argument("--root", type=Path, required=True)
-        p.add_argument("--tag", default="", required=name == "github-fetch")
-        if name == "github-fetch":
-            p.add_argument("--build", required=True)
-    p = sub.add_parser("installer-upgrade")
-    p.add_argument("--root", type=Path, required=True)
-    p.add_argument("--manifest", type=Path, required=True)
-    p.add_argument("--package", type=Path, required=True)
+        p.add_argument("--operation", required=True)
     args = ap.parse_args()
-    if args.command == "installer-upgrade":
-        from installer_upgrade import upgrade
-        print(json.dumps(upgrade(args.root, args.manifest, args.package)))
-        return 0
-    if args.command in {"github-check", "github-fetch"}:
-        from mino_release import legacy_path, installation, current, read, lock, package_info
-        from mino_github_release import check, prepare
-        root, conf = installation(args.root)
-        repo = conf.get("release_repository", "pengchengluoyi/MinoWorkbench")
-        if args.command == "github-check":
-            value = check(repo, "workbench", read(current(root) / "release.json"), args.tag)
-        else:
-            with lock(root):
-                manifest, package = prepare(root, repo, "workbench", args.tag, args.build)
-                from mino_release import manifest_item
-                _, item = manifest_item(legacy_path(package.parent / "mino-manifest.json"))
-                info = package_info(package, item["sha256"])
-                if any(info.get(k) != manifest.get(k) for k in ("component", "version", "build_id", "source_commit")):
-                    raise ValueError("Downloaded package metadata differs from manifest")
-            value = {"build_id": args.build, "release_tag": args.tag, "package_verified": True, "compatibility_verified": False}
-        print(json.dumps(value))
-        return 0
-    if args.command in {"check-update", "update", "rollback", "operation", "recover", "cancel-update", "update-worker"}:
+    if args.command in {"operation", "cancel-update"}:
         from mino_updates import dispatch
         dispatch(args)
         return 0

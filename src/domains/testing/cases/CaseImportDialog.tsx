@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import * as XLSX from 'xlsx'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, InputNumber, Modal, Select, StatusPill, errText, useFeedback } from '@/ui'
-import { cancelImportPreview, commitCaseImport, getCaseImportReceipt, resumeCaseImportReceipt, getImportPreview, listImportRequirements, previewCaseImport, retryImportPreviewRow, type ImportPreviewRow } from '@/api/projectCases'
+import { Button, Input, InputNumber, Modal, Select, StatusPill, errText, useFeedback } from '@/ui'
+import { cancelImportPreview, commitCaseImport, createImportRequirement, getCaseImportReceipt, resumeCaseImportReceipt, getImportPreview, listImportRequirements, previewCaseImport, retryImportPreviewRow, type ImportPreviewRow } from '@/api/projectCases'
 import { getProjectEnv } from '@/api/projectEnv'
 import { unwrapOne } from '@/lib/unwrap'
 import { channelTitle, normalizeEnvDoc } from '../config/envModel'
@@ -12,6 +12,7 @@ import {
 } from './caseImportTable'
 import { importSheetGrid, workbookSheets, resolveSkipRows, MAX_IMPORT_FILE_BYTES, MAPPING_PAGE_SIZE, type ImportSheet } from './caseImportWorkbook'
 import { CaseImportResult } from './CaseImportResult'
+import { CaseImportSource } from './CaseImportSource'
 import { ImportConflictReview } from './ImportConflictReview'
 import { buildImportReceipt, type ImportReceipt } from './caseImportReceipt'
 import { useSession } from '@/lib/session'
@@ -37,7 +38,7 @@ function selectable(row: ImportPreviewRow) {
  * 导入按文件、工作表、字段映射、解析审阅逐层推进。单表文件可直接映射。
  * 列对错了就不能直接进库，所以解析之前必须能改列名行和字段映射。
  */
-export function CaseImportDialog({ projectId, open, onClose }: { projectId: string; open: boolean; onClose: () => void }) {
+export function CaseImportDialog({ projectId, appId, open, onClose }: { projectId: string; appId: string; open: boolean; onClose: () => void }) {
   const fb = useFeedback()
   const qc = useQueryClient()
   const owner = useSession(state => state.user?.user_id || '')
@@ -67,6 +68,8 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   const [rows, setRows] = useState<ImportPreviewRow[]>([])
   const [token, setToken] = useState('')
   const [reqId, setReqId] = useState('')
+  const [requirementName, setRequirementName] = useState('导入用例')
+  const [creatingRequirement, setCreatingRequirement] = useState(false)
   const [platform, setPlatform] = useState('')
   const [error, setError] = useState('')
   const [onlyIssues, setOnlyIssues] = useState(false)
@@ -147,7 +150,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   }
 
   const requirements = useQuery({
-    queryKey: ['project', projectId, 'import-requirements'],
+    queryKey: ['project', owner, projectId, 'import-requirements'],
     enabled: open && !!projectId,
     queryFn: async () => (await listImportRequirements(projectId)).data?.requirements || [],
   })
@@ -158,6 +161,21 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
   })
   const reqs = useMemo(() => requirements.data || [], [requirements.data])
   const platforms = useMemo(() => (env.data?.channels || []).map((channel) => ({ id: channel.id, label: channelTitle(channel) })), [env.data])
+
+  const addRequirement = async () => {
+    if (busy || creatingRequirement || !requirementName.trim()) return
+    setCreatingRequirement(true)
+    setError('')
+    try {
+      const created = (await createImportRequirement(projectId, appId, requirementName.trim())).data?.requirement
+      if (!created?.id) throw new Error('未返回需求分组，请重新读取分组列表')
+      if (owner !== useSession.getState().user?.user_id) return
+      qc.setQueryData<{ id: string; title?: string }[]>(['project', owner, projectId, 'import-requirements'], current =>
+        current?.some(item => item.id === created.id) ? current : [...(current || []), created])
+      setReqId(created.id)
+    } catch (failure) { setError(errText(failure, '添加分组失败')) }
+    finally { setCreatingRequirement(false) }
+  }
 
   useEffect(() => {
     if (!reqId && reqs[0]?.id) setReqId(reqs[0].id)
@@ -227,8 +245,8 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
 
   const selectSheet = (name: string, preparedGrid?: string[][]) => {
     const book = workbook.current
-    if (!book) return
-    const grid = preparedGrid || importSheetGrid(book, name)
+    if (!book && !preparedGrid) return
+    const grid = preparedGrid || importSheetGrid(book!, name)
     const head = detectHeaderRow(grid)
     commitStarted.current = false
     setReceipt(null)
@@ -254,7 +272,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
       const buffer = await file.arrayBuffer()
       setReadPhase('正在识别工作表…')
       await new Promise<void>(resolve => window.setTimeout(resolve, 20))
-      const book = XLSX.read(buffer, { type: 'array', cellDates: true })
+      const book = XLSX.read(buffer, { type: 'array', cellDates: true, ...(file.name.toLowerCase().endsWith('.csv') ? { codepage: 65001 } : {}) })
       const choices = workbookSheets(book)
       if (!choices.length || choices.every(item => item.empty)) throw new Error('文件中没有包含内容的工作表。')
       const recommended = choices.find(item => !item.empty && /测试用例|用例/.test(item.name)) || choices.find(item => !item.empty)!
@@ -481,7 +499,7 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
       destroyOnHidden
       className="case-import-dialog"
     >
-      <div className="case-import-stages" aria-label="导入进度">{(['file', 'sheet', 'map', 'preview', 'result'] as Step[]).map((item, index) => <span key={item} data-active={step === item}><b>{index + 1}</b>{item === 'file' ? '选择表格' : item === 'sheet' ? '选择工作表' : item === 'map' ? '核对字段' : item === 'preview' ? '审阅解析' : '导入结果'}</span>)}</div>
+      <div className="case-import-stages" aria-label="导入进度">{(sheets.length > 1 ? ['file', 'sheet', 'map', 'preview', 'result'] : ['file', 'map', 'preview', 'result']).map((item, index) => <span key={item} data-active={step === item}><b>{index + 1}</b>{item === 'file' ? '选择来源' : item === 'sheet' ? '选择工作表' : item === 'map' ? '核对字段' : item === 'preview' ? '审阅解析' : '导入结果'}</span>)}</div>
       {storageError ? <p role="alert" className="case-import-error">{storageError}</p> : token || receipt ? <p className="case-import-source-summary">此标签页按当前账号和项目保留24小时恢复记录；不保存表格原文，刷新后可读取同一次预览或已收到的结果。</p> : null}
       <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={(e) => {
         const file = e.target.files?.[0]
@@ -489,21 +507,25 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
         if (file) void onFile(file)
       }} />
       {['file', 'sheet', 'map'].includes(step) && requirements.isError && <p role="alert">需求分组读取失败：{errText(requirements.error)}<Button size="small" onClick={() => void requirements.refetch()}>重试分组</Button></p>}
-      {['file', 'sheet', 'map'].includes(step) && requirements.isSuccess && !reqs.length && <p role="status">当前项目没有需求分组，现有导入接口必须引用已有分组。Workbench 尚未提供创建分组接口；文件和映射可以核对，开始解析前需要补齐合法分组。</p>}
-      {step === 'file' ? (
-        <p style={{ margin: '0 0 12px', color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)', lineHeight: 1.55 }}>
-          先选表格。多工作表文件会先选择工作表，再核对哪一行是列名、哪些列对应字段，确认后再看解析结果。
-        </p>
-      ) : null}
-
+      {['file', 'sheet', 'map'].includes(step) && requirements.isSuccess && !reqs.length && <div style={{ marginBottom: 12 }}>
+        <p>当前项目还没有需求分组，添加一个即可继续导入。</p>
+        <div className="flex items-center gap-2">
+          <Input aria-label="需求分组名称" placeholder="分组名称" maxLength={200} value={requirementName} disabled={busy || creatingRequirement} onChange={event => setRequirementName(event.target.value)} onPressEnter={() => void addRequirement()} style={{ maxWidth: 320 }} />
+          <Button loading={creatingRequirement} disabled={busy || !appId || !requirementName.trim()} onClick={() => void addRequirement()}>添加分组</Button>
+        </div>
+      </div>}
       {step === 'file' && (
         <div className="flex flex-col items-start" style={{ gap: 12 }}>
           {reqs.length > 1 ? (
             <Select value={reqId || undefined} placeholder="挂到哪条需求" style={{ width: '100%' }} options={reqs.map((req) => ({ value: req.id, label: req.title || req.id }))} onChange={setReqId} />
           ) : reqs[0] ? <span style={{ color: 'var(--w-text-tertiary)' }}>写入需求：{reqs[0].title || reqs[0].id}</span> : null}
-          <span style={{ color: 'var(--w-text-quaternary)', fontSize: 'var(--w-font-sm)' }}>多级表头时，第 1 行可能是「回归」，下一行才是列名。文件最大 20 MB，单张工作表最多 200,000 个单元格。</span>
           {error ? <span style={{ color: 'var(--w-fail)' }}>{error}</span> : null}
-          <Button type="primary" loading={busy} onClick={() => inputRef.current?.click()}>选择表格</Button>
+          <CaseImportSource projectId={projectId} busy={busy} onBusy={setBusy} onFile={() => inputRef.current?.click()} onTable={(grid, filename) => {
+            workbook.current = null
+            setSheets([])
+            setFileName(filename)
+            selectSheet('读取内容', grid)
+          }} />
         </div>
       )}
 
@@ -519,12 +541,12 @@ export function CaseImportDialog({ projectId, open, onClose }: { projectId: stri
         <div className="flex flex-col" style={{ gap: 12 }}>
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2" style={{ fontSize: 'var(--w-font-sm)' }}>
-              Excel 列名行
-              <InputNumber disabled={busy} aria-label="Excel 列名行" min={1} max={Math.max(1, table.length)} value={headerRow + 1} onChange={(value) => changeHeader((Number(value) || 1) - 1)} />
+              表格列名行
+              <InputNumber disabled={busy} aria-label="表格列名行" min={1} max={Math.max(1, table.length)} value={headerRow + 1} onChange={(value) => changeHeader((Number(value) || 1) - 1)} />
             </label>
             <span className="min-w-0 truncate" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>{fileName} / {sheetName} · {labels.filter(Boolean).slice(0, 8).join(' · ') || '—'}</span>
           </div>
-          <div className="case-import-source-summary"><span>完整工作表 {table.length.toLocaleString()} 行</span><strong>可解析 {gridStats.candidates.toLocaleString()} 行</strong><span>表头及前文 {headerRow + 1} 行 · 空行 {gridStats.empty} 行 · 跳过非空行 {gridStats.skipped} 行</span><div><Button size="small" disabled={busy} onClick={() => inputRef.current?.click()}>更换文件</Button>{sheets.length > 1 ? <Button size="small" disabled={busy} onClick={() => { setError(''); setStep('sheet') }}>切换工作表</Button> : null}</div></div>
+          <div className="case-import-source-summary"><span>已读取 {table.length.toLocaleString()} 行</span><strong>可解析 {gridStats.candidates.toLocaleString()} 行</strong><span>表头及前文 {headerRow + 1} 行 · 空行 {gridStats.empty} 行 · 跳过非空行 {gridStats.skipped} 行</span><div><Button size="small" disabled={busy} onClick={() => { setError(''); setStep('file') }}>更换来源</Button>{sheets.length > 1 ? <Button size="small" disabled={busy} onClick={() => { setError(''); setStep('sheet') }}>切换工作表</Button> : null}</div></div>
           {sheet?.merges || sheet?.uncachedFormulas ? <p className="case-import-sheet-warning">{sheet.merges ? `${sheet.merges} 处合并单元格：保留原始值，不自动填充到其他行。` : ''}{sheet.uncachedFormulas ? ` ${sheet.uncachedFormulas} 个公式没有缓存结果，请在表格软件中重新计算后再导入。` : ''}</p> : null}
           {!headerOk ? (
             <p style={{ margin: 0, color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)' }}>

@@ -10,7 +10,7 @@ import { CommandPalette } from './CommandPalette'
 import { getServerInfo } from '@/api/me'
 
 /** 导航分组沿用 MinoConsole 的 5 组 16 项，顺序和文案不动。 */
-const AVAILABLE = new Set(['/updates', '/health', '/audit', '/case-resource', '/skills', '/jobs', '/assistant-tools', '/roles', '/stack', '/packs', '/flow-blocks'])
+const AVAILABLE = new Set(['/health', '/audit', '/case-resource', '/skills', '/jobs', '/assistant-tools', '/roles', '/stack', '/packs', '/flow-blocks'])
 const GROUPS = [
   {
     id: 'overview', label: '概览', items: [
@@ -45,7 +45,6 @@ const GROUPS = [
   },
   {
     id: 'system', label: '系统', items: [
-      { to: '/updates', label: '版本与升级', icon: Package },
       { to: '/network', label: '网络 / 内网域名', icon: Link2 },
     ],
   },

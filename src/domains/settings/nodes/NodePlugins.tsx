@@ -63,7 +63,8 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
         if (draft !== undefined) values[field.key] = draft === '1' ? '1' : '0'
         continue
       }
-      const text = String(draft || '').trim()
+      const raw = String(draft || '')
+      const text = item.id === 'case_api' && field.key === 'password' ? raw : raw.trim()
       if (text) values[field.key] = text
     }
     if (!Object.keys(values).length) {

@@ -62,71 +62,15 @@ def stage(root, row):
 
 
 def restore(root, conf, row):
-    before = root / "releases" / row["before"]
-    info = read(before / "release.json")
-    check_release(before, info)
-    save(root, row, "restoring")
-    if row["restart"]:
-        stop_app(root, conf)
-    switch(root, row["before"])
-    if row["restart"]:
-        start_app(root, conf)
-    health(conf, row["before"], info["runtime_id"])
-    save(root, row, "rolled_back")
+    raise RuntimeError("upgrade_and_rollback_removed")
 
 
 def perform(root, conf, row):
-    target = row["release"]["build_id"]
-    try:
-        if current(root).name not in {row["before"], target}:
-            save(root, row, "needs_operator", error="current changed outside this operation")
-            return
-        if row["state"] == "restoring":
-            restore(root, conf, row)
-            return
-        if row["state"] in {"requested", "installing"}:
-            save(root, row, "installing")
-            stage(root, row)
-            save(root, row, "prepared")
-        if row["state"] == "prepared":
-            evidence = api_compatibility(conf, row["release"], row.get("local_verification", False))
-            if evidence != row.get("api_evidence"):
-                raise ValueError("Nexus compatibility changed since update admission")
-            old = read(root / "releases" / row["before"] / "release.json")
-            # Ensure a live instance of THIS installation is being changed.
-            health(conf, row["before"], old["runtime_id"], timeout=3)
-            save(root, row, "stopping" if row["restart"] else "switching")
-        if row["state"] == "stopping":
-            stop_app(root, conf)
-            save(root, row, "switching")
-        if row["state"] == "switching":
-            check_release(root / "releases" / target, row["release"])
-            switch(root, target)
-            save(root, row, "restarting" if row["restart"] else "verifying")
-        if row["state"] == "restarting":
-            start_app(root, conf)
-            save(root, row, "verifying")
-        if row["state"] == "verifying":
-            evidence = health(conf, target, row["release"]["runtime_id"])
-            save(root, row, "succeeded", verification=evidence)
-    except Exception as exc:
-        row["error"] = str(exc)
-        if row["state"] in {"stopping", "switching", "restarting", "verifying", "restoring"}:
-            try:
-                restore(root, conf, row)
-            except Exception as recovery:
-                save(root, row, "needs_operator", recovery_error=str(recovery))
-        else:
-            save(root, row, "failed")
+    raise RuntimeError("upgrade_and_rollback_removed")
 
 
 def worker(root, conf):
-    with lock(root):
-        pending = [row for row in records(root) if row["state"] not in TERMINAL]
-        if len(pending) > 1:
-            raise ValueError("multiple unfinished operations; operator must reconcile")
-        if pending:
-            perform(root, conf, pending[0])
+    raise RuntimeError("upgrade_and_rollback_removed")
 
 
 def dispatch(args):

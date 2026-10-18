@@ -43,7 +43,7 @@ export function CasesPanel(props: CasesPanelProps) {
   return <>
     <CasesPanelContent {...props} onImport={() => { setImportLoaded(true); setImportOpen(true) }} />
     {importLoaded && <Suspense fallback={importOpen ? <Modal open title="正在打开用例导入" footer={null} onCancel={() => setImportOpen(false)}><Skeleton active paragraph={{ rows: 3 }} /></Modal> : null}>
-      <CaseImportDialog key={`${props.projectId}:${accountId}`} projectId={props.projectId} open={importOpen} onClose={() => setImportOpen(false)} />
+      <CaseImportDialog key={`${props.projectId}:${props.appId}:${accountId}`} projectId={props.projectId} appId={props.appId} open={importOpen} onClose={() => setImportOpen(false)} />
     </Suspense>}
   </>
 }

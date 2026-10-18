@@ -62,6 +62,23 @@ export const listImportRequirements = (projectId: string) =>
     method: 'get',
   })
 
+export const createImportRequirement = (projectId: string, appId: string, title: string) =>
+  request<{ requirement: { id: string; title: string } }>({
+    url: `/project/${projectId}/requirements`, method: 'post', data: { app_id: appId, title },
+  })
+
+export type ImportSourceKind = 'sheets' | 'case_api'
+export type ImportSourceOption = { id: string; label: string }
+export type ImportSourceNode = ImportSourceOption & { kinds: ImportSourceKind[] }
+export type ImportSourceData = { table?: string[][]; filename?: string; items?: ImportSourceOption[]; service_url?: string }
+
+export const listCaseImportSources = (projectId: string) =>
+  request<{ items: ImportSourceNode[] }>({ url: `/project/${projectId}/cases/import/sources`, method: 'get' })
+
+export const readCaseImportSource = (projectId: string, kind: ImportSourceKind, configuration: Record<string, string>, operation = 'read') =>
+  request<ImportSourceData>({ url: `/project/${projectId}/cases/import/read-source`, method: 'post', timeout: 130_000,
+    data: { kind, configuration, operation } })
+
 export interface ImportPreviewData {
   preview_token?: string
   rows?: ImportPreviewRow[]
