@@ -201,7 +201,15 @@ def main():
         p = sub.add_parser(name)
         p.add_argument("--root", type=Path, required=True)
         p.add_argument("--operation", required=True)
+    p = sub.add_parser("installer-upgrade")
+    p.add_argument("--root", type=Path, required=True)
+    p.add_argument("--manifest", type=Path, required=True)
+    p.add_argument("--package", type=Path, required=True)
     args = ap.parse_args()
+    if args.command == "installer-upgrade":
+        from installer_upgrade import upgrade
+        print(json.dumps(upgrade(args.root, args.manifest, args.package)))
+        return 0
     if args.command in {"operation", "cancel-update"}:
         from mino_updates import dispatch
         dispatch(args)

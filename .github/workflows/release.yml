@@ -79,7 +79,9 @@ jobs:
                   time.sleep(15)
           PYCODE
       - name: Install the released Nexus integration partner
-        run: python packaging/install.py --components nexus --nexus-version 0.1.46 --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path
+        run: |
+          NEXUS_VERSION=$(python -c "import json; print(json.load(open('packaging/mino-compatibility.json'))['tested_nexus_builds'][0].split('-', 1)[0])")
+          python packaging/install.py --components nexus --nexus-version "$NEXUS_VERSION" --root "$RUNNER_TEMP/mino-install/nexus" --command-dir "$RUNNER_TEMP/mino-commands" --no-path --no-open
       - name: Install released Workbench upgrade baseline
         run: |
           python - <<'PYCODE'

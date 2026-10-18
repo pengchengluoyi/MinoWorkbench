@@ -20,7 +20,7 @@ export const configureV5Baseline = (projectId: string, caseId: string, expectedR
 export const publishV5Case = (projectId: string, caseId: string, expectedRevision: number, retry: boolean, expectedCompileJobId: string) => request({
   url: `${base(projectId, caseId)}/publish`, method: 'post', data: {
     expected_revision: expectedRevision, expected_compile_job_id: expectedCompileJobId, reviewed_expected_strength: true,
-    retry_policy: retry ? { on: ['effect_unknown'], max: 1 } : { on: [], max: 0 }, reversible: retry,
+    retry_policy: retry ? { on: ['not_started'], max: 1 } : { on: [], max: 0 }, reversible: false,
   },
 })
 export const getV5Metrics = (projectId: string) => request<Record<string, unknown>>({ url: `/project/${encodeURIComponent(projectId)}/v5/metrics`, method: 'get' })

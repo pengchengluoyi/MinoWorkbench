@@ -35,8 +35,27 @@ export const getCaseRunnerTraceDetail = (runId: string) =>
 export const cancelTestingTask = (taskId: string) =>
   request({ url: `/case-runner/tasks/${encodeURIComponent(taskId)}/cancel`, method: 'post' })
 
-export const retryFailedTestingTask = (taskId: string) =>
-  request({ url: `/case-runner/tasks/${encodeURIComponent(taskId)}/retry-failed`, method: 'post' })
+export const retryFailedTestingTask = (taskId: string, unitIds: string[], requestId: string) =>
+  request<{ task_id: string }>({ url: `/case-runner/tasks/${encodeURIComponent(taskId)}/retry-failed`, method: 'post',
+    data: { execution_unit_ids: unitIds, client_request_id: requestId } })
+
+export interface RetryEligibility {
+  eligible: boolean
+  eligible_unit_ids: string[]
+  remaining_budget_seconds: number | null
+  blockers: { reason_code: string; message: string }[]
+  execution_units: { execution_unit_id: string; case_id: string; sn: string; eligible: boolean; reason_codes: string[] }[]
+}
+export const getRetryEligibility = (taskId: string) => request<RetryEligibility>({
+  url: `/case-runner/tasks/${encodeURIComponent(taskId)}/retry-eligibility`, method: 'get',
+})
+export const getTaskWriteSafety = (taskId: string) => request<{
+  resource_isolated: boolean
+  missing_evidence: string[]
+  actions: { sn: string; stop_confirmed: boolean; resource_reset_verified: boolean; reason_code: string }[]
+  resources: { resource_key: string; state: string; expired: boolean; epoch: number }[]
+  reconciliation_count: number
+}>({ url: `/case-runner/tasks/${encodeURIComponent(taskId)}/write-safety`, method: 'get' })
 
 /** 应用卡片上的任务计数。appIds 为空时不带参数，避免拉全量。 */
 export const listTestingTaskSummary = (appIds: string[] = []) =>
@@ -53,7 +72,7 @@ export const recheckTaskWriteSafety = (taskId: string) =>
   request<{
     resource_isolated: boolean
     business_result_unchanged: boolean
-    actions?: { recovered: boolean; mode?: string; reason_code: string }[]
+    actions?: { recovered: boolean; stop_confirmed?: boolean; resource_reset_verified?: boolean; mode?: string; reason_code: string }[]
     baseline_required?: { sn: string; package_id: string; session: string }[]
   }>({
     url: `/case-runner/tasks/${encodeURIComponent(taskId)}/write-safety/recheck`, method: 'post', timeout: 120_000,

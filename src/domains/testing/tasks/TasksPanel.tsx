@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Filter, RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
 import { Input, Select, Button, DataTable, PageHeader, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
-import { cancelTestingTask, recheckTaskWriteSafety } from '@/api/caseRunner'
+import { cancelTestingTask } from '@/api/caseRunner'
 import { onRealtimeState, realtimeState, type RealtimeState } from '@/lib/realtime'
 import type { PlatformInput } from '@/constants/appPlatforms'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
@@ -16,6 +16,7 @@ import { beginListNavigation, useListPerformance } from '../workbench/performanc
 
 const CaseRunView = lazy(() => import('./CaseRunView').then((module) => ({ default: module.CaseRunView })))
 const RunComparison = lazy(() => import('./RunComparison').then(module => ({ default: module.RunComparison })))
+const RunSafety = lazy(() => import('./RunSafety').then(module => ({ default: module.RunSafety })))
 
 /**
  * 执行结果分三层，每层只回答一个问题：
@@ -84,20 +85,6 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
     setCancelBusy(true)
     try { await cancelTestingTask(urlRun); setCancelNotice('服务端已响应取消请求，请核对最新任务与设备状态。'); await detail.refetch() }
     catch (error) { setCancelNotice(errText(error, '取消受理结果待确认，请重新读取任务状态，不自动重发')) }
-    finally { setCancelBusy(false) }
-  }
-  const recheckSafety = async () => {
-    if (cancelBusy) return
-    setCancelBusy(true)
-    try {
-      const response = await recheckTaskWriteSafety(urlRun)
-      const pending = (response.data?.actions ?? []).filter((action) => !action.recovered).map((action) => action.reason_code).join('、')
-      const baseline = response.data?.baseline_required?.length ?? 0
-      setCancelNotice(response.data?.resource_isolated === false
-        ? `停止证据已核对，执行隔离已解除；原业务结果不变。${baseline ? `${baseline} 台设备的登录态已标为待观察，` : ''}新任务会先核验账号和页面状态。`
-        : `仍缺少可确认的停止证据，继续保留资源隔离${pending ? `（${pending}）` : ''}。升级或任务结束不能替代停止确认。`)
-      await detail.refetch()
-    } catch (error) { setCancelNotice(errText(error, '停止复核未完成；请刷新状态，资源不会因请求失败而强制释放。')) }
     finally { setCancelBusy(false) }
   }
   const createButton = (
@@ -209,13 +196,12 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
           ]}
         />
         <Button size="small" icon={<RefreshCw size={13} />} loading={detail.isFetching} onClick={() => void detail.refetch()} aria-label="刷新详情" />
-        {!live && task?.resource_isolated === true && <Button loading={cancelBusy} onClick={() => void recheckSafety()}>核对停止并尝试解除隔离</Button>}
         {live && <Button danger loading={cancelBusy} onClick={() => void cancel()}>请求取消</Button>}
         {createButton}
       </header>
       {cancelNotice && <p role="status">{cancelNotice}</p>}
       <Suspense fallback={<p>正在读取报告对比入口</p>}><RunComparison key={urlRun} runId={urlRun} derivedFrom={String(task?.derived_from || '')} /></Suspense>
-      {counts.fail > 0 && <p style={{ margin: 0, color: 'var(--w-text-tertiary)' }}>失败重试暂不开放：现有接口未返回停止确认、写效果与资源隔离的安全重试条件。</p>}
+      {!live && task && <Suspense fallback={<p>正在加载安全状态</p>}><RunSafety key={urlRun} runId={urlRun} onStarted={id => setQuery({ run: id, tcase: null, unit: null })} /></Suspense>}
       <div className="flex shrink-0 flex-wrap gap-2" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>
         <span>原请求总数：{typeof task?.requested_total === 'number' ? task.requested_total : '服务端未报告'} · 本批次返回 {allCases.length} 个执行单元</span>
         {batchFacts(task).map((fact) => <span key={fact}>{fact}</span>)}

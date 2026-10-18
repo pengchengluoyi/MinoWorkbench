@@ -108,7 +108,7 @@ export function V5Publication({ projectId, row, enabled = true }: { projectId: s
       {Object.keys(data.provenance || {}).length ? <div className="case-publication-provenance"><h3>编译来源</h3><HumanValue value={data.provenance} /></div> : null}
       {frozen?.source ? <div className="case-publication-mapping"><SourceView title="发布时的原文" source={frozen.source} /><SourceView title="当前草稿原文" source={data.source} /></div> : null}
       <div className="case-publication-review"><Checkbox disabled={changing} checked={reviewed} onChange={event => setReviewed(event.target.checked)}>已核对业务预期强度、目标与必需校验项</Checkbox>
-        <Checkbox disabled={changing} checked={retry} onChange={event => setRetry(event.target.checked)}>确认用例可复位，允许执行效果未知时整案重试一次（重试后通过会单独标记）</Checkbox>
+        <Checkbox disabled={changing} checked={retry} onChange={event => setRetry(event.target.checked)}>允许有证据证明尚未开始写入的失败单元，在原预算内手动复跑一次；效果未知不重试</Checkbox>
         <div><Button type="primary" disabled={changing || !reviewed || !data.eligible} loading={publish.isPending} onClick={() => publish.mutate({ revision: data.draft_revision, retry, compileJobId: data.compile_job_id || '' })}>冻结发布此草稿</Button>{publish.isSuccess ? <span role="status"> 已发布</span> : null}</div>
       </div>
     </> : null}
