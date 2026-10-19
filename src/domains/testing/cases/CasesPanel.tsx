@@ -7,15 +7,14 @@ import { usePersistedFlag } from '@/hooks/usePersistedFlag'
 import { useSearchParams } from 'react-router-dom'
 import { CircleSlash, ExternalLink, Search, TriangleAlert, Upload } from 'lucide-react'
 import {
-  Button, DataTable, EmptyState, Input, Modal, Segmented, Skeleton, StatusPill, errText, useFeedback,
+  Button, DataTable, EmptyState, Input, Modal, PageHeader, Select, Segmented, Skeleton, StatusPill, errText, useFeedback,
   type DataColumn,
 } from '@/ui'
 import { deleteProjectCases, type CaseRow } from '@/api/projectCases'
 import { ModuleFilter } from './ModuleFilter'
-import { SavedScriptField } from './SavedScriptField'
+import { originalLines } from './caseUnderstanding'
 import { RunBar, type DispatchedRun } from './RunBar'
 import { CasePreview } from './CasePreview'
-import { CaseVersionStatus } from './CaseVersionChain'
 import { caseKeys, useCaseModules, useCasePage, useLastResults, useProjectCase, type LastResult } from './queries'
 import { beginListNavigation, useListPerformance } from '../workbench/performance'
 
@@ -119,36 +118,34 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
 
   const columns = useMemo<DataColumn<CaseRow>[]>(() => [
     {
-      key: 'title', title: '用例信息', width: '16%', alwaysVisible: true,
+      key: 'title', title: '用例', width: '32%', alwaysVisible: true,
       render: (_: unknown, row) => {
         const last = results[row.case_id] as LastResult | undefined
         const result = lastResults.isError ? '暂不可用' : !lastResults.isSuccess ? '读取中' : !last ? '未跑过' : null
         return <div className={`case-identity${last?.status === 'fail' ? ' is-failed' : ''}`}>
-          <div className="case-identity-title">{row.title || row.case_id}</div>
-          <div className="case-identity-id w-mono">{row.case_id}</div>
+          <div className="case-identity-title">{row.title || '未命名用例'}</div>
           <div className="case-identity-meta"><span>{row.module || '未分组'}</span>{row.platform ? <span>{row.platform}</span> : null}</div>
           <div className="case-identity-result">{result || <StatusPill status={last?.status === 'pass' ? 'pass' : last?.status === 'fail' ? 'fail' : 'muted'}>{last?.status === 'pass' ? '通过' : last?.status === 'fail' ? '失败' : '其他'}</StatusPill>}</div>
           {last?.status === 'fail' && last.reason ? <div className="case-identity-reason">{last.reason}</div> : null}
-          <CaseVersionStatus row={row} />
         </div>
       },
     },
     {
-      key: 'precondition', title: '前置条件', width: '22%',
-      render: (_: unknown, row) => <SavedScriptField projectId={projectId} row={row} kind="pre" />,
+      key: 'precondition', title: '前置条件', width: '20%',
+      render: (_: unknown, row) => <span className="case-list-summary">{sourceText(row.precondition) || '无额外条件'}</span>,
       onCell: () => ({ style: scriptCell }),
     },
     {
-      key: 'steps', title: '操作步骤', width: '31%',
-      render: (_: unknown, row) => <SavedScriptField projectId={projectId} row={row} kind="op" />,
+      key: 'steps', title: '操作步骤', width: '24%',
+      render: (_: unknown, row) => <span className="case-list-summary">{sourceText(row.steps_raw || row.steps) || '未填写'}</span>,
       onCell: () => ({ style: scriptCell }),
     },
     {
-      key: 'expected', title: '预期结果', width: '31%',
-      render: (_: unknown, row) => <SavedScriptField projectId={projectId} row={row} kind="ex" />,
+      key: 'expected', title: '预期结果', width: '24%',
+      render: (_: unknown, row) => <span className="case-list-summary">{sourceText(row.expected_raw || row.expected) || '未填写'}</span>,
       onCell: () => ({ style: scriptCell }),
     },
-  ], [projectId, results, lastResults.isError, lastResults.isSuccess])
+  ], [results, lastResults.isError, lastResults.isSuccess])
 
   if (!projectId) {
     return (
@@ -175,7 +172,7 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
         setParams(next, { replace: true })
       }}>返回列表</Button>
     </>} /></Card>
-    return <CasePreview row={preview.data!} projectId={projectId} platforms={platforms} onBack={() => {
+    return <CasePreview key={previewId} row={preview.data!} projectId={projectId} platforms={platforms} onBack={() => {
       const next = new URLSearchParams(params)
       next.delete('case')
       setParams(next, { replace: true })
@@ -184,7 +181,8 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
 
   if (cases.isSuccess && !cases.data?.total && !kw && !moduleKey && resultFilter === 'all') {
     return (
-      <>
+      <section className="w-content-page">
+        <PageHeader title="用例" />
         <Card>
           <EmptyState
             icon={<CircleSlash size={28} strokeWidth={1.5} />}
@@ -193,17 +191,17 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
             action={<Button size="small" icon={<Upload size={13} />} onClick={onImport}>导入用例</Button>}
           />
         </Card>
-
-      </>
+      </section>
     )
   }
 
   return (
     <div className="case-library flex flex-col" style={{ minHeight: 0, height: '100%' }}>
+      <PageHeader title="用例" count={cases.data?.total} extra={<Button icon={<Upload size={14} />} onClick={onImport}>导入用例</Button>} />
       {/* 下发后就地展示，不跳页 —— 用户不丢上下文 */}
       {dispatched && (
         <div
-          className="flex items-center gap-3"
+          className="flex flex-wrap items-center gap-3"
           style={{
             marginBottom: 'var(--w-space-3)',
             padding: '10px 14px',
@@ -215,9 +213,6 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
           <StatusPill status="running">执行中</StatusPill>
           <span style={{ fontSize: 'var(--w-font-base)', fontWeight: 650, color: 'var(--w-text)' }}>
             已下发 {dispatched.caseCount} 条用例
-          </span>
-          <span className="w-mono" style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-tertiary)' }}>
-            {dispatched.runId}
           </span>
           <span style={{ flex: 1 }} />
           <Button
@@ -231,7 +226,7 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0" style={{ gap: 'var(--w-space-3)' }}>
+      <div className="case-library-body">
         <ModuleFilter
           modules={modules.data?.items || []}
           total={modules.data?.total ?? cases.data?.total ?? 0}
@@ -241,12 +236,17 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
           onToggle={() => setFilterCollapsed((v) => !v)}
         />
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ gap: 'var(--w-space-2)' }}>
+        <div className="case-results">
           <DataTable<CaseRow>
             viewId="testing.cases"
             columns={columns}
             dataSource={rows}
             rowKey="case_id"
+            rowLabel={row => row.title || '未命名用例'}
+            renderCard={row => {
+              const last = results[row.case_id]
+              return <><strong className="w-record-title">{row.title || '未命名用例'}</strong><div className="w-record-line w-record-meta"><StatusPill status={last?.status === 'pass' ? 'pass' : last?.status === 'fail' ? 'fail' : 'muted'}>{lastResults.isError ? '结果暂不可用' : !lastResults.isSuccess ? '读取结果中' : !last ? '未跑过' : last.status === 'pass' ? '通过' : last.status === 'fail' ? '失败' : '其他'}</StatusPill><span>{row.module || '未分组'}</span></div><span className="w-record-excerpt">{sourceText(row.steps_raw || row.steps) || '未填写操作步骤'}</span></>
+            }}
             loading={cases.isFetching && !cases.data}
             error={cases.isError ? cases.error : undefined}
             onRetry={() => void cases.refetch()}
@@ -255,6 +255,7 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
             fill
             toolbar={
               <>
+                <Select className="case-module-select" aria-label="模块筛选" value={moduleKey} onChange={value => updateFilters({ caseModule: value })} options={[{ value: '', label: '全部模块' }, ...(modules.data?.items || []).map(item => ({ value: item.name, label: item.name }))]} />
                 <Input
                   allowClear
                   size="small"
@@ -274,10 +275,6 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
                     { value: 'never', label: '未跑过' },
                   ]}
                 />
-                <span style={{ fontSize: 'var(--w-font-meta)', color: 'var(--w-text-quaternary)' }}>
-                  {rows.length} / {cases.data?.total || 0}
-                </span>
-                <Button size="small" icon={<Upload size={13} />} onClick={onImport}>导入</Button>
               </>
             }
             selection={{
@@ -294,7 +291,6 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
             }}
           />
           {lastResults.isError ? <span role="alert" style={{ color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)' }}>上次结果读取失败。<Button size="small" type="text" onClick={() => void lastResults.refetch()}>重试</Button></span> : null}
-          <p style={{ margin: '4px 0', color: 'var(--w-text-tertiary)', fontSize: 12 }}>用例列表为当前应用范围；左侧模块统计为项目范围，筛选结果以本列表为准。</p>
           {modules.isError ? <span role="alert" style={{ color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)' }}>模块统计读取失败。<Button size="small" type="text" onClick={() => void modules.refetch()}>重试</Button></span> : null}
 
           <RunBar
@@ -314,6 +310,10 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
 
     </div>
   )
+}
+
+function sourceText(value: unknown) {
+  return originalLines(value).map(line => line.text).join('；')
 }
 
 const scriptCell: CSSProperties = {

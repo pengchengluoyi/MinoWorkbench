@@ -56,3 +56,13 @@
 .case-unlinked { color: var(--w-text-quaternary); font-size: var(--w-font-meta); white-space: nowrap; }
 
 .execution-source-alert { flex-shrink: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border: 1px solid var(--w-border); border-radius: var(--w-radius-lg); background: var(--w-warn-bg); color: var(--w-warn); font-size: var(--w-font-sm); overflow-wrap: anywhere; }
+
+@container (max-width: 1000px) {
+  .case-run-layout { flex-direction: column !important; overflow: auto; }
+  .case-run-shot { flex: 0 0 240px !important; max-width: 100% !important; width: 100%; min-height: 240px; }
+  .case-run-details { display: flex !important; flex: 0 0 auto !important; min-height: auto !important; overflow: visible !important; }
+  .case-run-stage { flex-shrink: 0; min-height: 230px !important; grid-template-columns: minmax(0, 1fr) !important; }
+  .case-run-stage dl { grid-template-columns: 52px minmax(0, 1fr) !important; }
+  .case-run-traces { flex-shrink: 0; min-height: 240px; max-height: 360px; }
+  .case-run-details .case-execution-script { flex: 0 0 auto; max-height: none; overflow: visible; }
+}

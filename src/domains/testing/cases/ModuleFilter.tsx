@@ -25,7 +25,7 @@ export function ModuleFilter({
   if (collapsed) {
     return (
       <aside
-        className="shrink-0 flex flex-col items-center"
+        className="case-module-filter shrink-0 flex flex-col items-center"
         style={{ width: 40, borderRight: '1px solid var(--w-border)' }}
       >
         <Tooltip title="展开模块筛选" placement="right">
@@ -44,12 +44,12 @@ export function ModuleFilter({
 
   return (
     <aside
-      className="shrink-0 flex flex-col overflow-y-auto"
+      className="case-module-filter shrink-0 flex flex-col overflow-y-auto"
       style={{ width: 'clamp(140px, 16%, 220px)', paddingRight: 'var(--w-space-2)', borderRight: '1px solid var(--w-border)' }}
     >
       <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
         <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-text-quaternary)', letterSpacing: '.04em' }}>
-          模块
+          项目模块
         </span>
         <Tooltip title="折叠模块筛选" placement="right">
           <Button

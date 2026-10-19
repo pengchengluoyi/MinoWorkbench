@@ -43,7 +43,7 @@
 .case-preview-legend[data-tone=attention] { --legend-color: var(--w-warn); }
 .case-preview-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .case-preview-header strong { min-width: 0; font-size: 18px; overflow-wrap: anywhere; }
-.case-library .ant-table-container table { width: 100% !important; min-width: 1050px; table-layout: fixed !important; }
+.case-library .ant-table-container table { width: 100% !important; min-width: 720px; table-layout: fixed !important; }
 .case-library .ant-table-cell { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
 .case-library .ant-table-small .ant-table-tbody > tr > td { padding: 9px 10px; }
 .case-library .ant-table-selection-column { width: 32px; }

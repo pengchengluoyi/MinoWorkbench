@@ -1,5 +1,6 @@
 import { normalizePlatforms, type PlatformInput } from '@/constants/appPlatforms'
-import { Button } from '@/ui'
+import { useState } from 'react'
+import { Button, Drawer, Dropdown, Space } from '@/ui'
 import type { CaseRow } from '@/api/projectCases'
 import { CasePreviewLegend, CaseScriptSections } from './CaseScriptSections'
 import { V5Publication } from './V5Publication'
@@ -10,22 +11,23 @@ import { CaseReview } from './CaseReview'
 export function CasePreview({ row, projectId, platforms, onBack }: { row: CaseRow; projectId: string; platforms?: PlatformInput; onBack: () => void }) {
   const scope = normalizePlatforms(row.platform || platforms).map(value => value.toLowerCase())
   const strictWeb = scope.length > 0 && scope.every(value => value === 'web')
+  const [panel, setPanel] = useState('')
   const meta = [row.module, row.platform].filter(Boolean).join(' · ')
+  const titles: Record<string, string> = { versions: '版本与编译', review: '问题复核', parsing: '解析详情', plan: '执行计划审阅', info: '用例信息' }
   return (
-    <div className="flex h-full min-h-0 flex-col" style={{ gap: 12 }}>
-      <div className="case-preview-header shrink-0">
-        <Button size="small" onClick={onBack}>返回列表</Button>
-        <strong >{row.title || row.case_id}</strong>
-        <span className="w-mono" style={{ color: 'var(--w-text-quaternary)', fontSize: 'var(--w-font-sm)' }}>{row.case_id}</span>
-        {meta ? <span style={{ color: 'var(--w-text-tertiary)', fontSize: 12 }}>{meta}</span> : null}
-      </div>
-      <CasePreviewLegend />
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <CaseVersionChain row={row} projectId={projectId} strictWeb={strictWeb} />
-        <CaseReview projectId={projectId} caseId={row.case_id} />
-        <CaseScriptSections row={row} />
-        <V5Publication projectId={projectId} row={row} enabled={strictWeb} />
-      </div>
-    </div>
+    <section className="task-detail">
+      <header className="case-detail-heading">
+        <div className="min-w-0"><h1>{row.title || '未命名用例'}</h1>{meta && <p className="w-record-meta">{meta}</p>}</div>
+        <Space wrap><Button onClick={onBack}>返回用例</Button><Dropdown trigger={['click']} menu={{ items: ['versions', 'review', 'parsing', ...(strictWeb ? ['plan'] : []), 'info'].map(key => ({ key, label: titles[key] })), onClick: ({ key }) => setPanel(key) }}><Button>更多操作</Button></Dropdown></Space>
+      </header>
+      <div className="w-page-scroll" role="region" aria-label="用例内容" tabIndex={0}><CaseScriptSections row={row} plain /></div>
+      <Drawer title={titles[panel]} width="min(1080px, 100vw)" open={!!panel} onClose={() => setPanel('')} destroyOnHidden>
+        {panel === 'versions' && <CaseVersionChain row={row} projectId={projectId} strictWeb={strictWeb} />}
+        {panel === 'review' && <CaseReview projectId={projectId} caseId={row.case_id} />}
+        {panel === 'parsing' && <><CasePreviewLegend /><CaseScriptSections row={row} /></>}
+        {panel === 'plan' && <V5Publication projectId={projectId} row={row} enabled={strictWeb} />}
+        {panel === 'info' && <dl className="task-info"><div><dt>用例编号</dt><dd>{row.case_id}</dd></div><div><dt>模块</dt><dd>{row.module || '未分组'}</dd></div><div><dt>平台</dt><dd>{row.platform || '未指定'}</dd></div></dl>}
+      </Drawer>
+    </section>
   )
 }

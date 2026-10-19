@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Filter, RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
-import { Input, Select, Button, DataTable, PageHeader, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
+import { Input, Select, Button, DataTable, Drawer, Dropdown, Space, PageHeader, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
 import { cancelTestingTask } from '@/api/caseRunner'
 import { onRealtimeState, realtimeState, type RealtimeState } from '@/lib/realtime'
 import type { PlatformInput } from '@/constants/appPlatforms'
@@ -32,9 +32,11 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
   const size = [20, 50, 100, 200].includes(sizeValue) ? sizeValue : 50
   const statusFilter = params.get('taskStatus') || ''
   const [taskLookup, setTaskLookup] = useState('')
+  const [taskPanel, setTaskPanel] = useState('')
   const list = useTaskList(appId, page, size, statusFilter)
   const tasks: TaskRow[] = list.data?.items ?? EMPTY_ARRAY
   const urlRun = params.get('run') || ''
+  useEffect(() => { setTaskPanel('') }, [urlRun])
   useListPerformance(appId, 'tasks', list.isSuccess && !urlRun, list.isError, !!list.data, JSON.stringify([page, size]))
   const tcase = params.get('tcase') || ''
   const unit = params.get('unit') || ''
@@ -116,29 +118,20 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
     )
   }
 
-  if (!urlRun && !statusFilter && !list.isLoading && !tasks.length && !list.data?.total) {
-    return (
-      <>
-        <Card>
-          <EmptyState title="还没有执行过" hint="新建一次任务，执行结果会出现在这里。" action={createButton} />
-        </Card>
-        {createDialog}
-      </>
-    )
-  }
-
   if (!urlRun) {
     return (
       <>
         <div className="w-workspace flex h-full min-h-0 flex-col">
-          <PageHeader title="执行任务" subtitle="查看任务目标、执行进度与结果，逐层进入用例和执行证据。" extra={createButton} />
+          <PageHeader title="执行批次" extra={<Space wrap><Button onClick={() => setTaskPanel('lookup')}>按编号查找</Button>{createButton}</Space>} />
           <DataTable<TaskRow>
             viewId="testing.tasks"
             fill
             rowKey={(row) => taskId(row)}
             dataSource={tasks}
             loading={list.isLoading}
-            columns={batchColumns(row => setQuery({ run: taskId(row), tcase: null, unit: null }), fb)}
+            columns={batchColumns(row => setQuery({ run: taskId(row), tcase: null, unit: null }))}
+            rowLabel={taskName}
+            renderCard={row => { const status = taskStatus(row.status); const progress = taskProgress(row); return <><div className="w-record-line"><StatusPill status={status.tone}>{status.label}</StatusPill><span className="w-record-meta">{taskDate(row.started_at)}</span></div><strong className="w-record-title">{taskName(row)}</strong><span className="w-record-meta">{String(row.platform || '平台待确认')} · {String(row.env_profile || row.envProfile || '环境待确认')}{progress.total != null ? ` · 已执行 ${progress.completed ?? '未知'} / ${progress.total}` : ''}</span></> }}
             pagination={{ page, pageSize: size, total: list.data?.total || 0,
               onChange: (next, nextSize) => {
                 beginListNavigation(appId, 'tasks')
@@ -149,14 +142,14 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
               <>
                 <Button size="small" icon={<RefreshCw size={13} />} loading={list.isFetching} onClick={() => void list.refetch()}>刷新</Button>
                 <Select aria-label="任务状态筛选" value={statusFilter} style={{ minWidth: 140 }} onChange={value => setQuery({ taskStatus: value, taskPage: '1' })} options={[{ value: '', label: '全部状态' }, { value: 'running', label: '执行中' }, { value: 'pass', label: '通过' }, { value: 'fail', label: '失败' }, { value: 'cancelled', label: '已取消' }, { value: 'blocked', label: '受阻' }]} />
-                <Input aria-label="任务编号直达" placeholder="输入完整任务编号" value={taskLookup} onChange={event => setTaskLookup(event.target.value)} style={{ width: 230 }} /><Button disabled={!taskLookup.trim()} onClick={() => setQuery({ run: taskLookup.trim(), tcase: null, unit: null })}>查看任务</Button>
-                <span>本页 {tasks.length} 条 · 上次读取 {list.dataUpdatedAt ? new Date(list.dataUpdatedAt).toLocaleTimeString() : '尚未读取'}</span>
+
               </>
             )}
             emptyTitle="还没有执行批次"
           />
         </div>
         {createDialog}
+        <Drawer title="按编号查找任务" width="min(480px, 100vw)" open={taskPanel === 'lookup'} onClose={() => setTaskPanel('')}><label className="w-form-field">任务编号<Input aria-label="任务编号直达" placeholder="输入完整任务编号" value={taskLookup} onChange={event => setTaskLookup(event.target.value)} onPressEnter={() => { if (taskLookup.trim()) { setTaskPanel(''); setQuery({ run: taskLookup.trim(), tcase: null, unit: null }) } }} /></label><Button style={{ marginTop: 16 }} type="primary" disabled={!taskLookup.trim()} onClick={() => { setTaskPanel(''); setQuery({ run: taskLookup.trim(), tcase: null, unit: null }) }}>查看任务</Button></Drawer>
       </>
     )
   }
@@ -171,75 +164,50 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
   const title = task ? taskName(task) : '任务详情'
 
   return (
-    <div className="flex h-full min-h-0 flex-col" style={{ gap: 12 }}>
-      <header className="flex shrink-0 flex-wrap items-center gap-3">
-        <Button size="small" onClick={() => setQuery({ run: null, tcase: null })}>返回列表</Button>
-        <strong className="min-w-0 truncate" style={{ fontSize: 18 }}>{title}</strong>
-        <button type="button" className="w-mono" title="复制任务 ID" onClick={() => copyTaskId(urlRun, fb)} style={idBtn}>{urlRun}</button>
-        <span style={{ color: 'var(--w-text-tertiary)', fontSize: 12 }}>{taskClock(task)}</span>
-        {live && <StatusPill status="running">执行中</StatusPill>}
-        {live && rt !== 'open' && (
-          <Tooltip title="实时推送已中断，当前靠 5 秒轮询兜底。">
-            <span className="inline-flex items-center gap-1" style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-warn)' }}>
-              <WifiOff size={12} /> 实时中断
-            </span>
-          </Tooltip>
-        )}
-        <span style={{ flex: 1 }} />
-        <Segmented
-          size="small"
-          value={onlyAttention ? 'attention' : 'all'}
-          onChange={(v) => setOnlyAttention(v === 'attention')}
-          options={[
-            { value: 'attention', label: <span className="flex items-center gap-1"><Filter size={12} />只看需关注</span> },
-            { value: 'all', label: '全部' },
-          ]}
-        />
-        <Button size="small" icon={<RefreshCw size={13} />} loading={detail.isFetching} onClick={() => void detail.refetch()} aria-label="刷新详情" />
-        {live && <Button danger loading={cancelBusy} onClick={() => void cancel()}>请求取消</Button>}
-        {createButton}
+    <section className="task-detail">
+      <header className="case-detail-heading">
+        <div className="min-w-0"><h1>{title}</h1><div className="w-record-line w-record-meta">{task && <StatusPill status={taskStatus(task.status).tone}>{taskStatus(task.status).label}</StatusPill>}<span>{taskClock(task)}</span>{live && rt !== 'open' && <Tooltip title="实时连接已中断，正在定期更新状态。"><span><WifiOff size={12} /> 连接中断</span></Tooltip>}</div></div>
+        <Space wrap><Button onClick={() => setQuery({ run: null, tcase: null, unit: null })}>返回批次</Button><Button icon={<RefreshCw size={14} />} loading={detail.isFetching} onClick={() => void detail.refetch()}>刷新</Button>{live && <Button danger loading={cancelBusy} onClick={() => void cancel()}>请求取消</Button>}<Dropdown trigger={['click']} menu={{ items: [{ key: 'info', label: '任务信息' }, { key: 'comparison', label: '历史报告对比' }], onClick: ({ key }) => setTaskPanel(key) }}><Button>更多操作</Button></Dropdown></Space>
       </header>
-      {cancelNotice && <p role="status">{cancelNotice}</p>}
-      <Suspense fallback={<p>正在读取报告对比入口</p>}><RunComparison key={urlRun} runId={urlRun} derivedFrom={String(task?.derived_from || '')} /></Suspense>
-      {!live && task && <Suspense fallback={<p>正在加载安全状态</p>}><RunSafety key={urlRun} runId={urlRun} onStarted={id => setQuery({ run: id, tcase: null, unit: null })} /></Suspense>}
-      <div className="flex shrink-0 flex-wrap gap-2" style={{ color: 'var(--w-text-tertiary)', fontSize: 'var(--w-font-sm)' }}>
-        <span>原请求总数：{typeof task?.requested_total === 'number' ? task.requested_total : '服务端未报告'} · 本批次返回 {allCases.length} 个执行单元</span>
-        {batchFacts(task).map((fact) => <span key={fact}>{fact}</span>)}
+      <div className="w-page-scroll" role="region" aria-label="任务结果" tabIndex={0}>
+        {cancelNotice && <p role="status">{cancelNotice}</p>}
+        {task && <dl className="task-summary" aria-label="执行统计">
+          <Stat kicker="进度" value={progress.percent != null ? `${progress.percent}%` : '待确认'} />
+          <Stat kicker="通过" value={String(counts.pass)} tone="var(--w-pass)" />
+          <Stat kicker="失败" value={String(counts.fail)} tone="var(--w-fail)" />
+          <Stat kicker="进行中" value={String(counts.running)} />
+          <Stat kicker="其他" value={String(counts.other)} note="取消、阻塞、跳过及未核验结果，不计为通过" />
+        </dl>}
+        {!live && task && <Suspense fallback={<p>正在读取资源状态…</p>}><RunSafety key={urlRun} runId={urlRun} onStarted={id => setQuery({ run: id, tcase: null, unit: null })} /></Suspense>}
+        {detail.isLoading ? <Skeleton active paragraph={{ rows: 6 }} title={false} /> : detail.isError ? <EmptyState title="读取批次详情失败" hint={errText(detail.error, '这个批次可能已被清理。')} action={<Button onClick={() => void detail.refetch()}>重试</Button>} /> : <div className="task-detail-results">
+          <DataTable<TaskCase>
+            viewId="testing.task.cases" fill rowKey={executionKey} dataSource={cases} columns={caseColumns}
+            rowLabel={row => row.title || '用例结果'}
+            renderCard={row => { const status = taskStatus(row.status || row.overall_status); return <><div className="w-record-line"><StatusPill status={status.tone}>{status.label}</StatusPill><span>{caseDuration(row)}</span></div><strong className="w-record-title">{row.title || '未命名用例'}</strong><span className="w-record-excerpt">{String(row.summary || failReason(row) || '查看执行详情')}</span></> }}
+            onRowClick={row => setQuery({ tcase: caseId(row), unit: executionKey(row) })}
+            toolbar={<Segmented aria-label="结果筛选" value={onlyAttention ? 'attention' : 'all'} onChange={value => setOnlyAttention(value === 'attention')} options={[{ value: 'attention', label: <span className="flex items-center gap-1"><Filter size={12} />需关注</span> }, { value: 'all', label: '全部结果' }]} />}
+            emptyTitle={onlyAttention && allCases.length ? '当前没有需关注项' : '这个批次还没有用例结果'}
+            emptyHint={onlyAttention && allCases.length ? '切换到全部结果可以查看本次执行记录。' : '执行结果尚未回传，可稍后刷新。'}
+          />
+        </div>}
       </div>
-      <div className="grid shrink-0" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <Stat kicker="进度" value={progress.percent != null ? `${progress.percent}%` : '未提供'} note={`已执行 ${progress.completed ?? '未知'} / 总数 ${progress.total ?? '未知'}`} />
-        <Stat kicker="通过" value={String(counts.pass)} tone="var(--w-pass)" />
-        <Stat kicker="失败" value={String(counts.fail)} tone="var(--w-fail)" /><Stat kicker="进行中" value={String(counts.running)} /><Stat kicker="其他 / 未核验" value={String(counts.other)} note="包括取消、阻塞、跳过及未知状态；不计为通过" />
-      </div>
-      {detail.isLoading ? (
-        <Skeleton active paragraph={{ rows: 8 }} title={false} />
-      ) : detail.isError ? (
-        <EmptyState title="读取批次详情失败" hint={errText(detail.error, '这个批次可能已被清理。')} />
-      ) : (
-        <DataTable<TaskCase>
-          viewId="testing.task.cases"
-          fill
-          rowKey={executionKey}
-          dataSource={cases}
-          columns={caseColumns}
-          onRowClick={(row) => setQuery({ tcase: caseId(row), unit: executionKey(row) })}
-          emptyTitle={onlyAttention && allCases.length ? "当前没有需关注项" : "这个批次还没有用例结果"}
-          emptyHint={onlyAttention && allCases.length ? "切换到全部可以查看所有结果。" : "执行器还没有回传，稍等或手动刷新。"}
-        />
-      )}
+      <Drawer title={taskPanel === 'comparison' ? '历史报告对比' : '任务信息'} open={taskPanel === 'info' || taskPanel === 'comparison'} onClose={() => setTaskPanel('')} width="min(860px, 100vw)" destroyOnHidden>
+        {taskPanel === 'comparison' && <Suspense fallback={<Skeleton active />}><RunComparison key={urlRun} runId={urlRun} derivedFrom={String(task?.derived_from || '')} embedded /></Suspense>}
+        {taskPanel === 'info' && <dl className="task-info"><div><dt>任务编号</dt><dd>{urlRun} <Button onClick={() => copyTaskId(urlRun, fb)}>复制编号</Button></dd></div><div><dt>执行范围</dt><dd>请求 {String(task?.requested_total ?? '未知')} 项 · 返回 {allCases.length} 项</dd></div><div><dt>执行信息</dt><dd>{batchFacts(task).join(' · ') || '未提供'}</dd></div></dl>}
+      </Drawer>
       {createDialog}
-    </div>
+    </section>
   )
 }
 
-const batchColumns = (onOpen: (row: TaskRow) => void, fb: { ok: (s: string) => void; fail: (s: string) => void }): DataColumn<TaskRow>[] => [
+const batchColumns = (onOpen: (row: TaskRow) => void): DataColumn<TaskRow>[] => [
   {
     key: 'id', title: '任务 / 用例范围', alwaysVisible: true, width: 260,
-    render: (_: unknown, row) => <div><div className="w-task-title">{taskName(row)}</div><div className="w-task-meta">{taskCount(row.total) != null ? `${row.total} 个执行单元` : '执行范围未提供'} · <button type="button" className="w-mono" title="复制完整批次编号" style={idBtn} onClick={() => copyTaskId(taskId(row), fb)}>{taskId(row)}</button></div></div>,
+    render: (_: unknown, row) => <div><div className="w-task-title">{taskName(row)}</div><div className="w-task-meta">{taskCount(row.total) != null ? `${row.total} 项执行` : '执行范围待确认'}</div></div>,
   },
   {
     key: 'target', title: '目标 / 环境', width: 180,
-    render: (_: unknown, row) => <div><div className="w-task-title">{String(row.platform || '平台未提供')} · {String(row.env_profile || row.envProfile || '环境未提供')}</div><div className="w-task-meta">{String(row.sn || row.device_sn || row.node_id || '目标未提供')}</div></div>,
+    render: (_: unknown, row) => <div><div className="w-task-title">{String(row.platform || '平台未提供')} · {String(row.env_profile || row.envProfile || '环境未提供')}</div></div>,
   },
   {
     key: 'status', title: '执行进度与结果', width: 230,
@@ -248,10 +216,6 @@ const batchColumns = (onOpen: (row: TaskRow) => void, fb: { ok: (s: string) => v
       const progress = taskProgress(row)
       return <div><StatusPill status={status.tone}>{status.label}</StatusPill><div className="w-task-meta">已执行 {progress.completed ?? '未知'} / {progress.total ?? '未知'} · 通过 {taskCount(row.passed) ?? '未提供'} · 失败 {taskCount(row.failed) ?? '未提供'}</div>{progress.percent != null && <div className="w-task-progress" role="progressbar" aria-label="任务执行进度" aria-valuenow={progress.percent} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${progress.percent}%` }} /></div>}</div>
     },
-  },
-  {
-    key: 'events', title: '执行证据', width: 180,
-    render: (_: unknown, row) => <div><Button type="link" style={{ padding: 0 }} onClick={() => onOpen(row)}>查看用例与事件</Button><div className="w-task-meta">当前列表未提供事件摘要</div></div>,
   },
   {
     key: 'started', title: '时间', width: 165,
@@ -277,8 +241,7 @@ const caseColumns: DataColumn<TaskCase>[] = [
     render: (_: unknown, row) => {
       return (
         <div className="min-w-0">
-          <div className="truncate" style={{ fontWeight: 650 }}>{row.title || caseId(row)}</div>
-          <div className="w-mono" style={{ marginTop: 2, color: 'var(--w-text-quaternary)', fontSize: 'var(--w-font-meta)' }}>{caseId(row)}</div>
+          <div className="truncate" style={{ fontWeight: 650 }}>{row.title || '未命名用例'}</div>
         </div>
       )
     },
@@ -353,23 +316,7 @@ function elapsedText(task: TaskRow) {
 }
 
 function Stat({ kicker, value, note, tone }: { kicker: string; value: string; note?: string; tone?: string }) {
-  return (
-    <section style={{ background: 'var(--w-surface)', border: '1px solid var(--w-border)', borderRadius: 'var(--w-radius-lg)', padding: '12px 14px' }}>
-      <div style={{ fontSize: 12, color: 'var(--w-text-quaternary)', fontWeight: 700 }}>{kicker}</div>
-      <div style={{ marginTop: 4, fontSize: 28, fontWeight: 800, color: tone || 'var(--w-text)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-      {note ? <div style={{ marginTop: 2, fontSize: 12, color: 'var(--w-text-tertiary)' }}>{note}</div> : null}
-    </section>
-  )
-}
-
-const idBtn: CSSProperties = {
-  border: '1px solid var(--w-border)',
-  background: 'var(--w-surface)',
-  borderRadius: 8,
-  padding: '2px 8px',
-  fontSize: 12,
-  color: 'var(--w-text-secondary)',
-  cursor: 'pointer',
+  return <div title={note}><dt>{kicker}</dt><dd style={{ color: tone }}>{value}</dd></div>
 }
 
 function Card({ children }: { children: ReactNode }) {

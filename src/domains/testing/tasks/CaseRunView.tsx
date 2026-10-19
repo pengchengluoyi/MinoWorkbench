@@ -71,7 +71,7 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
   const activeScope = scopeFor(activeRef || undefined, currentScript?.clause.param || currentCondition?.text || currentTrace?.param || currentTrace?.event || '当前步骤', seedTurn)
   const openLogs = (scope: ExecutionScope = activeScope) => {
     if (pane !== 'log') setReturnPane(pane)
-    setEntry((previous) => ({ request: (previous?.request || 0) + 1, scope, returnLabel: (pane === 'log' ? returnPane : pane) === 'script' ? '三栏' : '轨迹' }))
+    setEntry((previous) => ({ request: (previous?.request || 0) + 1, scope, returnLabel: (pane === 'log' ? returnPane : pane) === 'script' ? '用例内容' : '执行步骤' }))
     setPane('log')
   }
   const changePane = (value: 'script' | 'trace' | 'log') => { if (value !== 'log') setReturnPane(value); setPane(value) }
@@ -83,14 +83,14 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
   const screenshot = <StepScreenshot key={runId} src={screenshotSrc} fallbackStep={!currentTrace?.thumb ? firstScreenshot?.step : undefined} interaction={currentTrace?.thumb ? interaction : undefined} coordinateUnknown={!!currentTrace?.thumb && /click|tap|press|drag|swipe|点击|拖拽|滑动/.test(currentTrace.event) && !interaction} />
 
   return (
-    <div className="flex h-full min-h-0 flex-col" style={{ gap: 10 }}>
+    <div className="case-run-view flex h-full min-h-0 flex-col" style={{ gap: 10 }}>
       <header className="flex shrink-0 flex-wrap items-center gap-2">
         <Button size="small" onClick={onBack}>返回这个批次</Button>
         <StatusPill status={verdict === 'other' ? 'muted' : verdict}>{label}</StatusPill>
-        <strong className="min-w-0 truncate" style={{ fontSize: 16 }}>{row.title || row.name as string || id}</strong>
+        <h1 className="w-record-title">{row.title || row.name as string || '用例结果'}</h1>
         <CopyId
           text={taskId && id ? `${taskId} ${id}` : (taskId || id)}
-          shown={taskId && id ? `${taskId} · ${id}` : (taskId || id)}
+          shown="复制执行引用"
           title={taskId && id ? '复制任务和用例 ID' : '复制 ID'}
           onCopy={(text) => copyId(text, fb, Boolean(taskId && id))}
         />
@@ -99,7 +99,7 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
           size="small"
           value={pane}
           onChange={(value) => changePane(value as 'script' | 'trace' | 'log')}
-          options={[{ value: 'script', label: '三栏' }, { value: 'trace', label: '轨迹' }, { value: 'log', label: '日志' }]}
+          options={[{ value: 'script', label: '用例内容' }, { value: 'trace', label: '执行步骤' }, { value: 'log', label: '详细日志' }]}
         />
       </header>
 
@@ -107,14 +107,13 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
       {trace.data?.errors.length ? <div className="execution-source-alert" role="alert">{trace.data.errors.map((item) => <span key={item.source}>{item.source}读取失败：{errText(item.error)}。 </span>)}<Button size="small" onClick={() => void trace.refetch()}>重试缺失来源</Button></div> : null}
       <div className="case-content-pane" style={{ display: pane === 'log' ? 'none' : 'flex' }}>
       {trace.isLoading ? <Skeleton active paragraph={{ rows: 8 }} title={false} /> : trace.isError && !trace.data ? <EmptyState title="轨迹读取失败" hint={errText(trace.error)} action={<Button onClick={() => void trace.refetch()}>重试</Button>} /> : (
-        <div className="flex min-h-0 flex-1 gap-2.5" style={{ flexDirection: splitView ? 'row' : 'column' }}>
+        <div className="case-run-layout flex min-h-0 flex-1 gap-2.5" style={{ flexDirection: splitView ? 'row' : 'column' }}>
           {splitView ? (
-            <div style={{ ...shot, flex: `0 0 ${isPortrait ? '35%' : '52%'}`, maxWidth: isPortrait ? '35%' : '52%', borderRadius: 'var(--w-radius-lg)' }}>{screenshot}</div>
+            <div className="case-run-shot" style={{ ...shot, flex: `0 0 ${isPortrait ? '35%' : '52%'}`, maxWidth: isPortrait ? '35%' : '52%', borderRadius: 'var(--w-radius-lg)' }}>{screenshot}</div>
           ) : null}
-          <div className="min-h-0 min-w-0 flex-1" style={{ display: detailPane === 'trace' ? 'grid' : 'flex', flexDirection: 'column', gridTemplateRows: detailPane === 'trace' ? 'minmax(0, 1fr) minmax(0, 3fr)' : undefined, gap: 10, overflow: isPortrait && detailPane !== 'trace' ? 'auto' : undefined }}>
+          <div className="case-run-details min-h-0 min-w-0 flex-1" style={{ display: detailPane === 'trace' ? 'grid' : 'flex', flexDirection: 'column', gridTemplateRows: detailPane === 'trace' ? 'minmax(0, 1fr) minmax(0, 3fr)' : undefined, gap: 10, overflow: isPortrait && detailPane !== 'trace' ? 'auto' : undefined }}>
             {detailPane === 'script' ? (
               <div className="case-execution-script">
-                <CaseVersionChain row={row} execution context={session.data?.meta?.runtime_context} />
                 <p className="case-execution-reading">原文与理解来自本次执行返回的记录；未返回的解析不会以当前草稿补位。</p>
                 <CaseScriptSections row={row} emptyResultText="本次执行未返回这部分解析，原文完整保留" interactionOf={(kind: ScriptKind): ScriptInteraction => {
                   const reference = (task: PreviewTask, number: number) => task.step > 0 ? `${kind === 'pre' ? '前置' : kind === 'op' ? '操作' : '预期'} ${task.step}-${number}` : undefined
@@ -127,11 +126,12 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
                     statusOf: (task, number) => uiStatus(linked.byClause.get(`${kind}-${task.step}-${number}`)?.at(-1)),
                   }
                 }} />
+                <details className="session-summary"><summary>执行版本来源</summary><CaseVersionChain row={row} execution context={session.data?.meta?.runtime_context} /></details>
               </div>
             ) : null}
 
-            <section style={{ ...stage, minHeight: detailPane === 'trace' ? 0 : 240, gridTemplateColumns: splitView ? 'minmax(0, 1fr)' : stage.gridTemplateColumns }}>
-              {!splitView ? <div style={shot}>{screenshot}</div> : null}
+            <section className="case-run-stage" style={{ ...stage, minHeight: detailPane === 'trace' ? 0 : 240, gridTemplateColumns: splitView ? 'minmax(0, 1fr)' : stage.gridTemplateColumns }}>
+              {!splitView ? <div className="case-run-shot" style={shot}>{screenshot}</div> : null}
               <div style={{ ...params, padding: detailPane === 'trace' ? 12 : 16, borderLeft: splitView ? 0 : params.borderLeft }}>
                 <h3 style={{ margin: detailPane === 'trace' ? '0 0 8px' : '0 0 12px', fontSize: 15 }}>{currentTrace?.event || currentScript?.clause.param || currentCondition?.text || '当前步骤'}</h3>
                 <dl style={{ ...grid, gridTemplateColumns: detailPane === 'trace' ? '52px minmax(0, 1fr) 52px minmax(0, 1fr)' : grid.gridTemplateColumns, gap: detailPane === 'trace' ? '8px 12px' : grid.gap }}>
@@ -150,7 +150,7 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
             </section>
 
             {detailPane === 'trace' ? (
-              <div className="min-h-0 overflow-auto" style={{ ...panel, padding: 0 }}>
+              <div className="case-run-traces min-h-0 overflow-auto" style={{ ...panel, padding: 0 }}>
                 {steps.length ? (
                   <table className="case-trace-table" style={{ width: '100%', minWidth: 640, tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
                     <colgroup><col style={{ width: 44 }} /><col style={{ width: 112 }} /><col /><col style={{ width: 96 }} /><col style={{ width: 76 }} /><col style={{ width: 80 }} /><col style={{ width: 88 }} /></colgroup>

@@ -3,7 +3,7 @@ import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { Button, EmptyState, ErrorBoundary, Select, Skeleton, errText } from '@/ui'
 import { useProjects } from '../apps/queries'
-import { resolveTab } from './nav'
+import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab } from './nav'
 import { projectHref } from './projectNavigation'
 import { useAppRealtime } from './useAppRealtime'
 
@@ -45,9 +45,36 @@ export function ProjectWorkbench() {
   else if (tab === 'issues') panel = <AppIssuesPanel appId={appId} projectId={projectId} />
   else if (tab === 'session-log') panel = <SessionLogPanel appId={appId} />
   else panel = <EmptyState title="此项目视图暂未提供" action={<Link to={projectHref(projectId)}>返回项目用例</Link>} />
+  const nav = APP_NAV.find(item => item.id === tab || item.alsoActiveOn?.includes(tab))
+  const defaultView = SUB_VIEW_DEFAULTS[tab]
+  const subView = defaultView ? params.get(defaultView.key) || defaultView.value : ''
+  const child = nav?.children?.find(item => item.tab === tab || item.param?.value === subView)
+  const sectionLabel = child?.label || nav?.label || '项目'
+  const listQuery = new URLSearchParams(params)
+  for (const key of ['case', 'run', 'tcase', 'unit', 'session']) listQuery.delete(key)
+  const levels: { label: string; to?: string }[] = [
+    { label: '项目', to: '/testing' },
+    { label: project.name || '未命名项目', to: projectHref(projectId, appId ? { appId } : {}) },
+    { label: sectionLabel },
+  ]
+  if (tab === 'cases' && params.get('case')) {
+    levels[2].to = projectHref(projectId, listQuery)
+    levels.push({ label: '用例详情' })
+  } else if (tab === 'tasks' && params.get('run')) {
+    levels[2].to = projectHref(projectId, listQuery)
+    levels.push({ label: '任务详情' })
+    if (params.get('tcase')) {
+      const taskQuery = new URLSearchParams(params); taskQuery.delete('tcase'); taskQuery.delete('unit')
+      levels[3].to = projectHref(projectId, taskQuery)
+      levels.push({ label: '用例结果' })
+    }
+  } else if (tab === 'session-log' && params.get('session')) {
+    levels[2].to = projectHref(projectId, listQuery)
+    levels.push({ label: '执行详情' })
+  }
   return <div className="project-workbench">
     <div className="project-context-bar">
-      <nav aria-label="面包屑" className="project-breadcrumb"><Link to="/testing">项目</Link><ChevronRight size={14} aria-hidden /><span aria-current="page" title={project.name}>{project.name || '未命名项目'}</span></nav>
+      <nav aria-label="面包屑" className="project-breadcrumb"><ol className="project-breadcrumb-list">{levels.map((level, index) => <li key={`${index}:${level.label}`}>{index > 0 && <ChevronRight size={14} aria-hidden />}{level.to ? <Link to={level.to}>{level.label}</Link> : <span aria-current={index === levels.length - 1 ? 'page' : undefined}>{level.label}</span>}</li>)}</ol></nav>
       {scoped && apps.length > 0 && <div className="project-target"><Select aria-label="目标应用" placeholder="选择应用" value={appId || undefined} options={apps.map(row => ({ value: row.id, label: row.name || '未命名应用' }))} onChange={choose} /></div>}
     </div>
     <div className="project-workbench-panel"><ErrorBoundary resetKey={`${projectId}:${appId}:${params.toString()}`} label="项目面板"><Suspense fallback={<Skeleton active />}><div key={`${projectId}:${appId}:${tab}`} className="project-panel-content">{panel}</div></Suspense></ErrorBoundary></div>

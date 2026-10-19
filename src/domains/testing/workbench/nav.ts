@@ -56,7 +56,7 @@ export const APP_NAV: NavItem[] = [
     children: [
       { label: '账号管理', param: { key: 'section', value: 'accounts' } },
       { label: '资源日志', param: { key: 'section', value: 'logs' } },
-      { label: '机态 App', param: { key: 'section', value: 'device-apps' } },
+      { label: '设备应用记录', param: { key: 'section', value: 'device-apps' } },
     ],
   },
   {

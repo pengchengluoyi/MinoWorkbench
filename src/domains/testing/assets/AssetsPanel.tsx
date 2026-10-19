@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
-import { Button, Select, DataTable, EmptyState, StatusPill, type DataColumn } from '@/ui'
+import { Button, Select, DataTable, EmptyState, PageHeader, StatusPill, type DataColumn } from '@/ui'
 import {
   getDeviceAppSessions, getProjectAccounts, getResourceLogs,
   type AccountRow, type DeviceAppSessionRow, type ResourceLogRow,
@@ -31,9 +31,8 @@ export function AssetsPanel({ projectId }: { projectId: string }) {
     )
   }
 
-  if (section === 'logs') return <ResourceLogs projectId={projectId} />
-  if (section === 'device-apps') return <DeviceApps projectId={projectId} />
-  return <Accounts projectId={projectId} />
+  const title = section === 'logs' ? '资源日志' : section === 'device-apps' ? '设备应用记录' : '账号管理'
+  return <section className="w-content-page"><PageHeader title={title} />{section === 'logs' ? <ResourceLogs projectId={projectId} /> : section === 'device-apps' ? <DeviceApps projectId={projectId} /> : <Accounts projectId={projectId} />}</section>
 }
 
 function Accounts({ projectId }: { projectId: string }) {
@@ -85,6 +84,7 @@ function Accounts({ projectId }: { projectId: string }) {
   return (
     <DataTable<AccountRow>
       viewId="assets.accounts"
+      renderCard={row => <><strong className="w-record-title">{row.account_ident || row.username || row.email || row.phone || row.display_name || '测试账号'}</strong><div className="w-record-line w-record-meta"><StatusPill status={row.locked ? 'warn' : 'muted'}>{row.locked === true ? '占用中' : row.locked === false ? '未占用' : '占用待确认'}</StatusPill><span>{row.env || '未指定环境'}</span></div>{row.note && <span className="w-record-excerpt">{row.note}</span>}</>}
       columns={columns}
       dataSource={q.data ? withDisplayKeys(q.data) : undefined}
       rowKey={r => String(r.__viewKey)}
@@ -93,7 +93,7 @@ function Accounts({ projectId }: { projectId: string }) {
       onRetry={() => void q.refetch()}
       fill
       emptyTitle="这个项目还没有测试账号"
-      emptyHint="当前页面仅查看服务端账号目录；账号补齐需通过项目现有资源管理流程，Workbench 尚未提供登记或分配接口。"
+      emptyHint="已登记的测试账号会显示在这里。"
     />
   )
 }
@@ -129,7 +129,8 @@ function ResourceLogs({ projectId }: { projectId: string }) {
   return (
     <DataTable<ResourceLogRow>
       viewId="assets.logs"
-      toolbar={<><span>服务端第 {page} 页，每页最多 50 条{q.data?.total != null ? ` · 共 ${q.data.total} 条` : ' · 总量未返回'}</span><Button disabled={page === 1 || q.isFetching} onClick={() => setPage(prev => prev - 1)}>上一页</Button><Button disabled={q.isFetching || (q.data?.items.length || 0) < 50} onClick={() => setPage(prev => prev + 1)}>下一页</Button></>}
+      renderCard={row => <><strong className="w-record-title">{row.action || '资源变更'}</strong><span className="w-record-meta">{row.account_ident || '未记录账号'} · {row.created_at || '未记录时间'}</span><span className="w-record-excerpt">{row.detail || row.reason || '暂无说明'}</span></>}
+      toolbar={<><span>第 {page} 页{q.data?.total != null ? ` · 共 ${q.data.total} 条` : ''}</span><Button disabled={page === 1 || q.isFetching} onClick={() => setPage(prev => prev - 1)}>上一页</Button><Button disabled={q.isFetching || (q.data?.items.length || 0) < 50} onClick={() => setPage(prev => prev + 1)}>下一页</Button></>}
       columns={columns}
       dataSource={q.data?.items ? withDisplayKeys(q.data.items) : undefined}
       rowKey={r => String(r.__viewKey)}
@@ -183,6 +184,7 @@ function DeviceApps({ projectId }: { projectId: string }) {
   return (
     <DataTable<DeviceAppSessionRow>
       viewId="assets.deviceApps"
+      renderCard={row => <><strong className="w-record-title">{row.package_id || '未记录应用'}</strong><span className="w-record-meta">{row.app_version_display || row.app_version || '未记录版本'} · {row.session_display || '未记录身份'}</span><span className="w-record-meta">{row.sn || '未记录设备'} · {row.created_at || '未记录时间'}</span>{row.note && <span className="w-record-excerpt">{row.note}</span>}</>}
       toolbar={<><span>历史机态观察 · 最近最多 {limit} 条，不能代表当前登录或准入状态</span><Select aria-label="机态窗口" value={limit} onChange={setLimit} options={[200, 500, 1000].map(value => ({ value, label: `最近 ${value} 条` }))} /></>}
       columns={columns}
       dataSource={q.data ? withDisplayKeys(q.data) : undefined}

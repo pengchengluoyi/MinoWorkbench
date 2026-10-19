@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Button, errText } from '@/ui'
+import { Button, StatusPill, errText } from '@/ui'
 import { getRetryEligibility, getTaskWriteSafety, retryFailedTestingTask, recheckTaskWriteSafety } from '@/api/caseRunner'
 
 const reasons: Record<string, string> = {
@@ -61,7 +61,9 @@ export function RunSafety({ runId, onStarted }: { runId: string; onStarted: (id:
     } finally { inFlight.current = false; setBusy(false) }
   }
   const data = retry.data
-  return <section aria-label="执行安全与复跑" style={{ border: '1px solid var(--w-border)', borderRadius: 8, padding: 12 }}>
+  return <details className="task-safety" aria-label="执行安全与复跑">
+    <summary>资源与复跑<span className="task-safety-summary"><StatusPill status={safety.isError || retry.isError || safety.data?.resource_isolated ? 'warn' : 'muted'}>{safety.isLoading || retry.isLoading ? '读取中' : safety.isError || retry.isError ? '状态待核对' : safety.data?.resource_isolated ? '资源已隔离' : '暂无隔离记录'}</StatusPill>{pending ? ' · 有待确认的复跑请求' : data?.eligible_unit_ids.length ? ` · 可复跑 ${data.eligible_unit_ids.length} 项` : ''}</span></summary>
+    <div className="task-safety-body">
     <div className="flex items-center gap-3"><strong>执行安全与复跑</strong><Button size="small" onClick={refresh}>刷新安全状态</Button></div>
     {(safety.isLoading || retry.isLoading) && <p role="status">正在读取资源状态与复跑条件…</p>}
     {(safety.isError || retry.isError) && <p role="alert">{errText(safety.error || retry.error, '安全状态读取失败；旧服务可能尚未提供接口，请刷新重试。')}</p>}
@@ -86,5 +88,6 @@ export function RunSafety({ runId, onStarted }: { runId: string; onStarted: (id:
       </Button>
     </>}
     {notice && <p role="status">{notice}</p>}
-  </section>
+    </div>
+  </details>
 }

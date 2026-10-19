@@ -49,6 +49,9 @@ export interface DataTableProps<T> {
   scrollY?: number | string
   /** 超过这个行数才开虚拟滚动，默认 100 */
   virtualThreshold?: number
+  /** 可用宽度不足时使用摘要卡片；选择和分页保持一致。 */
+  renderCard?: (row: T) => ReactNode
+  rowLabel?: (row: T) => string
   onRowClick?: (row: T) => void
   activeRowKey?: React.Key
   onRetry?: () => void
@@ -78,7 +81,7 @@ export function DataTable<T extends object>({
   fill,
   scrollY,
   virtualThreshold = 100,
-  onRowClick, activeRowKey, onRetry,
+  onRowClick, activeRowKey, onRetry, renderCard, rowLabel,
 }: DataTableProps<T>) {
   const { isHidden, toggle, reset, hiddenCount } = useColumnConfig(viewId)
 
@@ -128,43 +131,71 @@ export function DataTable<T extends object>({
 
   const hostRef = useRef<HTMLDivElement>(null)
   const [bodyH, setBodyH] = useState(320)
+  const [narrow, setNarrow] = useState(false)
+  const cards = Boolean(renderCard && narrow)
+  const keyOf = (row: T) => (typeof rowKey === 'function' ? rowKey(row) : row[rowKey]) as React.Key
   useEffect(() => {
-    if (!fill || !hostRef.current) return
     const el = hostRef.current
+    if (!el) return
+    let frame = 0
     const measure = () => {
-      const head = el.querySelector('thead')?.getBoundingClientRect().height || 40
-      setBodyH(Math.max(48, Math.floor(el.clientHeight - head - 12)))
+      setNarrow(el.clientWidth < 720)
+      if (!fill) return
+      const head = el.querySelector('.ant-table-header') || el.querySelector('thead')
+      const headHeight = head?.getBoundingClientRect().height || 0
+      // Keep room for borders and a horizontal scrollbar without forcing a minimum body height.
+      setBodyH(Math.max(1, Math.floor(el.clientHeight - headHeight - 18)))
     }
-    measure()
-    const ro = new ResizeObserver(measure)
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure) }
+    const ro = new ResizeObserver(schedule)
     ro.observe(el)
-    return () => ro.disconnect()
-  }, [fill, pageRows.length])
+    const head = el.querySelector('.ant-table-header') || el.querySelector('thead')
+    if (head) ro.observe(head)
+    schedule()
+    return () => { cancelAnimationFrame(frame); ro.disconnect() }
+  }, [fill, cards, loading, pageRows.length, visibleColumns])
 
   const y = fill ? bodyH : scrollY
   const useVirtual = !!y && pageRows.length > virtualThreshold
 
 
   return (
-    <div className={`w-data-table${fill ? ' is-fill' : ''}`}>
-      {(toolbar || columns.some((c) => !c.alwaysVisible)) && (
+    <div className={`w-data-table${fill ? ' is-fill' : ''}${cards ? ' is-cards' : ''}`}>
+      {(toolbar || (cards && selection) || (!cards && columns.some((c) => !c.alwaysVisible))) && (
         <div className="w-table-toolbar">
           <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">{toolbar}</div>
-          <Dropdown menu={columnMenu} trigger={['click']} placement="bottomRight">
+          {cards && selection && <Checkbox disabled={!pageRows.length} checked={pageRows.length > 0 && pageRows.every(row => selection.selectedKeys.includes(keyOf(row)))} indeterminate={pageRows.some(row => selection.selectedKeys.includes(keyOf(row))) && !pageRows.every(row => selection.selectedKeys.includes(keyOf(row)))} onChange={event => {
+            const keys = pageRows.map(keyOf)
+            selection.onChange(event.target.checked ? [...new Set([...selection.selectedKeys, ...keys])] : selection.selectedKeys.filter(key => !keys.includes(key)))
+          }}>本页全选</Checkbox>}
+          {!cards && <Dropdown menu={columnMenu} trigger={['click']} placement="bottomRight">
             <Tooltip title={hiddenCount ? `已隐藏 ${hiddenCount} 列` : '列显示'}>
               <Button size="small" icon={<Columns3 size={14} />}>
                 {hiddenCount ? `列 (${hiddenCount})` : '列'}
               </Button>
             </Tooltip>
-          </Dropdown>
+          </Dropdown>}
         </div>
       )}
 
       {error ? <div role="alert" style={{ ...card, padding: 12 }}><span>{errText(error, '读取失败')}</span>{rows.length ? <span> · 以下保留上次读取内容</span> : null}{onRetry ? <Button size="small" onClick={onRetry}>重试读取</Button> : null}</div> : null}
-      <div ref={hostRef} className={`w-table-card${fill ? ' is-fill' : ''}`} style={card}>
+      <div ref={hostRef} className={`w-table-card${fill ? ' is-fill' : ''}${cards ? ' is-cards' : ''}`} style={card}>
         {loading && !rows.length ? (
           <div style={{ padding: 'var(--w-card-padding)' }}>
             <Skeleton active paragraph={{ rows: 6 }} title={false} />
+          </div>
+        ) : cards && renderCard ? (
+          <div className="w-record-list" role="list" aria-busy={loading || undefined}>
+            {!pageRows.length && <EmptyState title={emptyTitle} hint={emptyHint} />}
+            {pageRows.map(row => {
+              const key = keyOf(row)
+              const selected = selection?.selectedKeys.includes(key)
+              const content = renderCard(row)
+              return <div role="listitem" key={key} className={`w-record-item${selected ? ' is-selected' : ''}`}>
+                {selection && <Checkbox aria-label={`选择${rowLabel?.(row) || '此项'}`} checked={selected} onChange={event => selection.onChange(event.target.checked ? [...selection.selectedKeys, key] : selection.selectedKeys.filter(value => value !== key))} />}
+                {onRowClick ? <button type="button" className="w-record-open" aria-label={`查看${rowLabel?.(row) || '详情'}`} onClick={() => onRowClick(row)}>{content}</button> : <div className="w-record-content">{content}</div>}
+              </div>
+            })}
           </div>
         ) : (
           <Table<T>
@@ -193,7 +224,7 @@ export function DataTable<T extends object>({
                 onRowClick(row)
               },
               tabIndex: 0,
-              'aria-label': '查看详情',
+              'aria-label': `查看${rowLabel?.(row) || '详情'}`,
               onKeyDown: (event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onRowClick(row) } },
               style: { cursor: 'pointer' },
             }) : undefined}

@@ -19,7 +19,7 @@ export function PageHeader({
     >
       <div className="min-w-0">
         <div className="flex items-center gap-3">
-          <h2
+          <h1
             className="m-0"
             style={{
               fontSize: 'var(--w-font-h2)',
@@ -29,7 +29,7 @@ export function PageHeader({
             }}
           >
             {title}
-          </h2>
+          </h1>
           {count != null && (
             <span className="w-pill" data-status="muted">{count}</span>
           )}
