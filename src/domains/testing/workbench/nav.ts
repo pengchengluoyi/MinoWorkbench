@@ -13,7 +13,7 @@ export type Tab = (typeof VALID_TABS)[number]
 export const DEFAULT_TAB: Tab = 'cases'
 
 /** 已砍功能的旧 tab 值，统一重定向到默认 tab。 */
-export const RETIRED_TABS = ['process', 'knowledge', 'docs', 'intel', 'dispatch'] as const
+export const RETIRED_TABS = ['process', 'knowledge', 'docs', 'intel', 'dispatch', 'collab'] as const
 
 export type SubParamKey = 'view' | 'nview' | 'section' | 'configSection' | 'configView' | 'issueView'
 

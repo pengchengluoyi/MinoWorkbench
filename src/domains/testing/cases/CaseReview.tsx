@@ -5,7 +5,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { request } from '@/lib/request'
 import { unwrapOne } from '@/lib/unwrap'
 import { useSession } from '@/lib/session'
+import { Link } from 'react-router-dom'
 import { Button, errText } from '@/ui'
+import { botsHref } from '@/domains/bots/botsNavigation'
 import { caseBase, compileStatus, type CompileJob } from './CaseCompileJobs'
 
 type Source = { precondition: string; steps_raw: string; expected_raw: string }
@@ -17,7 +19,7 @@ const categories: Record<string, string> = { case_definition: '用例定义', se
 const statuses: Record<string, string> = { pending_review: '待复核', needs_input: '待补充信息', needs_configuration: '待完善配置', confirmed: '已确认', fixed_pending_run: '复检缺口已清除，待实跑', verified_resolved: '实跑证据已验证解决' }
 const actions: Record<string, string> = { configure: '请在现有应用环境、资源或控件配置中处理，再复检。', platform_fix: '登记或确认平台缺陷；修复后复检。', recover_compile: '请在上方编译任务中恢复或重新编译。', wait: '等待任务完成后复检。', provide_evidence: '请关联同版本的实跑证据，或在复核理由中记录所需人工前置。', review: '先复核原句与系统理解，确认根因后再修复。', recheck: '该目标诊断已过时，请带原目标重新复检。' }
 
-export function CaseReview({ projectId, caseId }: { projectId: string; caseId: string }) {
+export function CaseReview({ projectId, caseId, appId }: { projectId: string; caseId: string; appId?: string }) {
   const role = useSession(state => state.role)
   const owner = useSession(state => state.user?.user_id || '')
   const qc = useQueryClient()
@@ -48,7 +50,12 @@ export function CaseReview({ projectId, caseId }: { projectId: string; caseId: s
   return <section aria-label="执行诊断与逐项复核" className="case-version-chain">
     <EventMigrationReview key={owner + projectId + caseId} projectId={projectId} caseId={caseId} />
     {['admin', 'superadmin', 'super_admin'].includes(role) ? <EventPolicyReview key={owner + projectId} projectId={projectId} /> : null}
-    <strong>执行诊断与逐项复核</strong>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+      <strong>执行诊断与逐项复核</strong>
+      {appId ? (
+        <Link to={botsHref(projectId, { appId, collabCase: caseId })}>加到工作区</Link>
+      ) : null}
+    </div>
     <p>按诊断来源处理原文、配置、平台能力或工具链。复核意见单独保存；只读复检通过表示缺口暂时清除，实际执行结果以同版本 session 证据为准。请勿填写密码、验证码或令牌。</p>
     {query.isPending ? <p role="status">正在读取诊断事项</p> : query.error ? <p role="alert">{errText(query.error)} <Button onClick={() => void query.refetch()}>重试读取诊断</Button></p> : query.data ? <>
       {query.data.compile_job ? <p>原文 r{query.data.expected_revision} · {compileStatus[query.data.compile_job.status] || query.data.compile_job.status}</p> : null}

@@ -7,12 +7,11 @@ import { Button, Checkbox, Input, Modal, errText, useFeedback } from '@/ui'
 import { previewExecution, type ExecutionPreview } from '@/api/v5'
 import { getProjectEnv } from '@/api/projectEnv'
 import type { CaseRow } from '@/api/projectCases'
-import { runCaseRunner, getRunRequest, isExecutable, type RunPayload } from '@/api/run'
+import { runCaseRunner, getRunRequest, isExecutable, deviceFamilyLabel, type RunPayload } from '@/api/run'
 import { unwrapOne } from '@/lib/unwrap'
 import { useRunDevices, casePageOptions } from '../cases/queries'
 import { channelKindText, channelTitle, normalizeEnvDoc, type EnvChannel, type EnvDocument } from '../config/envModel'
 import { taskKeys } from './queries'
-import { DeviceSelect } from '../cases/DeviceSelect'
 import { useSession } from '@/lib/session'
 
 /**
@@ -102,6 +101,8 @@ export function CreateTaskDialog({
   }, [cases.data, kw])
 
   const device = (devices.data || []).find((item) => item.sn === sn)
+  const webDevice = device?.platform === 'web'
+  useEffect(() => { if (!webDevice) setMode('legacy') }, [webDevice])
   const block = uncertain ? '受理状态待确认，请先到任务列表核对，避免重复执行'
     : env.isError ? '环境配置读取失败，请重试'
     : env.isLoading ? '正在读取环境配置'
@@ -111,7 +112,7 @@ export function CreateTaskDialog({
     : devices.isLoading ? '正在查询设备'
     : devices.isError ? errText(devices.error, '设备信息读取失败')
       : !device || !isExecutable(device) ? device?.blocked_reason || '请选择兼容且就绪的执行设备'
-        : mode === 'v5' && device.platform !== 'web' ? 'V5 首期只支持固定 Web 节点'
+        : mode === 'v5' && device.platform !== 'web' ? '严格执行仅支持 Web 设备'
           : mode === 'v5' && picked.some(id => !caseCache[id] || caseCache[id].v5_plan_state !== 'published') ? '所选用例尚未发布或需要重新核验'
             : !picked.length ? '先勾选用例' : ''
 
@@ -203,7 +204,7 @@ export function CreateTaskDialog({
       <div inert={start.isPending} className="flex flex-col" style={{ pointerEvents: start.isPending ? 'none' : undefined, opacity: start.isPending ? 0.7 : 1, gap: 14, maxHeight: '62vh', overflow: 'auto', paddingRight: 4 }}>
         <Section n="1" title="被测应用">
           {doc?.channels.length ? (
-            <div style={grid(2)}>
+            <div className="task-choice-grid" style={grid(2)}>
               {doc.channels.map((channel) => (
                 <Choice key={channel.id} pressed={surface === channel.id} onClick={() => setSurface(channel.id)} title={channelTitle(channel)} hint={channel.app_identifier || channel.id} />
               ))}
@@ -214,7 +215,7 @@ export function CreateTaskDialog({
         </Section>
 
         <Section n="2" title="运行环境">
-          <div style={grid(Math.min(3, doc?.environments.length || 3))}>
+          <div className="task-choice-grid" style={grid(Math.min(3, doc?.environments.length || 3))}>
             {(doc?.environments || [{ key: 'test', label: '测试' }, { key: 'pre', label: '预发' }, { key: 'prod', label: '正式' }]).map((item) => {
               const channel = doc?.channels.find((row) => row.id === surface)
               const url = channel && doc ? launchUrl(doc, item.key, channel) : ''
@@ -233,16 +234,30 @@ export function CreateTaskDialog({
         </Section>
 
         <Section n="3" title="执行设备">
-          <DeviceSelect devices={devices.data || []} value={sn} onChange={setSn} loading={devices.isLoading}
-            refreshing={devices.isFetching} onRefresh={() => void devices.refetch()} />
+          {devices.isLoading ? <p role="status" style={hint}>正在查询设备…</p> : devices.data?.length ? <div className="task-choice-grid" style={grid(2)} role="group" aria-label="执行设备">
+            {[...devices.data].sort((a, b) => Number(isExecutable(b)) - Number(isExecutable(a))).map(item => <Choice
+              key={item.sn} pressed={sn === item.sn} disabled={!isExecutable(item)} onClick={() => setSn(item.sn)}
+              title={deviceFamilyLabel(item)} hint={item.node_name || item.node_id || 'Scout 节点'}
+              extra={[item.model, item.sn].filter((value, index, all) => value && all.indexOf(value) === index).join(' · ')}
+              note={!isExecutable(item) ? item.blocked_reason || '设备未就绪' : undefined}
+            />)}
+          </div> : !devices.isError ? <p role="status" style={hint}>{!surface || !profile ? '选择应用与运行环境后查看可用设备。' : '当前账号下暂无符合应用和环境的设备，请检查节点连接与设备状态。'}</p> : null}
+          <div className="flex flex-wrap items-center justify-between gap-2" style={{ marginTop: 4 }}>
+            <span style={hint}>{(devices.data || []).filter(isExecutable).length} 台可执行设备 · {new Set((devices.data || []).map(item => item.node_id || item.current_scout_id || `unknown:${item.sn}`)).size} 个 Scout 节点</span>
+            <span className="flex items-center gap-2"><Button type="text" size="small" loading={devices.isFetching} onClick={() => void devices.refetch()}>刷新设备</Button><Button type="link" size="small" href="/settings/runtime" target="_blank" rel="noopener noreferrer">节点管理</Button></span>
+          </div>
           {devices.isError ? <p role="alert" style={hint}>{errText(devices.error, '设备读取失败')} <Button size="small" onClick={() => void devices.refetch()}>重试</Button></p> : null}
         </Section>
 
         <Section n="4" title="执行方案">
-          <div style={grid(2)}>
-            <Choice pressed={scheme === 'visual'} onClick={() => setScheme('visual')} title="看图 visual" hint="纯视觉：按模型坐标、输入、滑动" />
+          <div className="task-choice-grid" style={grid(2)}>
             <Choice pressed={scheme === 'dom_preferred'} onClick={() => setScheme('dom_preferred')} title="DOM 优先" hint="有有效结构用结构，无法定位时用当前截图兜底" />
+            <Choice pressed={scheme === 'visual'} onClick={() => { setScheme('visual'); setMode('legacy') }} title="看图 visual" hint="纯视觉：按模型坐标、输入、滑动" />
           </div>
+          {webDevice ? <div style={{ marginTop: 8 }}>
+            <label className="flex items-start gap-2"><Checkbox checked={mode === 'v5'} disabled={scheme !== 'dom_preferred'} onChange={event => setMode(event.target.checked ? 'v5' : 'legacy')} /><span>按已发布计划严格执行</span></label>
+            <p style={{ ...hint, marginTop: 4 }}>仅用于 DOM 优先的 Web 测试；按已审阅发布的步骤和校验执行，运行中不临时改写计划。</p>
+          </div> : null}
         </Section>
 
         <section aria-label="执行条件预检">
@@ -272,7 +287,6 @@ export function CreateTaskDialog({
           {env.isError && <p role="alert">{errText(env.error)} <Button onClick={() => void env.refetch()}>重试环境</Button></p>}
           {cases.isError && <p role="alert">{errText(cases.error)} <Button onClick={() => void cases.refetch()}>重试用例</Button></p>}
           {uncertain && <p role="alert">原请求受理状态待确认，选择与请求编号已保留。<Button loading={recover.isPending} onClick={() => recover.mutate()}>恢复原请求</Button></p>}
-          <label><Checkbox checked={mode === 'v5'} onChange={event => { setMode(event.target.checked ? 'v5' : 'legacy'); if (event.target.checked) setScheme('dom_preferred') }} /> V5：冻结计划、严格 Web 执行、原子核验（headless）</label>
           <Input size="small" value={kw} placeholder="按名称或编号筛选" onChange={(event) => { setKw(event.target.value); setPage(1) }} style={{ marginBottom: 8 }} />
           <div className="flex flex-col" style={{ gap: 4, maxHeight: 220, overflow: 'auto' }}>
             {cases.isLoading ? <p style={hint}>正在读取用例…</p> : null}
@@ -320,19 +334,20 @@ function Section({ n, title, children }: { n: string; title: string; children: R
   )
 }
 
-function Choice({ pressed, onClick, title, hint, extra }: { pressed: boolean; onClick: () => void; title: string; hint?: string; extra?: string }) {
+function Choice({ pressed, onClick, title, hint, extra, disabled = false, note }: { pressed: boolean; onClick: () => void; title: string; hint?: string; extra?: string; disabled?: boolean; note?: string }) {
   return (
-    <button type="button" aria-pressed={pressed} onClick={onClick} style={{ ...choice, ...(pressed ? choiceOn : {}) }}>
+    <button type="button" aria-pressed={pressed} disabled={disabled} onClick={onClick} style={{ ...choice, ...(pressed ? choiceOn : {}), ...(disabled ? { cursor: 'not-allowed', background: 'var(--w-fill)' } : {}) }}>
       <b style={{ display: 'block' }}>{title}</b>
       {hint ? <small style={sub}>{hint}</small> : null}
       {extra ? <small style={{ ...sub, fontFamily: 'var(--w-font-mono)', wordBreak: 'break-all' }}>{extra}</small> : null}
+      {note ? <small style={{ ...sub, color: 'var(--w-warn)' }}>{note}</small> : null}
     </button>
   )
 }
 
-const grid = (columns: number): CSSProperties => ({ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, columns)}, minmax(0, 1fr))`, gap: 8 })
+const grid = (columns: number): CSSProperties & { '--task-choice-columns': number } => ({ '--task-choice-columns': Math.max(1, columns) })
 const choice: CSSProperties = {
-  textAlign: 'left', minHeight: 72, border: '1px solid var(--w-border-strong)', background: 'var(--w-surface)',
+  textAlign: 'left', minWidth: 0, overflowWrap: 'anywhere', minHeight: 72, border: '1px solid var(--w-border-strong)', background: 'var(--w-surface)',
   borderRadius: 12, padding: '10px 12px', cursor: 'pointer',
 }
 const choiceOn: CSSProperties = { borderColor: 'var(--w-primary)', background: 'var(--w-primary-soft)', boxShadow: 'inset 0 0 0 1px var(--w-primary)' }

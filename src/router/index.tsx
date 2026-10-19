@@ -29,6 +29,7 @@ const RolesPage = lazy(() => import('@/domains/admin/roles/RolesPage').then((m) 
 const StackPage = lazy(() => import('@/domains/admin/stack/StackPage').then((m) => ({ default: m.StackPage })))
 const PacksPage = lazy(() => import('@/domains/admin/packs/PacksPage').then((m) => ({ default: m.PacksPage })))
 const AssistantPage = lazy(() => import('@/domains/assistant/AssistantPage').then((m) => ({ default: m.AssistantPage })))
+const BotsPage = lazy(() => import('@/domains/bots/BotsPage').then((m) => ({ default: m.BotsPage })))
 const AssistantToolsPage = lazy(() => import('@/domains/admin/assistant-tools/AssistantToolsPage').then((m) => ({ default: m.AssistantToolsPage })))
 const FlowBlocksPage = lazy(() => import('@/domains/admin/flow/FlowBlocksPage').then((m) => ({ default: m.FlowBlocksPage })))
 
@@ -62,6 +63,8 @@ export const router = createBrowserRouter([{ element: <><DraftNavigationGuard />
       { path: '/testing/:appId', element: lazyPage(<AppWorkbench />) },
       { path: '/settings', element: <Navigate to="/settings/runtime" replace /> },
       { path: '/assistant', element: lazyPage(<AssistantPage />) },
+      { path: '/bots', element: lazyPage(<BotsPage />) },
+      { path: '/bots/projects/:projectId', element: lazyPage(<BotsPage />) },
       { path: '/settings/runtime', element: lazyPage(<NodesPage />) },
       {
         path: '/settings/runtime/device/:sn',

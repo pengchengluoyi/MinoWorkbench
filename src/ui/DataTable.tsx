@@ -191,9 +191,9 @@ export function DataTable<T extends object>({
               const key = keyOf(row)
               const selected = selection?.selectedKeys.includes(key)
               const content = renderCard(row)
-              return <div role="listitem" key={key} className={`w-record-item${selected ? ' is-selected' : ''}`}>
+              return <div role="listitem" key={key} className={`w-record-item${selected ? ' is-selected' : ''}${activeRowKey === key ? ' is-active' : ''}`}>
                 {selection && <Checkbox aria-label={`选择${rowLabel?.(row) || '此项'}`} checked={selected} onChange={event => selection.onChange(event.target.checked ? [...selection.selectedKeys, key] : selection.selectedKeys.filter(value => value !== key))} />}
-                {onRowClick ? <button type="button" className="w-record-open" aria-label={`查看${rowLabel?.(row) || '详情'}`} onClick={() => onRowClick(row)}>{content}</button> : <div className="w-record-content">{content}</div>}
+                {onRowClick ? <button type="button" className="w-record-open" aria-current={activeRowKey === key ? true : undefined} aria-label={`查看${rowLabel?.(row) || '详情'}`} onClick={() => onRowClick(row)}>{content}</button> : <div className="w-record-content">{content}</div>}
               </div>
             })}
           </div>

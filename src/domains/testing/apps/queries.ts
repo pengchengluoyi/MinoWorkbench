@@ -16,6 +16,7 @@ export const projectKeys = {
 export const useProjects = () =>
   useQuery({
     queryKey: projectKeys.all,
+    staleTime: 60_000,
     queryFn: async (): Promise<ProjectRow[]> =>
       unwrapList<ProjectRow>(await getProjects(), { keys: ['projects'], label: 'GET /project/list' }),
   })

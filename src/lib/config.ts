@@ -16,6 +16,12 @@ const runtimeOrigin = (): string | undefined => {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
     throw new Error('Workbench 运行地址配置无效')
   }
+  if (import.meta.env.DEV) {
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || url.port !== '50101') {
+      throw new Error('开发 Workbench 只能连接本机 Nexus :50101')
+    }
+    return url.origin
+  }
   // A loopback deployment target means Nexus runs on the Workbench host.
   if (['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
     url.hostname = window.location.hostname

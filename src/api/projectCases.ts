@@ -75,8 +75,8 @@ export type ImportSourceData = { table?: string[][]; filename?: string; items?: 
 export const listCaseImportSources = (projectId: string) =>
   request<{ items: ImportSourceNode[] }>({ url: `/project/${projectId}/cases/import/sources`, method: 'get' })
 
-export const readCaseImportSource = (projectId: string, kind: ImportSourceKind, configuration: Record<string, string>, operation = 'read') =>
-  request<ImportSourceData>({ url: `/project/${projectId}/cases/import/read-source`, method: 'post', timeout: 130_000,
+export const readCaseImportSource = (projectId: string, kind: ImportSourceKind, configuration: Record<string, string>, operation = 'read', signal?: AbortSignal) =>
+  request<ImportSourceData>({ url: `/project/${projectId}/cases/import/read-source`, method: 'post', timeout: 130_000, signal,
     data: { kind, configuration, operation } })
 
 export interface ImportPreviewData {

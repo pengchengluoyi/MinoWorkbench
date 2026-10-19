@@ -4,7 +4,7 @@
 .work-shell-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 56px; padding: 10px 12px; border-bottom: 1px solid var(--w-border); }
 .work-shell-brand strong { min-width: 0; flex: 1; white-space: nowrap; }
 .work-shell-mark { display: grid; place-items: center; width: 27px; height: 27px; flex-shrink: 0; border-radius: 7px; color: var(--w-surface); background: var(--w-text); font-size: 10px; font-weight: 800; }
-.work-shell-links { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px; }
+.work-shell-links { flex: 1; min-height: 0; overflow: hidden; padding: 8px; display: flex; flex-direction: column; }
 .work-shell-link, .work-shell-sublink { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; min-height: 38px; padding: 8px 10px; margin: 2px 0; border: 0; border-radius: var(--w-radius-sm); color: var(--w-text-secondary); background: transparent; cursor: pointer; text-align: left; text-decoration: none; font: inherit; font-weight: 550; }
 .work-shell-link span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .work-shell-link svg { flex-shrink: 0; }
@@ -23,3 +23,31 @@
 .work-shell-mobile-bar > button { width: 44px; flex: 0 0 44px; }
 .work-shell-mobile-bar > strong { flex: 1; min-width: 0; white-space: nowrap; }
 @media (max-width: 767px) { .work-shell-main { padding: 12px; } .work-shell-link, .work-shell-sublink, .work-shell-mobile-bar .ant-btn { min-height: 44px; } }
+
+.work-shell-primary-nav { flex: 0 1 auto; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--w-border-strong, #c4cbd5) transparent; }
+.work-shell-settings-nav { flex: 0 0 auto; min-width: 0; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--w-border); }
+.work-shell-main.work-shell-main--conversation { padding: 0; background: var(--w-surface); }
+.work-shell-chevron { margin-left: auto; transition: transform .16s ease; }
+.work-shell-chevron.is-open { transform: rotate(180deg); }
+.work-shell-conversations { margin: 4px 0 12px 14px; padding-left: 10px; border-left: 1px solid var(--w-border); }
+.work-shell-conversation-tools { display: flex; align-items: center; justify-content: space-between; gap: 2px; padding-bottom: 4px; }
+.work-shell-conversation-tools > .ant-btn:first-child { min-width: 0; padding-inline: 6px; }
+.work-shell-conversation { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 2px 0; padding: 8px; border-radius: var(--w-radius-sm); color: var(--w-text-secondary); text-decoration: none; font-size: var(--w-font-sm); }
+.work-shell-conversation > svg { flex-shrink: 0; }
+.work-shell-conversation-label { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.work-shell-conversation-label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-shell-conversation-label small { font-size: 11px; color: var(--w-text-tertiary); }
+.work-shell-conversation.is-active { background: var(--w-primary-soft); color: var(--w-primary); font-weight: 600; }
+.work-shell-conversation:hover, .work-shell-link:hover:not(.is-active) { background: var(--w-bg); }
+.work-shell-unread { flex-shrink: 0; min-width: 18px; border-radius: 9px; padding: 1px 4px; color: var(--w-surface); background: var(--w-primary); font-size: 10px; text-align: center; }
+.work-shell-nav-hint { padding: 6px; margin: 0; font-size: 12px; color: var(--w-text-secondary); overflow-wrap: anywhere; }
+.work-shell-archive-hint { display: flex; justify-content: space-between; align-items: center; padding: 6px; font-size: 11px; color: var(--w-text-secondary); }
+.work-shell-archive-hint button { border: 0; background: transparent; color: var(--w-primary); cursor: pointer; padding: 6px; }
+.work-shell-primary-nav::-webkit-scrollbar { width: 6px; }
+.work-shell-primary-nav::-webkit-scrollbar-thumb { background: var(--w-border-strong, #c4cbd5); border-radius: 6px; }
+.work-shell-link:focus-visible, .work-shell-conversation:focus-visible, .work-shell-archive-hint button:focus-visible { outline: 2px solid var(--w-primary); outline-offset: 2px; }
+@media (max-width: 767px) {
+  .work-shell-conversation { min-height: 44px; }
+  .work-shell-conversation-tools > .ant-btn { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .work-shell-chevron { transition: none; } }

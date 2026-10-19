@@ -11,6 +11,7 @@ import {
   type NodePluginStatus,
   type ScoutNode,
 } from '@/api/nodes'
+import { nexusOrigin } from '@/lib/config'
 import { unwrapOne } from '@/lib/unwrap'
 import { nodeKeys } from './queries'
 import { assistantKeys } from '@/domains/assistant/queries'
@@ -26,7 +27,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
   const fb = useFeedback()
   const qc = useQueryClient()
   const online = nodeIsOnline(node)
-  const known = Array.isArray(node.plugins) && node.plugins.length > 0
+  const known = node.plugins_ready !== false && Array.isArray(node.plugins) && node.plugins.length > 0
   const job = node.plugin_job
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({})
   const [busy, setBusy] = useState('')
@@ -176,8 +177,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
     }
   }
 
-  const lockReason = !online ? '节点离线，恢复连接后才能编辑和保存配置。' : !known ? '节点尚未上报插件状态，暂不能编辑配置。请刷新状态或检查节点版本。' : ''
-  const locked = !!lockReason
+  const lockReason = !online ? '节点离线，恢复连接后才能编辑和保存配置。' : node.plugins_ready === false ? (node.plugin_warning || '插件尚未就绪，暂不能编辑配置。') : !known ? '插件状态未知，暂不能编辑配置；这不代表未配置或未安装。' : ''
 
   const dynamicIm: ItemDef[] = (node.plugins || [])
     .filter((row) => row.class === 'im' && row.id !== 'wechat')
@@ -227,10 +227,11 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
     || { group: groups[0], item: groups[0].items[0] }
   const selectedKind = kindOf(selected.group.id, selected.item)
   const selectedSt = statusOf(selectedKind, selected.item.id)
+  const locked = !!lockReason || !selectedSt
   const selectedReady = selected.item.wechat
     ? (wechat.logged_in || !!selectedSt?.configured)
     : !!selectedSt?.configured
-  const selectedMissing = !!selected.item.needsInstall && !selectedSt?.installed && !selected.item.wechat
+  const selectedMissing = known && !!selectedSt && !!selected.item.needsInstall && !selectedSt?.installed && !selected.item.wechat
   const selectedTest = lastTest[selected.item.id]
   const selectedPluginId = pluginIdOf(selected.item)
   const selectedBag = `${selectedKind}:${selectedPluginId}`
@@ -248,13 +249,13 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
 
   return (
     <div className="w-node-config-shell">
-      <div className="w-node-config-context"><span>配置目标：<strong>{node.hostname || node.node_id}</strong></span><Button size="small" disabled={!!busy} onClick={() => void refresh()}>刷新配置状态</Button></div>
+      <div className="w-node-config-context"><span>配置目标：<strong>{node.hostname || node.node_id}</strong> · {node.node_id} · {node.runtime_environment === 'development' ? '开发环境' : node.runtime_environment === 'production' ? '正式环境' : '环境未上报'} · {nexusOrigin()}（仅配置此节点）</span><Button size="small" disabled={!!busy} onClick={() => void refresh()}>刷新配置状态</Button></div>
       {lockReason && <Alert type="warning" showIcon message={lockReason} />}
       <div className="w-node-config-layout">{unknownJob && <p role="alert">插件 {unknownJob} 的执行结果待确认，未重新提交。<button type="button" onClick={() => { void refresh(); setUnknownJob('') }}>已核对节点状态，解除本地派发锁</button></p>}
       <nav className="w-node-config-nav" aria-label="接入项">
         {online && !known ? (
           <div style={{ padding: '10px 12px', fontSize: 'var(--w-font-meta)', color: 'var(--w-text-secondary)' }}>
-            节点尚未上报可用插件状态。请稍后刷新；持续无状态时检查 Scout 的版本与账号归属。
+            {lockReason}
           </div>
         ) : null}
         {groups.map((group) => (
@@ -268,7 +269,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
               const installing = jobMatches(job, kindOf(group.id, item), item.id)
               const on = navKey(group.id, item) === navKey(selected.group.id, selected.item)
               const channel = channelState(st, item, node)
-              const label = item.groupId
+              const label = !known || !st ? '状态未知' : item.groupId
                 ? (missing ? '未安装' : installing ? '安装中' : channel)
                 : item.conn && st?.status?.connected ? '已连接' : item.wechat ? (logged ? '已登录' : '未登录') : missing ? '未安装' : installing ? '安装中' : ready ? '已配置' : '待填写'
               return (
@@ -297,8 +298,8 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
       <div className="w-node-config-editor">
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{selected.item.label}</h2>
         <p style={{ margin: '4px 0 16px', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>{selected.item.hint || HINT[selected.item.id]}</p>
-        {selected.item.conn ? <ConnLine st={selectedPlatform ? { ...selectedSt, status: selectedPlatform } : selectedSt} /> : null}
-        {selected.item.groupId && selectedChannel ? (
+        {known && selectedSt && selected.item.conn ? <ConnLine st={selectedPlatform ? { ...selectedSt, status: selectedPlatform } : selectedSt} /> : null}
+        {known && selectedSt && selected.item.groupId && selectedChannel ? (
           <div style={{ margin: '0 0 14px', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
             {selectedChannel === '已启用' ? '这家已启用，凭据只属于这一家。' : selectedChannel === '已填写' ? '必填项已齐，打开下面的启用才会连接。' : '这家还没填完。其它渠道不受影响。'}
           </div>
@@ -307,7 +308,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
         {selected.item.wechat ? (
           <div className="flex flex-col" style={{ gap: 10 }}>
             <WechatQr raw={wechat.qrcode_img} />
-            <div style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-secondary)' }}>{wechatHint(wechat)}</div>
+            <div style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-secondary)' }}>{known && selectedSt ? wechatHint(wechat) : '登录状态未知；等待插件就绪后读取。'}</div>
             <div className="flex flex-wrap gap-2">
               {selectedReady ? null : <Button size="small" type="primary" disabled={!!busy || locked} onClick={() => wechatAct('qr')}>显示二维码</Button>}
               <Button size="small" disabled={!!busy || locked} onClick={() => wechatAct('status')}>刷新状态</Button>

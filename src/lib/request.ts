@@ -35,7 +35,7 @@ const sessionReallyGone = async (): Promise<boolean> => {
   if (sessionProbe) return sessionProbe
   sessionProbe = (async () => {
     try {
-      const res = await service.get<any>('/auth/status')
+      const res = await service.get<any>('/auth/status', { timeout: 5_000 })
       return !(res as any)?.data?.logged_in
     } catch {
       return false

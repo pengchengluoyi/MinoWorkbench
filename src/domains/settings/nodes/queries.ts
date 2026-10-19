@@ -9,9 +9,11 @@ import {
 import { unwrapList, unwrapOne } from '@/lib/unwrap'
 import { assistantKeys } from '@/domains/assistant/queries'
 
+import { nexusOrigin } from '@/lib/config'
+
 export const nodeKeys = {
-  get all() { return ['account', useSession.getState().user?.user_id || '', 'runtime', 'nodes'] as const },
-  logs: (id: string, lines: number) => ['account', useSession.getState().user?.user_id || '', 'runtime', 'nodes', id, 'logs', lines] as const,
+  get all() { return ['account', useSession.getState().user?.user_id || '', nexusOrigin(), 'runtime', 'nodes'] as const },
+  logs: (id: string, lines: number) => ['account', useSession.getState().user?.user_id || '', nexusOrigin(), 'runtime', 'nodes', id, 'logs', lines] as const,
   release: (os: string, arch: string) => ['releases', 'scout', os, arch] as const,
   installation: (id: string) => ['account', useSession.getState().user?.user_id || '', 'runtime', 'node-installation', id] as const,
 }

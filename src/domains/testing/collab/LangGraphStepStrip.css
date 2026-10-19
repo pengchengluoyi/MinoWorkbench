@@ -1,0 +1,67 @@
+.lg-step-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.lg-step-strip-label {
+  color: var(--w-text-muted, #888);
+  margin-right: 4px;
+}
+
+.lg-step-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--w-border, #d9d9d9);
+  background: #fff;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.lg-step-chip.is-active {
+  border-color: #1677ff;
+  background: #e6f4ff;
+}
+
+.lg-step-chip-lg {
+  font-family: ui-monospace, monospace;
+  color: #595959;
+}
+
+.lg-step-chip-sep {
+  color: #bbb;
+}
+
+.lg-step-chip-st {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #888;
+}
+
+.lg-step-chip-st.st-ok {
+  color: #389e0d;
+}
+
+.lg-step-chip-st.st-running {
+  color: #1677ff;
+}
+
+.lg-step-chip-st.st-error,
+.lg-step-chip-st.st-blocked {
+  color: #cf1322;
+}
+
+.lg-step-strip-hint {
+  color: var(--w-text-muted, #999);
+  font-size: 11px;
+}
+
+.lg-step-strip-hint code {
+  font-size: 10px;
+}

@@ -1,10 +1,11 @@
 import { lazy, Suspense } from 'react'
-import { useParams, useSearchParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link, Navigate } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
-import { Button, EmptyState, ErrorBoundary, Select, Skeleton, errText } from '@/ui'
+import { Button, EmptyState, ErrorBoundary, Skeleton, Space, errText } from '@/ui'
 import { useProjects } from '../apps/queries'
 import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab } from './nav'
 import { projectHref } from './projectNavigation'
+import { botsHref } from '@/domains/bots/botsNavigation'
 import { useAppRealtime } from './useAppRealtime'
 
 const CasesPanel = lazy(() => import('../cases/CasesPanel').then(m => ({ default: m.CasesPanel })))
@@ -13,7 +14,6 @@ const AppIssuesPanel = lazy(() => import('../cases/AppIssuesPanel').then(m => ({
 const AssetsPanel = lazy(() => import('../assets/AssetsPanel').then(m => ({ default: m.AssetsPanel })))
 const EnvConfigPanel = lazy(() => import('../config/EnvConfigPanel').then(m => ({ default: m.EnvConfigPanel })))
 const SessionLogPanel = lazy(() => import('../sessions/SessionLogPanel').then(m => ({ default: m.SessionLogPanel })))
-
 export function ProjectWorkbench() {
   const { projectId = '' } = useParams()
   const [params, setParams] = useSearchParams()
@@ -23,8 +23,14 @@ export function ProjectWorkbench() {
   const requested = params.get('appId') || ''
   const app = requested ? apps.find(row => row.id === requested) : apps.length === 1 ? apps[0] : undefined
   const appId = app?.id || ''
-  const tab = resolveTab(params.get('tab'))
+  const rawTab = params.get('tab')
+  const tab = resolveTab(rawTab)
   useAppRealtime(appId, projectId)
+  if (rawTab === 'collab') {
+    const q = new URLSearchParams(params)
+    q.delete('tab')
+    return <Navigate to={botsHref(projectId, q)} replace />
+  }
   const choose = (id: string) => {
     // A different target must never inherit another application's run/session.
     const query = new URLSearchParams(params)
@@ -39,7 +45,12 @@ export function ProjectWorkbench() {
   let panel: React.ReactNode
   if (tab === 'config') panel = <EnvConfigPanel projectId={projectId} appId={appId} />
   else if (tab === 'assets') panel = <AssetsPanel projectId={projectId} />
-  else if (scoped && !app) panel = <EmptyState title={requested ? '目标应用不属于当前项目或已不存在' : apps.length ? '请选择本次查看的应用' : '项目尚未配置应用'} hint={apps.length ? '用例执行结果与任务按目标应用区分，请在上方选择。' : '在项目配置中添加应用后，即可执行测试。'} action={<Link to={projectHref(projectId, { tab: 'config', configView: 'apps' })}>管理项目应用</Link>} />
+  else if (scoped && !app) panel = <EmptyState
+    title={requested ? '目标应用不属于当前项目或已不存在' : apps.length ? '选择要查看的应用' : '项目尚未配置应用'}
+    hint={apps.length ? '选择应用后查看对应的用例、任务和执行结果。' : '在项目配置中添加应用后，即可执行测试。'}
+    action={apps.length ? <Space wrap>{apps.map(row => <Button key={row.id} onClick={() => choose(row.id)}>{row.name || '未命名应用'}</Button>)}</Space>
+      : <Link to={projectHref(projectId, { tab: 'config', configView: 'apps' })}>管理项目应用</Link>}
+  />
   else if (tab === 'cases') panel = <CasesPanel appId={appId} projectId={projectId} platforms={app?.platforms} />
   else if (tab === 'tasks') panel = <TasksPanel appId={appId} projectId={projectId} platforms={app?.platforms} />
   else if (tab === 'issues') panel = <AppIssuesPanel appId={appId} projectId={projectId} />
@@ -75,7 +86,6 @@ export function ProjectWorkbench() {
   return <div className="project-workbench">
     <div className="project-context-bar">
       <nav aria-label="面包屑" className="project-breadcrumb"><ol className="project-breadcrumb-list">{levels.map((level, index) => <li key={`${index}:${level.label}`}>{index > 0 && <ChevronRight size={14} aria-hidden />}{level.to ? <Link to={level.to}>{level.label}</Link> : <span aria-current={index === levels.length - 1 ? 'page' : undefined}>{level.label}</span>}</li>)}</ol></nav>
-      {scoped && apps.length > 0 && <div className="project-target"><Select aria-label="目标应用" placeholder="选择应用" value={appId || undefined} options={apps.map(row => ({ value: row.id, label: row.name || '未命名应用' }))} onChange={choose} /></div>}
     </div>
     <div className="project-workbench-panel"><ErrorBoundary resetKey={`${projectId}:${appId}:${params.toString()}`} label="项目面板"><Suspense fallback={<Skeleton active />}><div key={`${projectId}:${appId}:${tab}`} className="project-panel-content">{panel}</div></Suspense></ErrorBoundary></div>
   </div>

@@ -44,7 +44,7 @@ def build(args):
             identity["runtime_id"] = original["runtime_id"]
     elif args.static_from:
         raise ValueError("static updates only apply to Workbench")
-    env = dict(os.environ, MINO_NEXUS_DATA_DIR=str(work / "isolated-data"), MINO_NEXUS_MDNS="0",
+    env = dict(os.environ, MINO_NEXUS_DATA_DIR=str(work / "isolated-production-data"), MINO_NEXUS_DEV_DATA_DIR=str(work / "isolated-data"), MINO_NEXUS_MDNS="0",
                PYINSTALLER_CONFIG_DIR=str(work / "pyinstaller-cache"), PYTHONDONTWRITEBYTECODE="1")
     source = work / "source"
     source.mkdir()

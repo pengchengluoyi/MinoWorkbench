@@ -60,6 +60,9 @@ export interface ScoutNode {
   }
   /** null：这台 Scout 还不认识插件状态。 */
   plugins?: NodePluginStatus[] | null
+  plugins_ready?: boolean | null
+  plugin_warning?: string
+  runtime_environment?: 'development' | 'production' | ''
   im_channels?: ImChannelStatus[]
   plugin_job?: NodePluginJob
   update_job?: NodePluginJob

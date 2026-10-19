@@ -8,6 +8,7 @@ import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab, type SubItem, type Tab } from '
 import { useProjects } from '@/domains/testing/apps/queries'
 import { preloadAppPanel } from '@/domains/testing/workbench/listPrefetch'
 import { beginListNavigation } from '@/domains/testing/workbench/performance'
+import { BotsNavBlock } from '@/domains/bots/BotsNavBlock'
 import './WorkShell.css'
 
 const COLLAPSE_KEY = 'mino.workshell.rail'
@@ -20,8 +21,7 @@ const subscribeMobile = (notify: () => void) => {
   media.addEventListener('change', notify)
   return () => media.removeEventListener('change', notify)
 }
-const GLOBAL_NAV = [
-  { to: '/assistant', label: '我的助手', icon: Bot },
+const SETTINGS_NAV = [
   { to: '/settings/runtime', label: 'Scout 节点', icon: Cpu },
   { to: '/settings/keys', label: '模型密钥', icon: KeyRound },
 ]
@@ -46,10 +46,12 @@ export function WorkShell() {
       {!mobile && <Button size="small" type="text" icon={narrow ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} onClick={toggle} aria-label={narrow ? '展开导航' : '折叠导航'} aria-expanded={!narrow} />}
     </div>
     <nav aria-label="工作台导航" className="work-shell-links">
-      <RailLink to="/testing" end label="项目" icon={LayoutGrid} collapsed={narrow} onNavigate={closeMenu} />
+      <div className="work-shell-primary-nav"><RailLink to="/testing" end label="项目" icon={LayoutGrid} collapsed={narrow} onNavigate={closeMenu} />
       {projectId && <ProjectNavBlock projectId={projectId} collapsed={narrow} onNavigate={closeMenu} />}
       <div className="work-shell-divider" />
-      {GLOBAL_NAV.map(item => <RailLink key={item.to} {...item} collapsed={narrow} onNavigate={closeMenu} />)}
+      <RailLink to="/assistant" label="我的助手" icon={Bot} collapsed={narrow} onNavigate={closeMenu} />
+      <BotsNavBlock collapsed={narrow} onExpand={toggle} onNavigate={closeMenu} /></div>
+      <div className="work-shell-settings-nav">{SETTINGS_NAV.map(item => <RailLink key={item.to} {...item} collapsed={narrow} onNavigate={closeMenu} />)}</div>
     </nav>
     <div className="work-shell-user"><UserMenu collapsed={narrow} /></div>
   </>
@@ -58,7 +60,7 @@ export function WorkShell() {
       : <aside className="work-shell-rail" data-collapsed={narrow}>{navigation}</aside>}
     <div className="work-shell-content">
       {mobile && <div className="work-shell-mobile-bar"><Button type="text" icon={<Menu size={20} />} aria-label="打开导航" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)} /><strong>测试工作台</strong><UserMenu collapsed /></div>}
-      <main id="workbench-content" className="work-shell-main">
+      <main id="workbench-content" className={`work-shell-main${location.pathname === '/bots' || location.pathname.startsWith('/bots/') ? ' work-shell-main--conversation' : ''}`}>
         <div className="work-shell-outlet"><ErrorBoundary key={uid} resetKey={location.pathname + location.search} label="工作台"><Outlet /></ErrorBoundary></div>
       </main>
     </div>

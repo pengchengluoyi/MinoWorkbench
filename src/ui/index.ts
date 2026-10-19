@@ -12,6 +12,7 @@ export { FeedbackProvider, useFeedback, errText } from './feedback'
 export { AppearanceMenu } from './AppearanceMenu'
 export { UserMenu } from './UserMenu'
 export { Fold } from './Fold'
+export { MermaidDiagram } from './MermaidDiagram'
 export { lightTheme, darkTheme } from './theme'
 
 // 直接转出的 antd 原件：只做收口，不做包装。

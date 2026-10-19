@@ -1,0 +1,21 @@
+.bots-testing-guide {
+  margin: 0 0 8px;
+  padding-left: 1.2rem;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--w-text-muted, #555);
+}
+
+.bots-testing-guide li {
+  margin-bottom: 8px;
+}
+
+.bots-testing-guide strong {
+  color: var(--w-text, #222);
+}
+
+.bots-testing-guide-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--w-text-muted, #888);
+}

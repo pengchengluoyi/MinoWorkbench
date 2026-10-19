@@ -52,3 +52,26 @@ export function restoreImportDecisions(rows: ImportPreviewRow[], record: ImportR
     return decision ? { ...row, selected: decision.selected, on_conflict: decision.on_conflict } : row
   })
 }
+
+
+export type StoredImportRecovery = { key: string; record: ImportRecovery }
+
+/** Legacy single-record entries remain readable; new tasks have separate identities. */
+export function readImportRecoveries(storage: Storage, owner: string, projectId: string): StoredImportRecovery[] {
+  const base = importRecoveryKey(owner, projectId)
+  const keys = [base]
+  for (let index = 0; index < storage.length; index++) {
+    const key = storage.key(index)
+    if (key?.startsWith(`${base}:task:`)) keys.push(key)
+  }
+  return keys.flatMap(key => {
+    const record = decodeImportRecovery(storage.getItem(key), owner, projectId)
+    return record ? [{ key, record }] : []
+  }).sort((a, b) => b.record.updatedAt - a.record.updatedAt)
+}
+
+export function importRecoveryTaskKey(record: ImportRecovery): string {
+  const identity = record.token || record.requestId
+  if (!identity) throw new Error('导入恢复记录缺少任务标识')
+  return `${importRecoveryKey(record.owner, record.projectId)}:task:${encodeURIComponent(identity)}`
+}
