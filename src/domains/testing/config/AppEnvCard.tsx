@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react'
 import { Button, FormField, FormSection, Input, Select } from '@/ui'
-import { channelConfigVar, channelKindText, channelTitle, usesGmailAlias, usesPhone, type EnvChannel, type EnvSecrets, type SeqSlot } from './envModel'
+import { channelConfigVar, usesGmailAlias, usesPhone, type EnvChannel, type EnvSecrets, type SeqSlot } from './envModel'
 
 const OTP_OPTIONS = [{ value: 'auto', label: '自动（账号码、固定码、Gmail、问人）' }, { value: 'fixed', label: '只用固定码' }, { value: 'gmail', label: 'Gmail 收信' }, { value: 'hitl', label: '每次问人' }]
 const LOGIN_OPTIONS = [{ value: 'auto', label: '自动（账号管理、问人）' }, { value: 'pool', label: '只用账号管理' }, { value: 'hitl', label: '真实号 / 问人' }]
-const KIND_OPTIONS = [{ value: 'phone', label: '手机号（号池 phone）' }, { value: 'email', label: '邮箱（号池 email / +别名）' }]
+const KIND_OPTIONS = [{ value: 'phone', label: '手机号' }, { value: 'email', label: '邮箱（支持别名）' }]
 
 export function AppEnvCard({ channel, value, inheritHint, secrets, phone, gmail, onValue, onSecrets, onPhoneStart, onGmailStart, onRemove, onCopy, disabled = false }: {
   channel: EnvChannel; value: string; inheritHint: string; secrets: EnvSecrets; phone: SeqSlot; gmail: SeqSlot
@@ -12,13 +12,9 @@ export function AppEnvCard({ channel, value, inheritHint, secrets, phone, gmail,
 }) {
   const patch = (next: EnvSecrets) => onSecrets(next)
   return <article className="w-surface-card" style={{ minWidth: 0 }}>
-    <header className="w-detail-heading">
-      <div className="min-w-0"><h2>{channelTitle(channel)}</h2><p>{channelKindText(channel)} · {channel.id}</p></div>
-      <Button onClick={onCopy} title={channelConfigVar(channel)}>复制参数引用</Button>
-    </header>
     <fieldset disabled={disabled} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
       <FormSection title="启动配置" description="本环境下的启动目标。修改仅在保存后生效。">
-        <FormField label="启动标识 / 地址" hint={inheritHint || `字段：${channel.field}；使用该渠道运行前请填写。`}>
+        <FormField label="启动标识 / 地址" hint={inheritHint || '填写应用在当前环境下的启动地址或标识。'}>
           <Input aria-label="当前渠道启动标识" disabled={disabled} value={value} placeholder={channel.placeholder || channel.field} spellCheck={false} onChange={e => onValue(e.target.value)} style={{ fontFamily: 'var(--w-font-mono)' }} />
         </FormField>
       </FormSection>
@@ -33,7 +29,7 @@ export function AppEnvCard({ channel, value, inheritHint, secrets, phone, gmail,
       <FormSection title="验证码策略" description="仅显示当前策略适用的字段；切换策略保留已填写配置。">
         <div className="w-form-grid">
           <FormField label="验证码来源" wide><Select aria-label="验证码来源" disabled={disabled} value={secrets.otp.mode} options={OTP_OPTIONS} onChange={v => patch({ ...secrets, otp: { ...secrets.otp, mode: v } })} style={full} /></FormField>
-          {(secrets.otp.mode === 'fixed' || secrets.otp.mode === 'auto') && <FormField label="固定验证码" hint="可留空；账号上配置的 otp 优先。"><Input aria-label="固定验证码" disabled={disabled} value={secrets.otp.fixed} onChange={e => patch({ ...secrets, otp: { ...secrets.otp, fixed: e.target.value } })} /></FormField>}
+          {(secrets.otp.mode === 'fixed' || secrets.otp.mode === 'auto') && <FormField label="固定验证码" hint="可留空；优先使用账号配置的验证码。"><Input aria-label="固定验证码" disabled={disabled} value={secrets.otp.fixed} onChange={e => patch({ ...secrets, otp: { ...secrets.otp, fixed: e.target.value } })} /></FormField>}
           {(secrets.otp.mode === 'gmail' || secrets.otp.mode === 'auto') && <>
             <FormField label="发件人白名单" hint="多个发件人使用逗号分隔。"><Input aria-label="验证码发件人白名单" disabled={disabled} value={secrets.otp.from_allowlist.join(', ')} onChange={e => patch({ ...secrets, otp: { ...secrets.otp, from_allowlist: e.target.value.split(',').map(s => s.trim()).filter(Boolean) } })} /></FormField>
             <FormField label="邮件主题关键词"><Input aria-label="验证码邮件主题关键词" disabled={disabled} value={secrets.otp.subject_contains} onChange={e => patch({ ...secrets, otp: { ...secrets.otp, subject_contains: e.target.value } })} /></FormField>
@@ -42,7 +38,7 @@ export function AppEnvCard({ channel, value, inheritHint, secrets, phone, gmail,
       </FormSection>
     </fieldset>
     <footer className="flex flex-wrap items-center gap-3" style={{ padding: '16px 24px', borderTop: '1px solid var(--w-border)' }}>
-      <span className="w-form-hint" style={{ flex: 1 }}>参数引用：<code style={{ overflowWrap: 'anywhere' }}>{channelConfigVar(channel)}</code></span>
+      <details className="w-env-advanced"><summary>参数引用</summary><div className="flex flex-wrap items-center gap-3"><code style={{ overflowWrap: 'anywhere' }}>{channelConfigVar(channel)}</code><Button onClick={onCopy}>复制参数引用</Button></div></details>
       {onRemove && <Button danger type="text" disabled={disabled} onClick={onRemove}>移除渠道</Button>}
     </footer>
   </article>

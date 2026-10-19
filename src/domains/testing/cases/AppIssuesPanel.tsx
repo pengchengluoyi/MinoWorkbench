@@ -5,7 +5,8 @@ import { useSearchParams } from 'react-router-dom'
 import { request } from '@/lib/request'
 import { unwrapOne } from '@/lib/unwrap'
 import { useSession } from '@/lib/session'
-import { Button, errText } from '@/ui'
+import { Button, DataTable, Drawer, Select, Space, StatusPill, type DataColumn } from '@/ui'
+import '../config/ConfigWorkspace.css'
 
 type Counts = { total_cases: number; evaluated_cases: number; unevaluated_cases: number; affected_cases: number; evaluated_affected_cases: number }
 type Issue = { id: string; platform: string; category: string | null; reason_code: string; message: string; origin: string; occurrences: number; affected_cases: number; stale_occurrences: number; statuses: Record<string, number>; cases: { case_id: string; name: string; item_ids: string[]; evaluated: boolean }[] }
@@ -20,6 +21,7 @@ export function AppIssuesPanel({ appId, projectId }: { appId: string; projectId:
   const [category, setCategory] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<Issue>()
   const query = useQuery({ queryKey: ['app-issues', owner, projectId, appId, platform, category, status, page], enabled: Boolean(owner && projectId && appId),
     queryFn: async () => unwrapOne<Rollup>(await request({ url: `/project/${encodeURIComponent(projectId)}/apps/${encodeURIComponent(appId)}/issues`, method: 'get', params: { platform, category, status, page, size: 50 } })) })
   const data = query.data?.owner_user_id === owner && query.data.app_id === appId && query.data.project_id === projectId ? query.data : undefined
@@ -28,27 +30,19 @@ export function AppIssuesPanel({ appId, projectId }: { appId: string; projectId:
     next.set('tab', 'cases'); next.set('case', id)
     setParams(next)
   }
-  return <section aria-label="应用级问题清单" style={{ overflow: 'auto', padding: 16 }}>
-    <h2>应用级问题清单</h2>
-    <p>范围：项目共享用例及本应用专属用例；目标诊断仅汇总本应用、当前账号可见记录。同类诊断合并不代表已确认同一根因，也不代表产品缺陷。</p>
-    <label>平台 <input aria-label="平台" value={platform} placeholder="全部；如 web、android" onChange={e => { setPlatform(e.target.value.trim().toLowerCase()); setPage(1) }} /></label>{' '}
-    <label>分类 <select aria-label="分类" value={category} onChange={e => { setCategory(e.target.value); setPage(1) }}><option value="">全部</option>{Object.entries(categories).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>{' '}
-    <label>复核状态 <select aria-label="复核状态" value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}><option value="">全部未解决诊断</option>{Object.entries(statuses).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>{' '}
-    <Button disabled={query.isFetching} onClick={() => void query.refetch()}>刷新清单</Button>
-    {query.isPending ? <p role="status">正在汇总问题</p> : query.error ? <p role="alert">读取失败：{errText(query.error)}。请重试刷新。</p> : data ? <>
-      <p>去重问题 {data.summary.unique_issues} · 诊断出现 {data.summary.occurrences} 次 · 受影响用例 {data.summary.affected_cases}</p>
-      <p>已评估 {data.summary.evaluated_cases} / {data.summary.total_cases} · 未评估 {data.summary.unevaluated_cases} · 已评估中有诊断 {data.summary.evaluated_affected_cases} / {data.summary.evaluated_cases || '—'}</p>
-      <p>已评估指当前原文版本完成编译评估（成功或失败）；未评估不算无问题，以上不是业务通过率。分类和状态筛选只改变问题计数，不缩小评估分母。</p>
-      <p>汇总时间：{data.as_of}</p>
-      <table><thead><tr><th>平台</th><th>已评估 / 总用例</th><th>受影响用例</th></tr></thead><tbody>{data.platforms.map(row => <tr key={row.platform}><td>{row.platform}</td><td>{row.evaluated_cases} / {row.total_cases}</td><td>{row.affected_cases}</td></tr>)}</tbody></table>
-      {!data.items.length ? <p>当前筛选没有诊断；不表示全部用例已评估或业务已通过。</p> : data.items.map(item => <article key={item.id} style={{ borderTop: '1px solid var(--w-border)', paddingBlock: 12 }}>
-        <strong>{categories[item.category || 'unconfirmed'] || item.category} · {item.platform} · {item.reason_code}</strong>
-        <p>{item.message}</p><p>来源 {item.origin} · {item.occurrences} 次 · {item.affected_cases} 个用例{item.stale_occurrences ? ` · ${item.stale_occurrences} 条目标诊断已过期，需复检` : ''}</p>
-        <p>{Object.entries(item.statuses).map(([s, count]) => `${statuses[s] || s} ${count}`).join(' · ')}</p>
-        <details><summary>查看受影响用例（{item.cases.length}）</summary><ul>{item.cases.map(c => <li key={c.case_id}><Button onClick={() => openCase(c.case_id)}>{c.name}</Button> · {c.item_ids.length} 条诊断{!c.evaluated ? ' · 当前版本未完成评估' : ''}</li>)}</ul></details>
-      </article>)}
-      <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button> <span>第 {page} 页 / 共 {Math.max(1, Math.ceil(data.total / data.size))} 页</span> <Button disabled={page * data.size >= data.total} onClick={() => setPage(page + 1)}>下一页</Button>
-    </> : null}
-    <ApplicationUnderstandingPanel projectId={projectId} appId={appId} />
+  const columns: DataColumn<Issue>[] = [
+    { key: 'issue', title: '问题', render: (_, item) => <div className="config-stack"><strong>{item.message || item.reason_code}</strong><span className="config-secondary">{categories[item.category || 'unconfirmed'] || item.category}</span></div> },
+    { key: 'platform', title: '平台', dataIndex: 'platform', width: 100 },
+    { key: 'cases', title: '受影响用例', dataIndex: 'affected_cases', width: 120 },
+    { key: 'occurrences', title: '出现次数', dataIndex: 'occurrences', width: 100 },
+    { key: 'state', title: '复核状态', width: 190, render: (_, item) => <Space wrap>{Object.entries(item.statuses).map(([key, count]) => <StatusPill key={key} status={key === 'confirmed' ? 'muted' : 'warn'}>{statuses[key] || key} {count}</StatusPill>)}</Space> },
+    { key: 'action', title: '操作', width: 100, render: (_, item) => <Button type="link" onClick={() => setSelected(item)}>查看详情</Button> },
+  ]
+  if (params.get('issueView') === 'pages') return <ApplicationUnderstandingPanel projectId={projectId} appId={appId} />
+  return <section className="config-workspace config-workspace--fill" aria-label="应用级问题清单">
+    <header className="config-workspace-heading"><div><h1>待处理问题</h1><p>先处理影响用例执行的问题。</p></div><Button loading={query.isFetching} onClick={() => void query.refetch()}>刷新</Button></header>
+      {data && <div className="config-comparison-stats"><div className="config-comparison-stat"><span>待处理问题</span><strong>{data.summary.unique_issues}</strong></div><div className="config-comparison-stat"><span>受影响用例</span><strong>{data.summary.affected_cases}</strong></div><div className="config-comparison-stat"><span>当前版本已评估</span><strong>{data.summary.evaluated_cases} / {data.summary.total_cases}</strong></div></div>}
+      <DataTable fill viewId="testing.application-issues" columns={columns} dataSource={data?.items} rowKey="id" loading={query.isPending} error={query.error} emptyTitle="当前筛选没有待处理问题" emptyHint="尚未评估的用例不计作无问题。" pagination={{ page, pageSize: 50, total: data?.total || 0, onChange: next => setPage(next) }} toolbar={<div className="config-toolbar"><Select aria-label="问题平台" value={platform} style={{ width: 140 }} onChange={value => { setPlatform(value); setPage(1) }} options={[{ value: '', label: '全部平台' }, ...['android', 'ios', 'web', 'pc'].map(value => ({ value, label: value }))]} /><Select aria-label="问题分类" value={category} style={{ width: 210 }} onChange={value => { setCategory(value); setPage(1) }} options={[{ value: '', label: '全部分类' }, ...Object.entries(categories).map(([value, label]) => ({ value, label }))]} /><Select aria-label="问题复核状态" value={status} style={{ width: 190 }} onChange={value => { setStatus(value); setPage(1) }} options={[{ value: '', label: '全部未解决问题' }, ...Object.entries(statuses).map(([value, label]) => ({ value, label }))]} /></div>} />
+    <Drawer title="问题详情" width="min(560px, 100vw)" open={!!selected} onClose={() => setSelected(undefined)}>{selected && <><p>{selected.message}</p><p className="config-secondary">{categories[selected.category || 'unconfirmed']} · {selected.platform} · 出现 {selected.occurrences} 次</p>{selected.stale_occurrences > 0 && <p>有 {selected.stale_occurrences} 条记录已过期，需要重新复检。</p>}<h4>受影响用例</h4>{selected.cases.map(c => <div className="config-drawer-section" key={c.case_id}><Button type="link" onClick={() => { setSelected(undefined); openCase(c.case_id) }}>{c.name}</Button><span className="config-secondary">{c.item_ids.length} 条诊断{c.evaluated ? '' : ' · 当前版本尚未评估'}</span></div>)}<details><summary>诊断来源</summary><p className="config-secondary">{selected.origin} · {selected.reason_code}</p></details></>}</Drawer>
   </section>
 }

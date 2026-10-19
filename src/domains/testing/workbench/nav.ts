@@ -15,7 +15,7 @@ export const DEFAULT_TAB: Tab = 'cases'
 /** 已砍功能的旧 tab 值，统一重定向到默认 tab。 */
 export const RETIRED_TABS = ['process', 'knowledge', 'docs', 'intel', 'dispatch'] as const
 
-export type SubParamKey = 'view' | 'nview' | 'section' | 'configSection' | 'configView'
+export type SubParamKey = 'view' | 'nview' | 'section' | 'configSection' | 'configView' | 'issueView'
 
 export interface SubItem {
   label: string
@@ -35,7 +35,10 @@ export interface NavItem {
 
 export const APP_NAV: NavItem[] = [
   { id: 'cases', label: '用例', icon: FlaskConical },
-  { id: 'issues', label: '问题清单', icon: ListChecks },
+  { id: 'issues', label: '问题清单', icon: ListChecks, children: [
+    { label: '待处理问题', param: { key: 'issueView', value: 'list' } },
+    { label: '页面资料', param: { key: 'issueView', value: 'pages' } },
+  ] },
   {
     id: 'tasks',
     label: '任务',
@@ -43,7 +46,7 @@ export const APP_NAV: NavItem[] = [
     alsoActiveOn: ['session-log'],
     children: [
       { label: '执行批次', tab: 'tasks' },
-      { label: 'Session Log', tab: 'session-log' },
+      { label: '执行记录', tab: 'session-log' },
     ],
   },
   {
@@ -62,6 +65,10 @@ export const APP_NAV: NavItem[] = [
     icon: Settings2,
     children: [
       { label: '应用与环境', param: { key: 'configView', value: 'apps' } },
+      { label: '控件定位', param: { key: 'configView', value: 'controls' } },
+      { label: '账号事实', param: { key: 'configView', value: 'account-facts' } },
+      { label: '执行资源', param: { key: 'configView', value: 'execution-resources' } },
+      { label: '项目维护者', param: { key: 'configView', value: 'maintainers' } },
     ],
   },
 ]
@@ -69,6 +76,7 @@ export const APP_NAV: NavItem[] = [
 /** 每个 tab 的子视图参数名与默认值，读 URL 时兜底。 */
 export const SUB_VIEW_DEFAULTS: Partial<Record<Tab, { key: SubParamKey; value: string }>> = {
   cases: { key: 'view', value: 'library' },
+  issues: { key: 'issueView', value: 'list' },
   navigation: { key: 'nview', value: 'arch' },
   assets: { key: 'section', value: 'accounts' },
   config: { key: 'configView', value: 'apps' },

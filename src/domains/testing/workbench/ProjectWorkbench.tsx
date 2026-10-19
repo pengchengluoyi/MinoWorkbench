@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
-import { Folder } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { Button, EmptyState, ErrorBoundary, Select, Skeleton, errText } from '@/ui'
 import { useProjects } from '../apps/queries'
 import { resolveTab } from './nav'
@@ -27,7 +27,9 @@ export function ProjectWorkbench() {
   useAppRealtime(appId, projectId)
   const choose = (id: string) => {
     // A different target must never inherit another application's run/session.
-    const query = new URLSearchParams({ tab, appId: id })
+    const query = new URLSearchParams(params)
+    for (const key of ['case', 'run', 'session', 'tcase', 'unit']) query.delete(key)
+    query.set('appId', id)
     setParams(query)
   }
   if (projects.isPending) return <Skeleton active />
@@ -43,9 +45,11 @@ export function ProjectWorkbench() {
   else if (tab === 'issues') panel = <AppIssuesPanel appId={appId} projectId={projectId} />
   else if (tab === 'session-log') panel = <SessionLogPanel appId={appId} />
   else panel = <EmptyState title="此项目视图暂未提供" action={<Link to={projectHref(projectId)}>返回项目用例</Link>} />
-  return <div className="flex flex-col h-full min-h-0" style={{ gap: 'var(--w-space-3)' }}>
-    <header className="flex items-center gap-3"><Link to="/testing" aria-label="返回项目列表">←</Link><Folder size={20} /><h1 className="truncate" style={{ margin: 0, fontSize: 22 }}>{project.name || '未命名项目'}</h1></header>
-    {scoped && apps.length > 0 && <div className="flex items-center gap-3"><span>目标应用</span><Select aria-label="目标应用" placeholder="选择项目内的应用" value={appId || undefined} style={{ minWidth: 240 }} options={apps.map(row => ({ value: row.id, label: row.name || row.id }))} onChange={choose} /><Link to={projectHref(projectId, { tab: 'config', configView: 'apps' })}>管理应用</Link></div>}
-    <main className="flex flex-col flex-1 min-h-0 overflow-hidden"><ErrorBoundary resetKey={`${projectId}:${appId}:${params.toString()}`} label="项目面板"><Suspense fallback={<Skeleton active />}><div key={`${projectId}:${appId}:${tab}`} className="flex flex-col flex-1 min-h-0">{panel}</div></Suspense></ErrorBoundary></main>
+  return <div className="project-workbench">
+    <div className="project-context-bar">
+      <nav aria-label="面包屑" className="project-breadcrumb"><Link to="/testing">项目</Link><ChevronRight size={14} aria-hidden /><span aria-current="page" title={project.name}>{project.name || '未命名项目'}</span></nav>
+      {scoped && apps.length > 0 && <div className="project-target"><Select aria-label="目标应用" placeholder="选择应用" value={appId || undefined} options={apps.map(row => ({ value: row.id, label: row.name || '未命名应用' }))} onChange={choose} /></div>}
+    </div>
+    <div className="project-workbench-panel"><ErrorBoundary resetKey={`${projectId}:${appId}:${params.toString()}`} label="项目面板"><Suspense fallback={<Skeleton active />}><div key={`${projectId}:${appId}:${tab}`} className="project-panel-content">{panel}</div></Suspense></ErrorBoundary></div>
   </div>
 }

@@ -12,7 +12,7 @@ import { useUrlState } from '@/hooks/useUrlState'
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Save, TriangleAlert } from 'lucide-react'
-import { Alert, Button, EmptyState, Input, Modal, Select, Segmented, Skeleton, errText, useFeedback } from '@/ui'
+import { Alert, Button, EmptyState, Input, Modal, Select, Skeleton, errText, useFeedback } from '@/ui'
 import { ControlRegistry } from './ControlRegistry'
 import { MaintainersPanel } from './MaintainersPanel'
 import { getProjectEnv, updateProjectEnv } from '@/api/projectEnv'
@@ -20,20 +20,15 @@ import { unwrapOne } from '@/lib/unwrap'
 import { copyToClipboard } from '@/lib/clipboard'
 import { AppEnvCard } from './AppEnvCard'
 import {
-  buildPayload, buildWritePayload, environmentWriteIssues, channelConfigVar, channelTitle,
+  buildPayload, buildWritePayload, environmentWriteIssues, channelConfigVar, channelKindText, channelTitle,
   emptySecrets, normalizeEnvDoc, normalizeSecrets, normalizeSlot, slugEnvKey,
-  type EnvChannel, type EnvDocument,
+  type EnvDocument,
 } from './envModel'
 
-/**
- * 环境配置。
- * 左边是上线顺序。中间是这个环境下的应用清单，一行看清启动地址和登录方式。
- * 右边只编辑当前选中的应用，避免两张完整表单叠在一起上下翻。
- */
+/** 配置分类由工作台导航统一承载，应用内只保留环境与平台选择。 */
 export function EnvConfigPanel({ projectId, appId }: { projectId: string; appId: string }) {
-  const [view, setView] = useUrlState<string>('configView', 'apps', ['apps', 'environment', 'development', 'login-evidence', 'controls', 'maintainers', 'account-facts', 'execution-resources'])
-  return <div className="w-workspace flex min-h-0 flex-1 flex-col" style={{ gap: 12 }}>
-    <Segmented value={['environment', 'development', 'login-evidence'].includes(view) ? 'apps' : view} onChange={value => setView(String(value))} options={[{ value: 'apps', label: '应用与环境' }, { value: 'controls', label: '控件定位' }, { value: 'account-facts', label: '账号事实' }, { value: 'execution-resources', label: '执行资源' }, { value: 'maintainers', label: '项目维护者' }]} />
+  const [view] = useUrlState<string>('configView', 'apps', ['apps', 'environment', 'development', 'login-evidence', 'controls', 'maintainers', 'account-facts', 'execution-resources'])
+  return <div className="w-config-host">
     {['apps', 'environment', 'development', 'login-evidence'].includes(view) && <ProjectAppsPanel projectId={projectId} legacySection={view === 'environment' ? 'environment' : view === 'development' ? 'development' : view === 'login-evidence' ? 'login' : undefined} />}
     {view === 'controls' && <ControlRegistry projectId={projectId} appId={appId} />}
     {view === 'account-facts' && <AccountFactsPanel projectId={projectId} />}
@@ -132,7 +127,7 @@ export function EnvironmentSettings({ projectId, application }: { projectId: str
   if (query.isLoading || !doc || !env) return <Skeleton active paragraph={{ rows: 8 }} title={{ width: 160 }} />
 
   return (
-    <div className={application ? "flex min-h-0 min-w-0 flex-1 flex-col" : "w-env-layout"}>
+    <div className={application ? "w-app-env" : "w-env-layout"}>
       {!application && <aside className="w-env-nav">
         {!application && <label className="w-form-field" style={{ marginBottom: 24 }}>默认运行环境<Select aria-label="默认运行环境" value={doc.default_profile} disabled={save.isPending} onChange={value => patch({ ...doc, default_profile: value })} options={doc.environments.map(row => ({ value: row.key, label: row.label }))} /></label>}
         <div style={{ fontSize: 'var(--w-font-sm)', fontWeight: 700, marginBottom: 4 }}>{application ? '运行环境' : '环境顺序'}</div>
@@ -159,13 +154,11 @@ export function EnvironmentSettings({ projectId, application }: { projectId: str
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ gap: 12 }}>
         {query.isError && <p role="alert">环境刷新失败，当前草稿已保留。{errText(query.error)}<Button disabled={save.isPending} onClick={() => void query.refetch()}>重试读取</Button></p>}
         {incomingChanged && <p role="alert">服务端配置已更新，未覆盖你的草稿。<Button disabled={save.isPending} onClick={() => { if (query.data) { setDoc(query.data); setSaved(JSON.stringify(buildPayload(query.data))); setIncomingChanged(false) } }}>放弃草稿并读取新配置</Button></p>}
-        {application && <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2">运行环境<Select aria-label="应用运行环境" value={env.key} style={{ minWidth: 180 }} options={doc.environments.map(row => ({ value: row.key, label: row.label + (row.key === doc.default_profile ? '（项目默认）' : '') }))} onChange={setActive} /></label>
-          <span className="w-form-hint">使用项目已有环境，只填写此应用的启动目标和登录参数。</span>
-          <Link to={projectHref(projectId, { tab: 'config', configView: 'environment' })}>管理环境名称与默认项</Link>
-        </div>}
-        <div className="flex flex-wrap items-center gap-2">
-          {application ? <strong>{application.name} · {env.label}</strong> : <Input
+        <div className="w-env-toolbar">
+          {application ? <>
+            <label className="w-env-choice">运行环境<Select aria-label="应用运行环境" value={env.key} options={doc.environments.map(row => ({ value: row.key, label: row.label + (row.key === doc.default_profile ? '（默认）' : '') }))} onChange={setActive} /></label>
+            <label className="w-env-choice">运行平台<Select aria-label="应用运行平台" value={channel?.id} placeholder="选择运行平台" options={channels.map(row => ({ value: row.id, label: runtime.legacy ? `${channelKindText(row)} · ${channelTitle(row)}` : channelKindText(row) }))} onChange={setAppId} /></label>
+          </> : <Input
             value={env.label}
             onChange={(e) => patch({
               ...doc,
@@ -176,7 +169,7 @@ export function EnvironmentSettings({ projectId, application }: { projectId: str
           />}
           {!application && <span className="w-form-hint">顺序 {doc.environments.findIndex((e) => e.key === env.key) + 1} · {env.key}</span>}
           <span style={{ flex: 1 }} />
-          {dirty && <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-warn)' }}>有未保存修改 · 保存范围为全部环境</span>}
+          {dirty && <span style={{ fontSize: 'var(--w-font-meta)', fontWeight: 700, color: 'var(--w-warn)' }}>有未保存修改</span>}
           {!application && <Button size="small" danger disabled={save.isPending || doc.environments.length <= 1} onClick={() => {
             void fb.confirm({ title: `删除环境「${env.label}」？`, content: '各应用在这个环境下的配置会一起丢掉。', danger: true, okText: '删除' }).then((ok) => {
               if (!ok) return
@@ -196,41 +189,10 @@ export function EnvironmentSettings({ projectId, application }: { projectId: str
         {!application ? <div className="w-surface-card p-5 overflow-auto"><h2>项目环境</h2><p>这里统一管理环境名称、顺序和默认项。启动地址、登录策略和开发配置在应用中维护。</p>
           {projects.isError ? <Alert type="error" message="应用列表读取失败" /> : (projects.data?.find(p => p.id === projectId)?.apps || []).map(app => <div key={app.id} className="flex flex-wrap items-center justify-between gap-3 py-3" style={{ borderBottom: '1px solid var(--w-border)' }}><strong>{app.name}</strong><Link to={projectHref(projectId, { tab: 'config', configView: 'apps', appId: app.id, appConfig: 'runtime' })}>配置应用</Link></div>)}
           <Link to={projectHref(projectId, { tab: 'config', configView: 'apps' })}>管理项目应用</Link>
-        </div> : <div className="w-env-editor">
-          <aside className="w-env-channels" aria-label="环境内渠道">
-            <strong>应用运行平台</strong>
-            {channels.map((ch) => {
-              const fact = appFacts(doc, env.key, ch)
-              const on = (channel?.id || '') === ch.id
-              return (
-                <button
-                  key={ch.id}
-                  type="button"
-                  onClick={() => setAppId(ch.id)}
-                  className="w-hit text-left" aria-current={on ? 'true' : undefined}
-                  style={{
-                    border: `1px solid ${on ? 'var(--w-primary)' : 'var(--w-border)'}`,
-                    borderRadius: 'var(--w-radius)',
-                    background: on ? 'var(--w-primary-soft)' : 'var(--w-surface)',
-                    padding: '10px 12px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{channelTitle(ch)}</div>
-                  <div className="truncate" style={{ marginTop: 4, fontSize: 'var(--w-font-meta)', color: fact.launch ? 'var(--w-text-secondary)' : 'var(--w-warn)' }}>
-                    {fact.launch || '未填启动地址'}
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 'var(--w-font-meta)', color: 'var(--w-text-tertiary)' }}>
-                    {fact.login} · {fact.otp}
-                  </div>
-                </button>
-              )
-            })}
-          </aside>
-          <div className="w-env-form">
+        </div> : <div className="w-env-form" role="region" aria-label="应用运行配置" tabIndex={0}>
             {channel?.app_id && doc.channels.some(c => !c.app_id && c.platform === channel.platform) && <div className="w-surface-card p-4 mb-3">
               <p>此平台存在尚未关联的历史配置。可选择复用，原地址、登录策略及其他环境参数会一并保留。</p>
-              <Select aria-label="复用已有运行配置" placeholder="选择已有配置（可选）" style={{ width: '100%' }} value={undefined} disabled={save.isPending} options={doc.channels.filter(c => !c.app_id && c.platform === channel.platform).map(c => ({ value: c.id, label: `${channelTitle(c)} · ${c.id}` }))} onChange={id => {
+              <Select aria-label="复用已有运行配置" placeholder="选择已有配置（可选）" style={{ width: '100%' }} value={undefined} disabled={save.isPending} options={doc.channels.filter(c => !c.app_id && c.platform === channel.platform).map(c => ({ value: c.id, label: channelTitle(c) }))} onChange={id => {
                 patch({ ...doc, channels: doc.channels.map(c => c.id === id ? { ...c, app_id: application.id } : c.id === channel.id ? { ...c, app_id: undefined } : c) })
                 setAppId(id)
               }} />
@@ -268,9 +230,8 @@ export function EnvironmentSettings({ projectId, application }: { projectId: str
                 }}
               />
             ) : (
-              <EmptyState title={channels.length ? "请选择已有运行配置" : "未找到匹配当前应用平台的配置"} hint={channels.length ? "左侧已列出原有配置；选择后即可查看和编辑，无需重新创建。" : "请重新读取配置；已有数据不会在此删除或覆盖。"} action={<Button loading={query.isFetching} onClick={() => void query.refetch()}>重新读取配置</Button>} />
+              <EmptyState title={channels.length ? "请选择已有运行配置" : "未找到匹配当前应用平台的配置"} hint={channels.length ? "选择上方运行平台后即可查看和编辑已有配置。" : "请重新读取配置；已有数据不会在此删除或覆盖。"} action={<Button loading={query.isFetching} onClick={() => void query.refetch()}>重新读取配置</Button>} />
             )}
-          </div>
         </div>}
       </section>
 
@@ -280,25 +241,4 @@ export function EnvironmentSettings({ projectId, application }: { projectId: str
 
     </div>
   )
-}
-
-const OTP_TEXT: Record<string, string> = {
-  auto: '验证码自动',
-  fixed: '固定码',
-  gmail: 'Gmail 收信',
-  hitl: '验证码问人',
-}
-const LOGIN_TEXT: Record<string, string> = {
-  auto: '登录自动',
-  pool: '账号管理',
-  hitl: '登录问人',
-}
-
-function appFacts(doc: EnvDocument, envKey: string, ch: EnvChannel) {
-  const secrets = normalizeSecrets(doc.channel_secrets[ch.id]?.[envKey])
-  return {
-    launch: String(doc.profiles[envKey]?.[ch.id]?.[ch.field] || '').trim(),
-    otp: OTP_TEXT[secrets.otp.mode] || secrets.otp.mode,
-    login: LOGIN_TEXT[secrets.login.mode] || secrets.login.mode,
-  }
 }

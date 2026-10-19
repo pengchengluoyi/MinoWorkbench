@@ -35,6 +35,7 @@ const PANES: { id: Pane; label: string }[] = [
 export function NodesPage() {
   const nodes = useNodes()
   const accountId = useSession(state => state.user?.user_id || '')
+  const accountName = useSession(state => state.user?.username || state.user?.name || '当前账号')
   const [addingNode, setAddingNode] = useState(false)
   const [params, setParams] = useSearchParams()
   const [listCollapsed, setListCollapsed] = usePersistedFlag('mino.nodes.rail', false)
@@ -85,8 +86,8 @@ export function NodesPage() {
       <Card>
         <EmptyState
           icon={<Cpu size={28} strokeWidth={1.5} />}
-          title="还没有节点接入"
-          hint="点击添加节点，将安装命令复制到目标电脑执行。Scout 接入后会出现在这里。"
+          title="当前账号下暂无节点"
+          hint="节点归连接时使用的账号所有。若已用其他账号接入，请切换到该账号查看；确认尚未接入后再添加节点。"
           action={<Button onClick={() => setAddingNode(true)}>添加节点</Button>}
         />
       </Card>
@@ -121,6 +122,10 @@ export function NodesPage() {
           <Button size="small" icon={<RefreshCw size={13} />} loading={nodes.isFetching} onClick={() => { setNodeOrder([]); void nodes.refetch() }} aria-label="刷新" />
         </Tooltip>
       </div>
+
+      <p role="note" style={{ margin: 0, color: 'var(--w-text-secondary)', fontSize: 'var(--w-font-sm)' }}>
+        当前账号：{accountName}。已归属节点按此账号显示；管理员身份不自动获得其他账号的执行权限。
+      </p>
 
       {nodes.isError && nodes.data && <Alert type="warning" showIcon message="节点刷新失败，以下保留上次读取信息" description={errText(nodes.error)} />}
               {active?.owner_user_id ? (

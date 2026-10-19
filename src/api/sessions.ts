@@ -75,45 +75,6 @@ export interface SessionEventsData {
   meta?: SessionMeta
 }
 
-export interface ExecutionBuild {
-  build_id?: string
-  instance_id?: string
-  source_commit?: string
-  source_digest?: string
-  identity_kind?: string
-  dirty?: boolean
-  source_unchanged?: boolean
-}
-
-export interface ExecutionExpectation {
-  expected_instance_id: string
-  expected_node_id: string
-  expected_build_id: string
-  expected_nexus_build_id: string
-}
-
-export interface ExecutionEvidence {
-  state: 'verified' | 'incomplete' | 'failed'
-  instance_id: string
-  session_id: string
-  status: string
-  result_count: number
-  nexus: ExecutionBuild
-  nodes: { node_id: string; scout_process_generation: string; build: ExecutionBuild; result_count: number; devices: string[]; event_seqs: number[] }[]
-  issues: { code: string; message: string; failed: boolean }[]
-  web_chain_verified: false
-  mcp_regression_verified: false
-  reference: Record<string, unknown>
-}
-
-export const getExecutionEvidence = async (sessionId: string, expected: ExecutionExpectation, signal?: AbortSignal) => {
-  const result = await request<ExecutionEvidence>({
-    url: `/case-runner/sessions/${encodeURIComponent(sessionId)}/execution-evidence`, method: 'get',
-    params: expected, signal,
-  })
-  return result.data as ExecutionEvidence
-}
-
 const dataOf = <T>(res: NexusEnvelope<T>): T => (res?.data ?? {}) as T
 
 export const listSessions = async (params: {

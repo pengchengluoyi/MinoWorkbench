@@ -50,7 +50,7 @@ export function DeviceSelect({ devices, value, onChange, loading = false, refres
     })),
   }))
   const note = selected && !isExecutable(selected) ? selected.blocked_reason || '所选设备未就绪'
-    : !devices.length ? '暂无设备，请到 Scout 节点页查看接入状态。'
+    : !devices.length ? '当前账号下暂无符合所选应用与环境的设备。请核对节点归属、应用渠道与环境；其他账号接入的设备需切换账号查看。'
         : !readyCount ? '当前渠道没有可执行设备，展开列表查看原因。'
           : `${readyCount} 台可执行设备 · ${groups.size} 个 Scout 节点`
   return (

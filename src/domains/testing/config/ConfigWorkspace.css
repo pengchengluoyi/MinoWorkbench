@@ -1,0 +1,43 @@
+.config-workspace { display: flex; flex-direction: column; flex: 1; gap: 16px; min-height: 0; min-width: 0; overflow-y: auto; color: var(--w-text); }
+.config-workspace--fill { overflow: hidden; }
+.config-workspace-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; flex-shrink: 0; min-width: 0; }
+.config-workspace-heading h1, .config-workspace-heading h2, .config-workspace-heading h3 { margin: 0; font-size: var(--w-font-h2); font-weight: var(--w-weight-semibold); line-height: 1.4; }
+.config-workspace-heading p { margin: 6px 0 0; }
+.config-workspace-heading > div { min-width: 0; }
+.config-workspace-heading p, .config-secondary { color: var(--w-text-tertiary); line-height: 1.6; font-size: var(--w-font-sm); }
+.config-secondary { margin: 0; overflow-wrap: anywhere; }
+.config-workspace-section { min-width: 0; margin-top: 20px; }
+.config-workspace-section h3 { margin: 0 0 12px; font-size: var(--w-font-title); }
+.config-page-body { display: flex; flex-direction: column; gap: 16px; flex: 1; min-height: 0; min-width: 0; overflow-y: auto; }
+.config-stack { display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.config-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.config-toolbar .ant-select, .config-toolbar .ant-input-search { max-width: 100%; }
+.config-field-change { display: flex; gap: 6px; flex-wrap: wrap; }
+.config-fact-label { color: var(--w-text-secondary); min-width: 56px; }
+.config-drawer-section { margin: 20px 0; min-width: 0; }
+.config-drawer-section h4 { margin: 0 0 12px; }
+.config-evidence-reference { display: block; overflow-wrap: anywhere; margin: 8px 0; color: var(--w-text-tertiary); font-size: var(--w-font-meta); }
+.config-comparison-stats { display: flex; flex-wrap: wrap; gap: 12px 28px; flex-shrink: 0; margin: 0; padding: 14px 0; border-block: 1px solid var(--w-border); }
+.config-comparison-stat { flex: 1 1 160px; min-width: 0; }
+.config-comparison-stat > span { color: var(--w-text-secondary); font-size: var(--w-font-sm); }
+.config-comparison-stat strong { font-size: 24px; display: block; line-height: 1.4; margin-top: 4px; }
+.config-rule-form > .ant-space { display: flex; flex-wrap: wrap; }
+.config-rule-form > .ant-space > .ant-space-item { flex: 1 1 180px; min-width: 0; }
+.config-rule-form .ant-select { width: 100% !important; }
+.config-subsection-title { margin: 0; font-size: var(--w-font-title); font-weight: 650; }
+@media (max-width: 600px) {
+  .config-workspace { gap: 12px; }
+  .config-workspace-heading h1, .config-workspace-heading h2 { font-size: 20px; }
+  .config-comparison-stats { gap: 12px; }
+  .config-comparison-stat { flex: 1 1 85px; }
+  .config-comparison-stat strong { font-size: 21px; }
+  .config-toolbar > .ant-select { flex: 1 1 135px; width: auto !important; }
+}
+
+.config-app-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px; min-width: 0; border-bottom: 1px solid var(--w-border); }
+.config-app-row:last-child { border-bottom: 0; }
+.config-app-row .config-stack { flex: 1; }
+.config-app-row > .ant-btn { flex-shrink: 0; }
+
+.config-control-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.config-control-fields .ant-select { width: 100%; }

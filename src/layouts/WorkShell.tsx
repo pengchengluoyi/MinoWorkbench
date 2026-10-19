@@ -1,301 +1,116 @@
-import { useCallback, useState } from 'react'
-import { useSession } from '@/lib/session'
+import { useCallback, useState, useSyncExternalStore } from 'react'
 import { NavLink, Outlet, useMatch, useLocation, useSearchParams } from 'react-router-dom'
-import { Bot, ChevronRight, Cpu, KeyRound, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { Button, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
+import { Bot, Cpu, KeyRound, LayoutGrid, Menu, PanelLeftClose, PanelLeftOpen, type LucideIcon } from 'lucide-react'
+import { useSession } from '@/lib/session'
+import { Button, Drawer, Dropdown, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
 import { CommandPalette } from './CommandPalette'
-import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab, type Tab } from '@/domains/testing/workbench/nav'
+import { APP_NAV, SUB_VIEW_DEFAULTS, resolveTab, type SubItem, type Tab } from '@/domains/testing/workbench/nav'
 import { useProjects } from '@/domains/testing/apps/queries'
 import { preloadAppPanel } from '@/domains/testing/workbench/listPrefetch'
 import { beginListNavigation } from '@/domains/testing/workbench/performance'
+import './WorkShell.css'
 
 const COLLAPSE_KEY = 'mino.workshell.rail'
 const readCollapsed = () => {
   try { return localStorage.getItem(COLLAPSE_KEY) === 'collapsed' } catch { return false }
 }
-
+const mobileQuery = '(max-width: 767px)'
+const subscribeMobile = (notify: () => void) => {
+  const media = window.matchMedia(mobileQuery)
+  media.addEventListener('change', notify)
+  return () => media.removeEventListener('change', notify)
+}
 const GLOBAL_NAV = [
   { to: '/assistant', label: '我的助手', icon: Bot },
   { to: '/settings/runtime', label: 'Scout 节点', icon: Cpu },
   { to: '/settings/keys', label: '模型密钥', icon: KeyRound },
 ]
 
-/**
- * 测试工作台外壳 —— **唯一的左侧导航**。
- *
- * 上一版的问题：外壳有一条左栏，进入应用后 AppWorkbench 又画了一条，
- * 屏幕上出现两条左导航。现在应用内导航嵌进这一条里，整条可折叠。
- */
 export function WorkShell() {
   const location = useLocation()
-  const uid = useSession((state) => state.user?.user_id || '')
-  const projectMatch = useMatch('/testing/projects/:projectId')
-  const projectId = projectMatch?.params.projectId || ''
+  const uid = useSession(state => state.user?.user_id || '')
+  const projectId = useMatch('/testing/projects/:projectId')?.params.projectId || ''
+  const mobile = useSyncExternalStore(subscribeMobile, () => window.matchMedia(mobileQuery).matches, () => false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
-
-  const toggle = useCallback(() => {
-    setCollapsed((prev) => {
-      const next = !prev
-      try { localStorage.setItem(COLLAPSE_KEY, next ? 'collapsed' : 'open') } catch { /* 隐私模式 */ }
-      return next
-    })
-  }, [])
-
-  return (
-    <div className="flex h-full" style={{ background: 'var(--w-bg)' }}>
-      <aside
-        className="w-rail flex flex-col shrink-0"
-        style={{
-          width: collapsed ? 'var(--w-sidebar-collapsed)' : 'var(--w-sidebar-width)',
-          background: 'var(--w-surface)',
-          borderRight: '1px solid var(--w-border)',
-        }}
-      >
-        <div
-          className="flex items-center shrink-0"
-          style={{
-            height: 52,
-            padding: collapsed ? '0' : '0 8px 0 14px',
-            justifyContent: collapsed ? 'center' : 'space-between',
-            borderBottom: '1px solid var(--w-border)',
-          }}
-        >
-          {!collapsed && (
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className="flex items-center justify-center shrink-0"
-                style={{
-                  width: 26, height: 26, borderRadius: 7,
-                  background: 'var(--w-text)', color: 'var(--w-surface)',
-                  fontSize: 10, fontWeight: 800,
-                }}
-              >
-                MW
-              </div>
-              <strong className="truncate" style={{ fontSize: 'var(--w-font-base)', color: 'var(--w-text)' }}>
-                测试工作台
-              </strong>
-            </div>
-          )}
-          <Tooltip title={collapsed ? '展开导航' : '折叠导航'} placement="right">
-            <Button
-              size="small"
-              type="text"
-              icon={collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-              onClick={toggle}
-              aria-label={collapsed ? '展开导航' : '折叠导航'}
-              aria-expanded={!collapsed}
-            />
-          </Tooltip>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden" style={{ padding: '8px 8px 4px' }}>
-          <RailLink to="/testing" end label="项目" icon={LayoutGrid} collapsed={collapsed} />
-
-          {/* 进入某个应用后，应用内导航嵌在「应用」下面——不再另开一条左栏 */}
-          {projectId && <ProjectNavBlock projectId={projectId} collapsed={collapsed} />}
-
-          <div
-            style={{
-              height: 1,
-              background: 'var(--w-border)',
-              margin: collapsed ? '8px 4px' : '8px 2px',
-            }}
-          />
-
-          {GLOBAL_NAV.map((item) => (
-            <RailLink key={item.to} to={item.to} label={item.label} icon={item.icon} collapsed={collapsed} />
-          ))}
-        </nav>
-
-        <div
-          className="shrink-0"
-          style={{ padding: collapsed ? '6px 4px' : '6px 8px', borderTop: '1px solid var(--w-border)' }}
-        >
-          <UserMenu collapsed={collapsed} />
-        </div>
-      </aside>
-
-      <div className="flex flex-1 flex-col min-w-0">
-        {/* 外观入口已并入左下角 UserMenu，顶部那条 48px 的 header 就没必要留了 */}
-        <main className="flex flex-1 min-h-0 overflow-hidden" style={{ padding: 'var(--w-space-4)' }}>
-          <div className="flex min-h-0 flex-1 flex-col">
-            <ErrorBoundary key={uid} resetKey={location.pathname + location.search} label="页面">
-              <Outlet />
-            </ErrorBoundary>
-          </div>
-        </main>
-      </div>
-      <CommandPalette key={uid} />
+  const [menuOpen, setMenuOpen] = useState(false)
+  const narrow = !mobile && collapsed
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+  const toggle = () => setCollapsed(previous => {
+    const next = !previous
+    try { localStorage.setItem(COLLAPSE_KEY, next ? 'collapsed' : 'open') } catch { /* private browsing */ }
+    return next
+  })
+  const navigation = <>
+    <div className="work-shell-brand">
+      {!narrow && <><span className="work-shell-mark" aria-hidden>MW</span><strong>测试工作台</strong></>}
+      {!mobile && <Button size="small" type="text" icon={narrow ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} onClick={toggle} aria-label={narrow ? '展开导航' : '折叠导航'} aria-expanded={!narrow} />}
     </div>
-  )
-
-  function ProjectNavBlock({ projectId: id, collapsed: narrow }: { projectId: string; collapsed: boolean }) {
-    const [params, setParams] = useSearchParams()
-    const projects = useProjects()
-    const project = projects.data?.find(row => row.id === id)
-    const selected = params.get('appId')
-    const appId = (selected ? project?.apps?.find(app => app.id === selected)?.id : project?.apps?.length === 1 ? project.apps[0].id : '') || ''
-    const tab = resolveTab(params.get('tab'))
-    const projectName = project?.name || '项目'
-    const warm = (next: Tab) => {
-      const result = params.get('caseResult')
-      void preloadAppPanel(appId, next, Number(params.get('taskPage')) || 1, {
-        appId, page: Number(params.get('casePage')) || 1, size: Number(params.get('caseSize')) || 50,
-        search: params.get('caseSearch') || '', module: params.get('caseModule') || '',
-        result: result === 'failed' || result === 'never' ? result : 'all',
-      }, Number(params.get('taskSize')) || 50).catch(() => {})
-    }
-
-    const go = (next: Tab, sub?: { key: string; value: string }) => {
-      if (next !== tab && (next === 'cases' || next === 'tasks')) beginListNavigation(appId, next)
-      const p = new URLSearchParams(params)
-      p.set('tab', next)
-      if (sub) p.set(sub.key, sub.value)
-      setParams(p)
-    }
-    const goSub = (key: string, value: string) => {
-      const p = new URLSearchParams(params)
-      p.set(key, value)
-      setParams(p, { replace: true })
-    }
-
-    const subDefault = SUB_VIEW_DEFAULTS[tab]
-    const currentSub = subDefault ? params.get(subDefault.key) || subDefault.value : ''
-
-    return (
-      <div style={{ marginTop: 2, paddingLeft: narrow ? 0 : 10 }}>
-        {!narrow && (
-          <div
-            className="truncate"
-            style={{
-              padding: '4px 9px 6px',
-              fontSize: 'var(--w-font-meta)',
-              fontWeight: 700,
-              color: 'var(--w-text-quaternary)',
-              letterSpacing: '0.03em',
-            }}
-            title={projectName}
-          >
-            {projectName}
-          </div>
-        )}
-        {APP_NAV.map((item) => {
-          const active = tab === item.id || (item.alsoActiveOn || []).includes(tab)
-          const Icon = item.icon
-          const btn = (
-            <button
-              type="button"
-              onClick={() => go(item.id)}
-              onMouseEnter={() => warm(item.id)}
-              onFocus={() => warm(item.id)}
-              aria-label={item.label}
-              data-active={active ? 'true' : 'false'}
-              aria-expanded={item.children?.length ? active : undefined}
-              className="w-hit flex w-full items-center gap-2"
-              style={{
-                padding: narrow ? '7px 0' : '6px 9px',
-                justifyContent: narrow ? 'center' : 'flex-start',
-                marginBottom: 1,
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                borderRadius: 'var(--w-radius-sm)',
-                fontSize: 'var(--w-font-base)',
-                fontWeight: active ? 650 : 600,
-                color: active ? 'var(--w-primary)' : 'var(--w-text-secondary)',
-              }}
-            >
-              <Icon size={15} strokeWidth={1.9} />
-              {!narrow && <span className="truncate">{item.label}</span>}
-              {!narrow && item.children?.length ? (
-                <ChevronRight
-                  size={13}
-                  aria-hidden
-                  className="w-fold-chevron"
-                  data-open={active ? 'true' : 'false'}
-                  style={{ marginLeft: 'auto', color: 'var(--w-text-quaternary)', flexShrink: 0 }}
-                />
-              ) : null}
-            </button>
-          )
-
-          return (
-            <div key={item.id}>
-              {narrow ? <Tooltip title={item.label} placement="right">{btn}</Tooltip> : btn}
-              {!narrow && active && item.children?.length ? (
-                <div style={{ paddingLeft: 10, marginBottom: 2 }}>
-                  {item.children.map((child) => {
-                    const on = child.tab ? tab === child.tab : child.param ? currentSub === child.param.value : false
-                    return (
-                      <button
-                        key={child.label}
-                        type="button"
-                        data-active={on ? 'true' : 'false'}
-                        onClick={() => {
-                          if (child.tab) go(child.tab, child.param)
-                          else if (child.param) goSub(child.param.key, child.param.value)
-                        }}
-                        className="w-hit flex w-full items-center"
-                        style={{
-                          padding: '4px 9px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          borderRadius: 'var(--w-radius-sm)',
-                          fontSize: 'var(--w-font-sm)',
-                          fontWeight: on ? 650 : 600,
-                          color: on ? 'var(--w-text)' : 'var(--w-text-tertiary)',
-                        }}
-                      >
-                        <span className="truncate">{child.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : null}
-            </div>
-          )
-        })}
-      </div>
-    )
-  }
+    <nav aria-label="工作台导航" className="work-shell-links">
+      <RailLink to="/testing" end label="项目" icon={LayoutGrid} collapsed={narrow} onNavigate={closeMenu} />
+      {projectId && <ProjectNavBlock projectId={projectId} collapsed={narrow} onNavigate={closeMenu} />}
+      <div className="work-shell-divider" />
+      {GLOBAL_NAV.map(item => <RailLink key={item.to} {...item} collapsed={narrow} onNavigate={closeMenu} />)}
+    </nav>
+    <div className="work-shell-user"><UserMenu collapsed={narrow} /></div>
+  </>
+  return <div className="work-shell">
+    {mobile ? <Drawer className="work-shell-drawer" title="导航" placement="left" width="min(280px, 90vw)" open={menuOpen} onClose={closeMenu} styles={{ body: { display: 'flex', flexDirection: 'column', padding: 0 } }}>{navigation}</Drawer>
+      : <aside className="work-shell-rail" data-collapsed={narrow}>{navigation}</aside>}
+    <div className="work-shell-content">
+      {mobile && <div className="work-shell-mobile-bar"><Button type="text" icon={<Menu size={20} />} aria-label="打开导航" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)} /><strong>测试工作台</strong><UserMenu collapsed /></div>}
+      <main id="workbench-content" className="work-shell-main">
+        <div className="work-shell-outlet"><ErrorBoundary key={uid} resetKey={location.pathname + location.search} label="工作台"><Outlet /></ErrorBoundary></div>
+      </main>
+    </div>
+    <CommandPalette key={uid} />
+  </div>
 }
 
-function RailLink({
-  to,
-  label,
-  icon: Icon,
-  collapsed,
-  end,
-}: {
-  to: string
-  label: string
-  icon: typeof Cpu
-  collapsed: boolean
-  end?: boolean
-}) {
-  const link = (
-    <NavLink to={to} end={end} aria-label={label} style={{ textDecoration: 'none' }}>
-      {({ isActive }) => (
-        <div
-          data-active={isActive ? 'true' : 'false'}
-          className="w-hit flex items-center gap-2"
-          style={{
-            padding: collapsed ? '7px 0' : '7px 9px',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            marginBottom: 1,
-            borderRadius: 'var(--w-radius-sm)',
-            fontSize: 'var(--w-font-base)',
-            fontWeight: isActive ? 650 : 600,
-            color: isActive ? 'var(--w-primary)' : 'var(--w-text-secondary)',
-          }}
-        >
-          <Icon size={15} strokeWidth={1.9} />
-          {!collapsed && <span className="truncate">{label}</span>}
-        </div>
-      )}
-    </NavLink>
-  )
+function RailLink({ to, label, icon: Icon, collapsed, end, onNavigate }: { to: string; label: string; icon: LucideIcon; collapsed: boolean; end?: boolean; onNavigate: () => void }) {
+  const link = <NavLink to={to} end={end} onClick={onNavigate} className={({ isActive }) => `work-shell-link w-hit${isActive ? ' is-active' : ''}`} aria-label={label}><Icon size={17} aria-hidden />{!collapsed && <span>{label}</span>}</NavLink>
   return collapsed ? <Tooltip title={label} placement="right">{link}</Tooltip> : link
+}
+
+function ProjectNavBlock({ projectId, collapsed, onNavigate }: { projectId: string; collapsed: boolean; onNavigate: () => void }) {
+  const [params, setParams] = useSearchParams()
+  const projects = useProjects()
+  const project = projects.data?.find(row => row.id === projectId)
+  const selected = params.get('appId')
+  const appId = (selected ? project?.apps?.find(app => app.id === selected)?.id : project?.apps?.length === 1 ? project.apps[0].id : '') || ''
+  const tab = resolveTab(params.get('tab'))
+  const warm = (next: Tab) => {
+    const result = params.get('caseResult')
+    void preloadAppPanel(appId, next, Number(params.get('taskPage')) || 1, { appId, page: Number(params.get('casePage')) || 1, size: Number(params.get('caseSize')) || 50, search: params.get('caseSearch') || '', module: params.get('caseModule') || '', result: result === 'failed' || result === 'never' ? result : 'all' }, Number(params.get('taskSize')) || 50).catch(() => {})
+  }
+  const go = (next: Tab, child?: SubItem) => {
+    const target = child?.tab || next
+    if (target !== tab && (target === 'cases' || target === 'tasks')) beginListNavigation(appId, target)
+    const query = new URLSearchParams(params)
+    query.set('tab', target)
+    if (target !== tab) for (const key of ['case', 'run', 'session', 'tcase', 'unit']) query.delete(key)
+    if (child?.param) query.set(child.param.key, child.param.value)
+    setParams(query)
+    onNavigate()
+  }
+  const defaults = SUB_VIEW_DEFAULTS[tab]
+  let sub = defaults ? params.get(defaults.key) || defaults.value : ''
+  if (tab === 'config' && ['environment', 'development', 'login-evidence'].includes(sub)) sub = 'apps'
+  return <div className="work-shell-project-nav">
+    {!collapsed && <p className="work-shell-project-name" title={project?.name}>{project?.name || '当前项目'}</p>}
+    {APP_NAV.map(item => {
+      const active = tab === item.id || !!item.alsoActiveOn?.includes(tab)
+      const Icon = item.icon
+      const button = <button type="button" className={`work-shell-link w-hit${active ? ' is-active' : ''}`} aria-label={item.label} aria-current={active && !item.children?.length ? 'page' : undefined} onClick={() => go(item.id)} onMouseEnter={() => warm(item.id)} onFocus={() => warm(item.id)}><Icon size={17} aria-hidden />{!collapsed && <span>{item.label}</span>}</button>
+      return <div key={item.id}>
+        {collapsed && item.children?.length ? <Dropdown trigger={['click']} placement="bottomLeft" menu={{ items: item.children.map((child, index) => ({ key: String(index), label: child.label })), onClick: ({ key }) => go(item.id, item.children?.[Number(key)]) }}><button type="button" className={`work-shell-link w-hit${active ? ' is-active' : ''}`} aria-label={item.label}><Icon size={17} aria-hidden /></button></Dropdown>
+          : collapsed ? <Tooltip title={item.label} placement="right">{button}</Tooltip> : button}
+        {!collapsed && active && item.children?.length ? <div className="work-shell-subnav" role="group" aria-label={`${item.label}分类`}>
+          {item.children.map(child => {
+            const current = child.tab ? tab === child.tab : child.param?.value === sub
+            return <button type="button" key={child.label} className={`work-shell-sublink w-hit${current ? ' is-active' : ''}`} aria-current={current ? 'page' : undefined} onClick={() => go(item.id, child)}>{child.label}</button>
+          })}
+        </div> : null}
+      </div>
+    })}
+  </div>
 }

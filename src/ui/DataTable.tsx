@@ -131,7 +131,10 @@ export function DataTable<T extends object>({
   useEffect(() => {
     if (!fill || !hostRef.current) return
     const el = hostRef.current
-    const measure = () => setBodyH(Math.max(120, el.clientHeight - 40))
+    const measure = () => {
+      const head = el.querySelector('thead')?.getBoundingClientRect().height || 40
+      setBodyH(Math.max(48, Math.floor(el.clientHeight - head - 12)))
+    }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
@@ -143,9 +146,9 @@ export function DataTable<T extends object>({
 
 
   return (
-    <div className={fill ? 'flex h-full min-h-0 flex-1 flex-col' : 'flex flex-col'} style={{ minHeight: 0, gap: 'var(--w-space-2)' }}>
+    <div className={`w-data-table${fill ? ' is-fill' : ''}`}>
       {(toolbar || columns.some((c) => !c.alwaysVisible)) && (
-        <div className="flex flex-wrap items-center gap-2" style={{ minHeight: 32 }}>
+        <div className="w-table-toolbar">
           <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">{toolbar}</div>
           <Dropdown menu={columnMenu} trigger={['click']} placement="bottomRight">
             <Tooltip title={hiddenCount ? `已隐藏 ${hiddenCount} 列` : '列显示'}>
@@ -158,7 +161,7 @@ export function DataTable<T extends object>({
       )}
 
       {error ? <div role="alert" style={{ ...card, padding: 12 }}><span>{errText(error, '读取失败')}</span>{rows.length ? <span> · 以下保留上次读取内容</span> : null}{onRetry ? <Button size="small" onClick={onRetry}>重试读取</Button> : null}</div> : null}
-      <div ref={hostRef} className={fill ? 'min-h-0 flex-1' : undefined} style={card}>
+      <div ref={hostRef} className={`w-table-card${fill ? ' is-fill' : ''}`} style={card}>
         {loading && !rows.length ? (
           <div style={{ padding: 'var(--w-card-padding)' }}>
             <Skeleton active paragraph={{ rows: 6 }} title={false} />
@@ -202,7 +205,7 @@ export function DataTable<T extends object>({
       </div>
 
       {total > 0 && (
-        <div className="flex shrink-0 justify-end">
+        <div className="w-table-pagination">
           <Pagination
             size="small"
             current={current}

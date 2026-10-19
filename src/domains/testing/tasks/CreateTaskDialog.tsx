@@ -236,7 +236,6 @@ export function CreateTaskDialog({
           <DeviceSelect devices={devices.data || []} value={sn} onChange={setSn} loading={devices.isLoading}
             refreshing={devices.isFetching} onRefresh={() => void devices.refetch()} />
           {devices.isError ? <p role="alert" style={hint}>{errText(devices.error, '设备读取失败')} <Button size="small" onClick={() => void devices.refetch()}>重试</Button></p> : null}
-          {!devices.isLoading && !devices.data?.length ? <p style={hint}>没有设备，请在 Scout 节点页添加节点并查看桌面状态。</p> : null}
         </Section>
 
         <Section n="4" title="执行方案">

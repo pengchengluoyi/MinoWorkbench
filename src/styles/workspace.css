@@ -41,9 +41,14 @@
 .w-channel-item { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 6px 10px; border: 1px solid var(--w-border); border-radius: var(--w-radius-sm); color: var(--w-text); text-decoration: none; }
 .w-env-layout { display: grid; grid-template-columns: 208px minmax(0, 1fr); gap: 20px; width: 100%; height: 100%; min-height: 0; }
 .w-env-nav { min-width: 0; overflow-y: auto; padding: 16px; border: 1px solid var(--w-border); border-radius: var(--w-radius-lg); background: var(--w-surface); }
-.w-env-editor { display: grid; grid-template-columns: 228px minmax(0, 1fr); gap: 20px; min-height: 0; overflow: hidden; flex: 1; }
-.w-env-channels { min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
-.w-env-form { min-width: 0; overflow: auto; padding-bottom: 24px; }
+.w-app-env { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.w-env-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; flex-shrink: 0; }
+.w-env-choice { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.w-env-choice .ant-select { width: 160px; min-width: 0; }
+.w-env-form { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding-bottom: 12px; overscroll-behavior: contain; }
+.w-env-advanced { flex: 1; min-width: 0; color: var(--w-text-secondary); }
+.w-env-advanced summary { cursor: pointer; font-size: var(--w-font-sm); }
+.w-env-advanced[open] summary { margin-bottom: 12px; }
 .w-task-title { font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
 .w-task-meta { margin-top: 4px; color: var(--w-text-tertiary); font-size: var(--w-font-sm); line-height: 1.5; overflow-wrap: anywhere; }
 .w-task-progress { height: 4px; max-width: 180px; margin-top: 8px; background: var(--w-fill); border-radius: 3px; overflow: hidden; }
@@ -63,10 +68,6 @@
 .ant-btn { white-space: nowrap; flex-shrink: 0; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--w-primary); outline-offset: 3px; }
 @container (max-width: 1279px) {
-  .w-env-editor { grid-template-columns: minmax(0, 1fr); overflow-y: auto; display: block; }
-  .w-env-channels { flex-direction: row; overflow-x: auto; margin-bottom: 16px; }
-  .w-env-channels > button { flex: 0 0 210px; }
-  .w-env-form { overflow: visible; }
   .w-form-grid-thirds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .w-nodes-body { display: flex; gap: var(--w-space-3); flex: 1; min-height: 0; }
@@ -79,12 +80,13 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--w-primary); out
   .w-settings-detail { flex: 1 0 auto; overflow: visible; }
   .w-env-layout { grid-template-columns: minmax(0, 1fr); overflow: auto; height: auto; }
   .w-env-nav { max-height: 240px; }
-  .w-env-editor { overflow: visible; }
   .w-form-grid { grid-template-columns: minmax(0, 1fr); }
   .w-scout-row { grid-template-columns: minmax(0, 1fr) auto; }
   .w-scout-go { grid-column: 1 / -1; justify-content: flex-start; }
 }
 @container (max-width: 600px) {
+  .w-env-choice { flex: 1 1 100%; }
+  .w-env-choice .ant-select { flex: 1; width: auto; }
   .w-form-section, .w-detail-heading { padding: 18px; }
   .w-action-bar { padding: 12px 18px; }
   .w-install-steps { grid-template-columns: minmax(0, 1fr); }
@@ -94,4 +96,38 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--w-primary); out
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+
+/* One project context bar; each page owns its content and primary action. */
+.project-workbench, .project-panel-content, .w-config-host { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.project-workbench { gap: 16px; }
+.project-context-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; flex-shrink: 0; min-width: 0; padding-bottom: 12px; border-bottom: 1px solid var(--w-border); }
+.project-breadcrumb { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 160px; color: var(--w-text-secondary); font-size: var(--w-font-sm); }
+.project-breadcrumb a, .project-breadcrumb svg { flex-shrink: 0; }
+.project-breadcrumb > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.project-target { flex: 0 1 260px; min-width: 160px; }
+.project-target .ant-select { width: 100%; }
+.project-workbench-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.w-data-table { display: flex; flex-direction: column; min-width: 0; min-height: 0; width: 100%; gap: 8px; flex-shrink: 0; }
+.w-data-table.is-fill { flex: 1 1 0; overflow: hidden; }
+.w-table-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; }
+.w-table-card { min-width: 0; width: 100%; }
+.w-table-card.is-fill { flex: 1; min-height: 0; }
+.w-table-pagination { display: flex; flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; min-width: 0; padding-top: 4px; }
+.w-table-pagination .ant-pagination { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 0; }
+.w-table-toolbar > div { min-width: 0; }
+.w-table-toolbar .ant-select, .w-table-toolbar .ant-input-search { max-width: 100%; }
+@media (max-width: 767px) {
+  .project-workbench { gap: 12px; }
+  .project-context-bar { gap: 8px; padding-bottom: 10px; }
+  .project-breadcrumb { flex-basis: 100%; }
+  .project-target { flex: 1; }
+  .ant-drawer-content-wrapper { max-width: 100vw; }
+  .ant-drawer-body { padding: 16px !important; }
+  .ant-drawer-footer .ant-space { flex-wrap: wrap; }
+  .ant-modal { max-width: calc(100vw - 24px); top: 12px; padding-bottom: 12px; }
+  .ant-modal-content { max-height: calc(100dvh - 24px); display: flex; flex-direction: column; }
+  .ant-modal-body { min-height: 0; overflow-y: auto; }
+  .ant-modal-header, .ant-modal-footer { flex-shrink: 0; }
 }

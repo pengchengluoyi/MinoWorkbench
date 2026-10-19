@@ -15,7 +15,6 @@ import { reportedCount, tokenUsage } from './sessionUsage'
 import { inStepScope, inTurnScope, knownTurns, linkedTurns, turnOf, type ExecutionEntry, type ExecutionScope } from './executionLinks'
 import { DesktopEvidence } from './DesktopEvidence'
 import { V5Evidence } from './V5Evidence'
-import { ExecutionEvidence } from './ExecutionEvidence'
 import { RawParameters, SessionModelCalls, SessionTurns, type TurnFocus } from './SessionLogViews'
 import './SessionDetail.css'
 
@@ -214,14 +213,12 @@ export function SessionDetail({ sessionId, live = false, entry, onReturn }: { se
         <Button size="small" loading={detail.isFetching} onClick={() => void detail.refetch()}>重试缺失数据</Button>
       </div> : null}
       {data.meta && <V5Evidence meta={data.meta} events={events} hasMore={hasMore} loadMore={() => void loadMore()} />}
-      {data.meta && <ExecutionEvidence key={sessionId} sessionId={sessionId} eventCount={data.meta.event_count || 0} />}
-      <p style={{ margin: 0, color: 'var(--w-text-tertiary)' }}>当前视图和回合范围可通过地址复现；关键词检索已加载记录及脱敏参数，可按需补读后续历史。</p>
       <section className="session-overview" aria-label="执行概览">
         <div className="session-overview-heading">
           <h2>执行日志</h2>
           <StatusPill status={toStatusKind(data.meta?.status)}>{statusLabel(data.meta?.status)}</StatusPill>
-          <span className="session-id w-mono" title={sessionId}>{sessionId}</span>
-          <Button size="small" type="text" aria-label="复制会话 ID" icon={<Copy size={13} />} onClick={() => void copyText(sessionId, '会话 ID')} />
+
+          <Button size="small" type="text" aria-label="复制会话引用" icon={<Copy size={13} />} onClick={() => void copyText(sessionId, '会话引用')} />
           {failedTurn && <Button size="small" className="session-jump" icon={<TriangleAlert size={13} />} onClick={jumpFail}>定位失败回合</Button>}
         </div>
         <div className="session-metrics">
@@ -232,8 +229,6 @@ export function SessionDetail({ sessionId, live = false, entry, onReturn }: { se
         </div>
         <div className="session-context">
           <span>事件 {eventTotal || events.length} 条</span>
-          {data.meta?.case_id && <span title={data.meta.case_id}>用例 {data.meta.case_id}</span>}
-          {data.meta?.run_id && <span title={data.meta.run_id}>批次 {data.meta.run_id}</span>}
           {data.meta?.started_at && <span title={data.meta.started_at}>开始 {timeLabel(data.meta.started_at)}</span>}
           {data.meta?.finished_at && <span title={data.meta.finished_at}>结束 {timeLabel(data.meta.finished_at)}</span>}
           {!!metrics?.tool_failures && <span>工具失败 {metrics.tool_failures} 次</span>}

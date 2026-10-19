@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Button, DataTable, Select, StatusPill, toStatusKind, type DataColumn } from '@/ui'
+import { Button, DataTable, Select, PageHeader, StatusPill, toStatusKind, type DataColumn } from '@/ui'
 import type { SessionRow } from '@/api/sessions'
 import { useSessionList } from './queries'
 import { SessionDetail } from './SessionDetail'
@@ -49,14 +49,13 @@ export function SessionLogPanel({ appId }: { appId: string }) {
   const columns = useMemo<DataColumn<SessionRow>[]>(() => [
     {
       key: 'session_id',
-      title: '执行会话',
+      title: '执行摘要',
       alwaysVisible: true,
       ellipsis: true,
       render: (_: unknown, row) => (
-        <span className="w-mono" style={{ fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>{row.session_id}</span>
+        <span style={{ fontWeight: 650 }}>{row.summary || '执行记录'}</span>
       ),
     },
-    { key: 'case_id', title: '用例', dataIndex: 'case_id', width: 140, ellipsis: true, render: (v: string) => v || '—' },
     {
       key: 'status',
       title: '状态',
@@ -65,15 +64,7 @@ export function SessionLogPanel({ appId }: { appId: string }) {
     },
     { key: 'event_count', title: '事件', dataIndex: 'event_count', width: 72, render: (v: number) => v ?? '—' },
     { key: 'started_at', title: '开始', dataIndex: 'started_at', width: 168, ellipsis: true, render: (v: string) => v || '—' },
-    {
-      key: 'summary',
-      title: '摘要',
-      ellipsis: true,
-      render: (_: unknown, row) => {
-        const text = String(row.summary || '')
-        return text.length > 80 ? `${text.slice(0, 80)}…` : (text || '—')
-      },
-    },
+
   ], [])
 
   if (sessionId) {
@@ -90,7 +81,8 @@ export function SessionLogPanel({ appId }: { appId: string }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <PageHeader title="执行记录" subtitle="查看每次执行的结果与过程。" />
       <DataTable<SessionRow>
         viewId="testing.sessions"
         fill
@@ -104,7 +96,7 @@ export function SessionLogPanel({ appId }: { appId: string }) {
         emptyHint="下发用例之后，每次执行会在这里留下一条记录。点一行查看回合和事件。"
         onRowClick={(row) => setQuery({ session: row.session_id })}
         toolbar={(
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Select
               allowClear
               placeholder="状态"

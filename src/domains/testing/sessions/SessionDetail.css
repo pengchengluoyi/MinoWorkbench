@@ -72,6 +72,22 @@
 .session-summary { margin-top: 8px; color: var(--w-text-secondary); overflow-wrap: anywhere; }
 .session-summary summary { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-summary p { margin: 6px 0 0; line-height: var(--w-line-relaxed); }
+.session-verification {
+  flex-shrink: 0;
+  max-height: 45%;
+  overflow: auto;
+  border: 1px solid var(--w-border);
+  border-radius: var(--w-radius-lg);
+  background: var(--w-surface);
+}
+.session-verification > summary { display: flex; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; }
+.session-verification > summary::before { content: '›'; color: var(--w-text-tertiary); }
+.session-verification[open] > summary::before { transform: rotate(90deg); }
+.session-verification-count { margin-left: auto; color: var(--w-text-tertiary); }
+.session-verification-body { padding: 0 14px 14px; border-top: 1px solid var(--w-border); }
+.session-checks { list-style: none; margin: 8px 0; padding: 0; }
+.session-checks li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--w-border); }
+.session-verification-image { display: block; max-width: 100%; max-height: 400px; margin-top: 12px; object-fit: contain; }
 .session-view-tabs { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; flex-shrink: 0; min-width: 0; }
 
 .session-events {
