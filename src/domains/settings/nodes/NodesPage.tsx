@@ -35,7 +35,6 @@ const PANES: { id: Pane; label: string }[] = [
 export function NodesPage() {
   const nodes = useNodes()
   const accountId = useSession(state => state.user?.user_id || '')
-  const accountName = useSession(state => state.user?.username || state.user?.name || '当前账号')
   const [addingNode, setAddingNode] = useState(false)
   const [params, setParams] = useSearchParams()
   const [listCollapsed, setListCollapsed] = usePersistedFlag('mino.nodes.rail', false)
@@ -87,11 +86,10 @@ export function NodesPage() {
         <EmptyState
           icon={<Cpu size={28} strokeWidth={1.5} />}
           title="当前账号下暂无节点"
-          hint="节点归连接时使用的账号所有。若已用其他账号接入，请切换到该账号查看；确认尚未接入后再添加节点。"
           action={<Button onClick={() => setAddingNode(true)}>添加节点</Button>}
         />
       </Card>
-    ) : picked && !active ? <Card><EmptyState title="该节点不可见或已移除" hint={`节点 ${picked} 未出现在当前账号目录中，请从列表明确选择另一个节点。`} /></Card> : null
+    ) : picked && !active ? <Card><EmptyState title="该节点不可见或已移除" /></Card> : null
 
   const selectNode = (id: string) => {
     const next = new URLSearchParams(params)
@@ -123,9 +121,7 @@ export function NodesPage() {
         </Tooltip>
       </div>
 
-      <p role="note" style={{ margin: 0, color: 'var(--w-text-secondary)', fontSize: 'var(--w-font-sm)' }}>
-        当前账号：{accountName}。已归属节点按此账号显示；管理员身份不自动获得其他账号的执行权限。
-      </p>
+
 
       {nodes.isError && nodes.data && <Alert type="warning" showIcon message="节点刷新失败，以下保留上次读取信息" description={errText(nodes.error)} />}
               {active?.owner_user_id ? (
@@ -401,7 +397,7 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
             <span role="status">{nodeIsOnline(node) ? '节点在线' : '节点离线'}</span>
             {!node.owner_user_id && role === 'admin' ? <div style={{ marginTop: 8 }}><Button size="small" loading={claim.isPending} onClick={() => claim.mutate(node.node_id, { onError: (error) => fb.fail(errText(error, '认领失败')) })}>认领历史节点到当前账号</Button></div> : null}
           </div>
-          <FormSection title="节点信息" description="来自当前节点上报；未提供的字段不会按默认值补齐。">
+          <FormSection title="节点信息">
             <dl className="w-node-facts-list">
               <div><dt>节点编号</dt><dd className="w-mono">{node.node_id}</dd></div>
               <div><dt>运行版本</dt><dd>{node.scout_version || '未上报'}</dd></div>
@@ -417,8 +413,8 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
           {!devices.length ? (
             <div style={{ padding: 14, fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
               {nodeIsOnline(node)
-                ? '这台 Scout 暂未上报已连接设备。请将设备连接到这台电脑；其他节点和已断开的历史设备不会显示在这里。'
-                : '节点离线，暂无实时设备。恢复 Scout 连接后，这里会显示该节点当前连接的设备。'}
+                ? '暂无已连接设备'
+                : '节点离线，暂无实时设备'}
             </div>
           ) : (
             <div className="w-node-devices-scroll" role="region" aria-label="当前节点设备" tabIndex={0}>

@@ -20,7 +20,7 @@ export function AppEnvCard({ channel, value, inheritHint, secrets, phone, gmail,
       </FormSection>
       <FormSection title="登录策略" description="选择账号来源与类型，保持各环境独立配置。">
         <div className="w-form-grid">
-          <FormField label="账号来源"><Select aria-label="登录账号来源" disabled={disabled} value={secrets.login.mode} options={LOGIN_OPTIONS} onChange={v => patch({ ...secrets, login: { ...secrets.login, mode: v }, phone: { mode: v } })} style={full} /></FormField>
+          <FormField label="账号来源"><Select aria-label="登录账号来源" disabled={disabled} value={secrets.login.mode} options={LOGIN_OPTIONS} onChange={v => patch({ ...secrets, login: { ...secrets.login, mode: v } })} style={full} /></FormField>
           <FormField label="账号类型"><Select aria-label="登录账号类型" disabled={disabled} value={secrets.login.kind} options={KIND_OPTIONS} onChange={v => patch({ ...secrets, login: { ...secrets.login, kind: v } })} style={full} /></FormField>
           {usesPhone(secrets) && <FormField label="手机号起始位" hint={`自动开号时每次 +1，写入号池。下一号码：${phone.next || phone.start || '未设置'}`}><Input aria-label="手机号起始位" disabled={disabled} value={phone.start} placeholder="17000000000" onChange={e => onPhoneStart(e.target.value)} /></FormField>}
           {usesGmailAlias(secrets) && <FormField label="Gmail 别名起始位" hint={`租号时从该位往后取别名。下一别名：${gmail.next || gmail.start || '未设置'}`}><Input aria-label="Gmail 别名起始位" disabled={disabled} value={gmail.start} placeholder="10000" onChange={e => onGmailStart(e.target.value)} /></FormField>}

@@ -29,7 +29,7 @@ export function CompileMetrics({ owner, projectId, appId }: { owner: string; pro
     <h3>编译时延与复用指标</h3>
     <div className="config-toolbar">
       <Select aria-label="编译统计范围" value={days} onChange={setDays} style={{ width: 140 }} options={[7, 30, 90].map(value => ({ value, label: `近 ${value} 天` }))} />
-      <Select aria-label="编译统计平台" value={platform} onChange={setPlatform} style={{ width: 140 }} options={[['', '全部平台'], ['web', 'Web'], ['android', 'Android'], ['ios', 'iOS'], ['pc', 'PC']].map(([value, label]) => ({ value, label }))} />
+      <Select aria-label="编译统计平台" value={platform} onChange={setPlatform} style={{ width: 140 }} options={[['', '全部平台'], ['web', 'Web'], ['android', 'Android'], ['mac', 'macOS'], ['win', 'Windows']].map(([value, label]) => ({ value, label }))} />
       <Button loading={metrics.isFetching} onClick={() => void metrics.refetch()}>刷新编译指标</Button>
     </div>
     {metrics.error && <Alert type="error" showIcon message="编译指标读取失败，请重试" />}

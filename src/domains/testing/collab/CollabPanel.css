@@ -634,3 +634,12 @@
  .workspace-mention-menu header>span { display:none; }
  .workspace-defaults { align-items:flex-start; }
 }
+
+.v7-drawer-content .workspace-automation label:has(input[type="checkbox"]) { display:flex !important; flex-direction:row; align-items:flex-start; gap:8px; }
+.v7-drawer-content .workspace-automation input[type="checkbox"] { width:auto; flex:none; margin-top:2px; padding:0; }
+.workspace-review { min-width:0; overflow-wrap:anywhere; margin-bottom:24px; }
+.workspace-review h3 { margin:0 0 12px; font-weight:600; }
+.workspace-review fieldset { margin:16px 0; }
+.workspace-review fieldset > * { margin-bottom:8px; }
+.workspace-review textarea { box-sizing:border-box; display:block; width:100%; min-height:88px; }
+.workspace-review article { margin:12px 0; }

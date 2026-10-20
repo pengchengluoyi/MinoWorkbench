@@ -21,6 +21,13 @@ import { readImportRecoveries, importRecoveryTaskKey, restoreImportDecisions, ty
 import { CaseReadingLayout, CaseReadingView } from './CaseReadingView'
 import { advisoryIssueCount, blockingIssueCount, importIssueTier } from './caseAutomation'
 import { importDecision, mergePreviewRows, recordOf, rowBlockingAttention } from './caseUnderstanding'
+
+function importPreviewReadingRow(row: ImportPreviewRow): Record<string, unknown> {
+  const base = row as Record<string, unknown>
+  const payload = recordOf(base.payload)
+  const meta = { ...recordOf(payload.meta), ...recordOf(base.meta) }
+  return { ...payload, ...base, meta }
+}
 import './CaseImportDialog.css'
 
 type Step = 'file' | 'sheet' | 'map' | 'preview' | 'result'
@@ -715,7 +722,7 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
                 </div>
                 {current.conflict ? <ImportConflictReview key={current.row_index} projectId={projectId} row={current} busy={busy} onChange={(value) => setRows(previous => previous.map(row => row.row_index === current.row_index ? { ...row, on_conflict: value } : row))} /> : null}
                 {remarkOf(current) && current.parse_status !== 'pending' ? <div className="case-import-remark" role={current.parse_status === 'error' ? 'alert' : 'status'}>{remarkOf(current)}</div> : null}
-                <CaseReadingView row={current} status={current.parse_status === 'pending' ? 'pending' : current.parse_status === 'error' ? 'error' : current.parse_status === 'incomplete' ? 'incomplete' : current.parse_status === 'cancelled' ? 'cancelled' : 'ready'} />
+                <CaseReadingView row={importPreviewReadingRow(current)} status={current.parse_status === 'pending' ? 'pending' : current.parse_status === 'error' ? 'error' : current.parse_status === 'incomplete' ? 'incomplete' : current.parse_status === 'cancelled' ? 'cancelled' : 'ready'} />
               </> : null}
             </CaseReadingLayout>
           <div className="case-import-footer"><div><strong>将写入 {writeCount} 条</strong><span>新增 {createCount} · 覆盖 {overwriteCount} · 冲突跳过 {skipCount}</span>{!progress.done ? <span>解析完成后可确认导入</span> : null}</div><div className="case-import-footer-actions"><Button disabled={busy} onClick={() => void returnToMapping()}>返回字段映射</Button><Button type="primary" loading={busy} disabled={!progress.done || !writeCount || cancelState !== 'active'} onClick={() => void commit()}>确认导入（{writeCount}）</Button></div></div>

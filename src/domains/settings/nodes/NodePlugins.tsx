@@ -11,7 +11,6 @@ import {
   type NodePluginStatus,
   type ScoutNode,
 } from '@/api/nodes'
-import { nexusOrigin } from '@/lib/config'
 import { unwrapOne } from '@/lib/unwrap'
 import { nodeKeys } from './queries'
 import { assistantKeys } from '@/domains/assistant/queries'
@@ -249,7 +248,7 @@ export function NodePlugins({ node, initialPane }: { node: ScoutNode; initialPan
 
   return (
     <div className="w-node-config-shell">
-      <div className="w-node-config-context"><span>配置目标：<strong>{node.hostname || node.node_id}</strong> · {node.node_id} · {node.runtime_environment === 'development' ? '开发环境' : node.runtime_environment === 'production' ? '正式环境' : '环境未上报'} · {nexusOrigin()}（仅配置此节点）</span><Button size="small" disabled={!!busy} onClick={() => void refresh()}>刷新配置状态</Button></div>
+      <div className="w-node-config-context"><span><strong>{node.hostname || node.node_id}</strong></span><Button size="small" disabled={!!busy} onClick={() => void refresh()}>刷新配置状态</Button></div>
       {lockReason && <Alert type="warning" showIcon message={lockReason} />}
       <div className="w-node-config-layout">{unknownJob && <p role="alert">插件 {unknownJob} 的执行结果待确认，未重新提交。<button type="button" onClick={() => { void refresh(); setUnknownJob('') }}>已核对节点状态，解除本地派发锁</button></p>}
       <nav className="w-node-config-nav" aria-label="接入项">

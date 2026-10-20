@@ -9,11 +9,12 @@ import { useWorkspaceNavigation, removeWorkspaceFromCache, isMissingWorkspace } 
 import { MemberAvatar, MemberEditor, MemberText, MentionInput } from './WorkspacePeople'
 import type { WorkspaceMember as Member } from './WorkspacePeople'
 import './CollabPanel.css'
+import { WorkspaceTasks } from './WorkspaceTasks'
 
 const CaseImportDialog = lazy(() => import('../cases/CaseImportDialog').then(m => ({ default: m.CaseImportDialog })))
 interface Workspace { topic_id: string; title: string; app_id: string; modules: string[]; requirement_id: string;
-  archived: number; paused: number; workspace_kind: string; env_profile: string; env_surface: string; expected_build: string }
-interface Run { run_id: string; status: string; total: number | null; passed: number | null; failed: number | null;
+  archived: number; paused: number; workspace_kind: string; env_profile: string; env_surface: string }
+interface Run { freshness?: string; run_id: string; app_id: string; outcome?: string; reason?: string; status: string; total: number | null; passed: number | null; failed: number | null;
   cases: { case_id: string; status: string; session_id?: string }[] }
 interface Message { created_at?: string; sender_name: string; message_id: string; author_kind: string; body: string; message_kind: string; card_kind: string; ref_id: string; origin: string; role?: string; thread_id?: string; reply_status?: string; reply_error?: string }
 interface Case { case_id: string; title: string; module: string; status: string; reasons: string[] }
@@ -23,13 +24,13 @@ interface Options { modules: string[]; requirements: { id: string; title: string
   cases: { case_id: string; name: string; module: string }[]; nodes: { node_id: string }[] }
 interface Detail { members: Member[]; topic: Workspace; messages: Message[]; runs: Record<string, Run>;
   snapshot: { total: number; executable: string[]; cases: Case[];
-    resources: { online_devices: number; available_accounts: number; compile_ready: number; account_note: string } } }
+    resources: { online_devices: number; available_accounts: number | null; compile_ready: number; account_note: string } } }
 const labels: Record<string, string> = { queued: '排队', preparing: '准备中', running: '执行中', done: '已完成',
   failed: '失败', blocked: '阻塞', cancelled: '已取消', ready: '可执行', passed: '已通过', pass: '已通过', fail: '失败',
   skipped: '跳过', pending: '等待', interrupted: '已中断', unknown: '记录不可用' }
 const terminal = new Set(['done', 'failed', 'blocked', 'cancelled', 'passed', 'finished', 'unknown'])
 
-export function CollabPanel({ projectId, appId = '', deepLinkCaseId = '', deepLinkAppId = '' }: {
+export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   projectId: string; appId?: string; mode?: 'bots'; deepLinkCaseId?: string; deepLinkAppId?: string
 }) {
   const qc = useQueryClient()
@@ -46,7 +47,6 @@ export function CollabPanel({ projectId, appId = '', deepLinkCaseId = '', deepLi
   const { topics, selectedId, selectTopic: setSelected, archived, setArchived } = useWorkspaceNavigation(projectId)
   const [tab, setTab] = useState('members')
   const [showDetails, setShowDetails] = useState(false)
-  const [filter, setFilter] = useState('all')
   const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [missingNotice, setMissingNotice] = useState('')
@@ -118,8 +118,7 @@ export function CollabPanel({ projectId, appId = '', deepLinkCaseId = '', deepLi
   const submit = (promise: Promise<unknown>) => { void promise.catch(() => undefined) }
   useEffect(() => { setDraft(''); setError(''); setPinTarget(''); setShowDetails(false) }, [projectId, selectedId])
   const create = (override?: { modules?: string[]; requirement_id?: string }) => {
-    const channels = options.data?.channels.filter(c => c.app_id === (appId || deepLinkAppId)) || []
-    submit(act('', { ...(channels.length === 1 ? { env_surface: channels[0].id } : {}), ...override })
+    submit(act('', { ...override })
       .then(r => { setSelected(String(r.data?.topic_id || ''), Boolean(r.data?.archived)); setShowDetails(false) }))
   }
   const send = () => {
@@ -150,17 +149,24 @@ export function CollabPanel({ projectId, appId = '', deepLinkCaseId = '', deepLi
     })()
   }
   const runCard = (run: Run) => <article className="steward-run-card">
-    <strong>{labels[run.status] || run.status}</strong>
+    <strong>{run.outcome === 'not_executed' ? '未执行' : labels[run.status] || run.status}</strong>
+    {run.reason && <p role="status">{run.reason}</p>}
+    {run.freshness !== 'current' && <p role="status">{run.freshness === 'stale' ? '范围、用例或测试目标已变化；此结果已过期，不能代表当前范围。' : '此运行未记录范围版本，无法确认结果是否适用于当前范围。'}</p>}
     <p>共 {run.total ?? '—'} 条 · 通过 {run.passed ?? '—'} · 失败 {run.failed ?? '—'}</p>
-    <Link to={projectHref(projectId, { tab: 'tasks', run: run.run_id, appId: topic?.app_id || '' })}>查看运行与证据</Link>
+    <Link to={projectHref(projectId, { tab: 'tasks', run: run.run_id, appId: run.app_id || '' })}>查看运行与证据</Link>
+    <Button disabled={!terminal.has(run.status) || readOnly || mutation.isPending} onClick={() => submit(act(prefix + '/report', { run_id: run.run_id }))}>生成测试报告</Button>
+    <Button disabled={!terminal.has(run.status)} onClick={() => submit(request<{ markdown: string }>({ url: base + prefix + '/report', params: { run_id: run.run_id } }).then(result => {
+      const url = URL.createObjectURL(new Blob([result.data!.markdown], { type: 'text/markdown;charset=utf-8' }))
+      const link = document.createElement('a'); link.href = url; link.download = 'test-report-' + run.run_id + '.md'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }).catch(e => { setError(errText(e)); throw e }))}>下载事实报告</Button>
     <details><summary>逐条结果</summary>{run.cases.map((c, i) => <p key={c.case_id + ':' + i}>{c.case_id} · {labels[c.status] || c.status}
-      {c.session_id && <Link to={projectHref(projectId, { tab: 'session-log', session: c.session_id, appId: topic?.app_id || '' })}> 查看 Session</Link>}</p>)}</details>
+      {c.session_id && <Link to={projectHref(projectId, { tab: 'session-log', session: c.session_id, appId: run.app_id || '' })}> 查看 Session</Link>}</p>)}</details>
   </article>
   const loadError = topics.error || options.error || (isMissingWorkspace(detail.error) ? null : detail.error)
   const unavailable = (loadError as { response?: { status?: number } } | null)?.response?.status === 404
   const resources = data?.snapshot.resources
   const resourceCard = <article className="steward-run-card"><strong>当前资源事实</strong>
-    <p>在线设备 {resources?.online_devices ?? 0} · 可用账号 {resources?.available_accounts ?? 0} · 编译就绪 {resources?.compile_ready ?? 0} · 运行绑定将在执行前检查</p>
+    <p>在线设备 {resources?.online_devices ?? 0} · 可用账号 {resources?.available_accounts ?? '—'} · 编译就绪 {resources?.compile_ready ?? 0} · 运行绑定将在执行前检查</p>
     <p>{resources?.account_note}</p><Button onClick={() => void detail.refetch()}>重新检查</Button> <Button onClick={() => { setShowDetails(true); setTab('scope') }}>编辑资源</Button></article>
   const card = (m: Message) => {
     if (m.card_kind === 'run') { const run = data?.runs[m.ref_id]; return run ? runCard(run) : <p>运行记录不可用</p> }
@@ -173,7 +179,7 @@ export function CollabPanel({ projectId, appId = '', deepLinkCaseId = '', deepLi
       return <article className="steward-run-card"><strong>{c?.name || m.ref_id}</strong><p>{c?.module}</p>
         {!readOnly && (m.card_kind === 'case_candidate' ? <Button onClick={() => submit(act(prefix + '/cases', { case_id: m.ref_id }))}>加入本工作区</Button> : <span>已加入范围</span>)}</article>
     }
-    if (m.card_kind === 'case_set') return <Button onClick={() => { setTab('cases'); setShowDetails(true) }}>查看当前 {data?.snapshot.total || 0} 条用例</Button>
+    if (m.card_kind === 'case_set') return <p>当前范围共 {data?.snapshot.total || 0} 条用例。</p>
     if (m.card_kind === 'import') return <article><p>{m.ref_id}</p><Button disabled={readOnly || !topic?.app_id} onClick={() => { setImportUrl(m.ref_id); setImportOpen(true) }}>打开用例导入</Button></article>
     if (m.card_kind === 'attachment') return <Attachment url={base + prefix + '/attachments/' + m.ref_id} name={m.body} />
     return null
@@ -194,7 +200,7 @@ export function CollabPanel({ projectId, appId = '', deepLinkCaseId = '', deepLi
       {detail.isPending && selectedId && <p role="status">正在读取工作区…</p>}
       {!loadError && topic && data && <>
         <header className="v7-chat-header"><div className="workspace-chat-heading"><h2>{topic.title}</h2><button className="workspace-member-summary" onClick={() => { setTab('members'); setShowDetails(true) }}><span className="workspace-avatar-stack">{(data.members || []).slice(0, 5).map(m => <MemberAvatar key={m.id} id={m.id} name={m.sender_name} />)}</span>{data.members?.length || 0} 位成员<span>· @ 指定回复</span></button></div><div>
-          <Tooltip title="查看成员、测试目标与用例"><Button type="text" aria-label="对话详情" icon={<PanelRightOpen size={17}/>} onClick={() => setShowDetails(true)} /></Tooltip>
+          <Tooltip title="查看成员、测试目标与任务"><Button type="text" aria-label="对话详情" icon={<PanelRightOpen size={17}/>} onClick={() => setShowDetails(true)} /></Tooltip>
           <Dropdown trigger={['click']} menu={{ items: [
             { key: 'archive', label: topic.archived ? '恢复对话' : '归档对话', disabled: topic.workspace_kind.startsWith('legacy'), onClick: () => submit(patch({ archived: !topic.archived })) },
             { key: 'pause', label: topic.paused ? '恢复工作区' : '暂停工作区', disabled: readOnly, onClick: () => submit(patch({ paused: !topic.paused })) },
@@ -204,19 +210,17 @@ export function CollabPanel({ projectId, appId = '', deepLinkCaseId = '', deepLi
         </div></header>
         {readOnly && <p>已归档工作区只读，历史消息与证据保留。</p>}
         {topic.paused ? <p>工作区已暂停，可继续查询；恢复后可提交写操作。</p> : null}
-        <Drawer title="对话详情" open={showDetails} onClose={() => setShowDetails(false)} width={Math.min(620, window.innerWidth)} className="v7-details-drawer">
+        <Drawer title="对话详情" open={showDetails} onClose={() => setShowDetails(false)} width="min(620px, 100vw)" className="v7-details-drawer">
           <div className="v7-workspaces v7-drawer-content"><nav className="v7-tabs" aria-label="工作区详情">
-            {[['members', '成员'], ['scope', '测试目标'], ['cases', '用例']].map(([id, label]) => <Button key={id} type={tab === id ? 'primary' : 'default'} onClick={() => setTab(id)}>{label}</Button>)}
+            {[['members', '成员'], ['scope', '测试目标'], ['tasks', '任务']].map(([id, label]) => <Button key={id} type={tab === id ? 'primary' : 'default'} onClick={() => setTab(id)}>{label}</Button>)}
           </nav>
           {tab === 'members' && <MemberEditor key={selectedId} base={base + prefix} members={data.members || []} readOnly={readOnly || mutation.isPending}
             change={(member, remove) => submit(act(prefix + '/members' + (remove ? '/' + encodeURIComponent(member) : ''), remove ? undefined : { member }, remove ? 'delete' : 'post'))}
             restoreDefaults={() => submit(act(prefix + '/members/defaults'))}
             mention={member => { setDraft(current => current + (current && !/\s$/.test(current) ? ' ' : '') + '@' + member.sender_name + ' '); setShowDetails(false); setTimeout(() => { composerInput.current?.focus(); composerInput.current?.setSelectionRange(100000, 100000) }, 100) }} />}
-          {tab === 'scope' && <ResourceEditor key={JSON.stringify(topic)} topic={topic} options={options.data} readOnly={readOnly} save={body => submit(patch(body))} />}
-          {tab === 'cases' && <><p>当前范围 {data.snapshot.total} 条；可执行 {data.snapshot.executable.length} 条。</p>
-            <select aria-label="用例状态筛选" value={filter} onChange={e => setFilter(e.target.value)}>{['all', 'ready', 'blocked'].map(f => <option key={f} value={f}>{labels[f] || '全部'}</option>)}</select>
-            {data.snapshot.cases.filter(c => filter === 'all' || c.status === filter).map(c => <article className="steward-run-card" key={c.case_id}><strong>{c.title}</strong> · {c.module} · {labels[c.status] || c.status}<p>{c.reasons?.join('；')}</p></article>)}
-          </>}</div>
+          {tab === 'scope' && <><ResourceEditor key={JSON.stringify([topic.topic_id, topic.requirement_id, topic.modules, topic.env_profile, topic.env_surface])} topic={topic} options={options.data} readOnly={readOnly} save={body => submit(patch(body))} /></>}
+          {tab === 'tasks' && <WorkspaceTasks key={selectedId} base={base + prefix} projectId={projectId} />}
+          </div>
         </Drawer><section className="collab-card-chat"><div className="collab-messages">
           {!data.messages.length && <p className="v7-chat-hint">可以让管家检查资源、执行用例，或汇总最近的问题。结论会附上可追溯的运行证据。</p>}{data.messages.map(m => <article key={m.message_id} className={'collab-message ' + (m.author_kind === 'user' ? 'is-user' : 'is-assistant')}><MemberAvatar id={m.role || m.author_kind} name={m.sender_name || ''} /><div className="collab-message-content"><small>{m.sender_name}{m.created_at && <time dateTime={m.created_at}>{new Date(m.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>}{m.reply_status && <span className="workspace-message-status">{labels[m.reply_status] || (m.reply_status === 'succeeded' ? '已回复' : m.reply_status)}</span>}{m.origin === 'migrated' ? ' · 历史归并' : ''}</small><div className="collab-message-body"><p><MemberText text={m.body} members={data.members || []} /></p>{card(m)}{m.reply_error && <p role="alert">{labels[m.reply_status || ''] || '处理未完成'}：{m.reply_error}</p>}</div></div></article>)}{replying && <p role="status" className="v7-planning-status">正在处理…</p>}<div ref={messageEnd}/></div>
           {!readOnly && <div className="v7-composer">
@@ -250,16 +254,16 @@ export function CollabPanel({ projectId, appId = '', deepLinkCaseId = '', deepLi
 function ResourceEditor({ topic, options, readOnly, save }: { topic: Workspace; options?: Options; readOnly: boolean; save: (body: unknown) => void }) {
   const [env, setEnv] = useState(topic.env_profile)
   const [surface, setSurface] = useState(topic.env_surface)
-  const [build, setBuild] = useState(topic.expected_build)
   const [modules, setModules] = useState(topic.modules)
   const [requirement, setRequirement] = useState(topic.requirement_id)
+  const missingSurface = Boolean(surface && options && !options.channels.some(c => c.id === surface))
   return <fieldset disabled={readOnly}><legend>测试目标</legend>
     <label>需求范围<select value={requirement} onChange={e => setRequirement(e.target.value)}><option value="">未绑定需求</option>{options?.requirements.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}</select></label>
     {<label>模块范围<select multiple value={modules} onChange={e => setModules(Array.from(e.target.selectedOptions, o => o.value))}>{options?.modules.map(m => <option key={m}>{m}</option>)}</select></label>}
     <label>环境<select value={env} onChange={e => setEnv(e.target.value)}><option value="">尚未选择环境</option>{options?.environments.map(e => <option key={e.key} value={e.key}>{e.label}</option>)}</select></label>
-    <label>应用·渠道<select value={surface} onChange={e => setSurface(e.target.value)}><option value="">尚未选择测试目标</option>{options?.channels.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
-    <label>目标 build（可选）<input value={build} onChange={e => setBuild(e.target.value)} /></label>
-    <Button onClick={() => save({ requirement_id: requirement, modules, env_profile: env, env_surface: surface, expected_build: build })}>保存测试目标</Button>
+    <label>应用·渠道<select value={surface} onChange={e => setSurface(e.target.value)}><option value="">尚未选择测试目标</option>{surface && !options && <option value={surface}>正在读取测试目标…</option>}{missingSurface && <option value={surface} disabled>原渠道「{surface}」已失效，请重新选择</option>}{options?.channels.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
+    {missingSurface && <p role="status">原测试渠道已不在项目配置中。请选择本次目标，或选择“尚未选择测试目标”后保存以清除旧值。</p>}
+    <Button disabled={!options || missingSurface} onClick={() => save({ requirement_id: requirement, modules, env_profile: env, env_surface: surface })}>保存测试目标</Button>
   </fieldset>
 }
 

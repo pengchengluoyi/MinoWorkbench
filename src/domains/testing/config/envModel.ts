@@ -24,12 +24,11 @@ export interface EnvSecrets {
     max_wait_ms: number
   }
   login: { mode: string; kind: string }
-  phone: { mode: string }
 }
 
 export interface SeqSlot { start: string; next: string }
 
-export interface EnvEntry { key: string; label: string }
+export interface EnvEntry { key: string; label: string; secrets?: EnvSecrets }
 
 export interface EnvDocument {
   [key: string]: unknown
@@ -65,8 +64,6 @@ const PRESETS: EnvChannel[] = [
 
 const PRESET_BY_ID: Record<string, Partial<EnvChannel>> = {
   ...Object.fromEntries(PRESETS.map((c) => [c.id, c])),
-  ios: { id: 'ios', kind: 'app', platform: 'ios', label: 'iOS', field: 'bundle' },
-  pc: { id: 'pc', kind: 'app', platform: 'pc', label: 'PC', field: 'path' },
 }
 const ENV_LABELS: Record<string, string> = { dev: '开发', test: '测试', pre: '预发', prod: '正式' }
 const OTP_MODES = new Set(['auto', 'fixed', 'gmail', 'hitl'])
@@ -91,7 +88,6 @@ export function emptySecrets(): EnvSecrets {
   return {
     otp: { mode: 'auto', fixed: '', from_allowlist: [], subject_contains: '', poll_interval_ms: 3000, max_wait_ms: 90000 },
     login: { mode: 'auto', kind: 'phone' },
-    phone: { mode: 'auto' },
   }
 }
 
@@ -99,17 +95,18 @@ export function normalizeSecrets(raw: unknown): EnvSecrets {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const otp = (src.otp && typeof src.otp === 'object' ? src.otp : {}) as Record<string, unknown>
   const loginSrc = (src.login && typeof src.login === 'object' ? src.login : {}) as Record<string, unknown>
-  const phone = (src.phone && typeof src.phone === 'object' ? src.phone : {}) as Record<string, unknown>
+  if ('phone' in src || 'login_kind' in src) throw new Error('obsolete_login_fields')
   const modeOf = (value: unknown, allowed: Set<string>, fallback: string) => {
-    const m = String(value || '').trim().toLowerCase()
-    if (m === 'adapter') return 'hitl'
-    return allowed.has(m) ? m : fallback
+    const m = value == null ? fallback : String(value)
+    if (!allowed.has(m)) throw new Error('login_or_otp_mode_invalid')
+    return m
   }
   let allow = otp.from_allowlist
   if (typeof allow === 'string') allow = allow.split(',').map((s) => s.trim()).filter(Boolean)
   if (!Array.isArray(allow)) allow = []
-  const loginMode = modeOf(loginSrc.mode ?? phone.mode, LOGIN_MODES, 'auto')
-  const kind = LOGIN_KINDS.has(String(loginSrc.kind || '').toLowerCase()) ? String(loginSrc.kind).toLowerCase() : 'phone'
+  const loginMode = modeOf(loginSrc.mode, LOGIN_MODES, 'auto')
+  const kind = loginSrc.kind == null ? 'phone' : String(loginSrc.kind)
+  if (!LOGIN_KINDS.has(kind)) throw new Error('login_kind_invalid')
   return {
     ...src,
     otp: {
@@ -122,7 +119,6 @@ export function normalizeSecrets(raw: unknown): EnvSecrets {
       max_wait_ms: Math.min(180000, Math.max(5000, Number(otp.max_wait_ms) || 90000)),
     },
     login: { ...loginSrc, mode: loginMode, kind },
-    phone: { ...phone, mode: loginMode },
   }
 }
 
@@ -167,21 +163,12 @@ export function channelConfigVar(ch: EnvChannel) {
 function normalizeChannel(raw: unknown, seen: Set<string>): EnvChannel | null {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const alias = String(src.alias || '').trim().slice(0, 24)
-  let id = String(src.id || src.key || '')
-  const preset = PRESET_BY_ID[String(src.platform || id || '')] || PRESET_BY_ID[id]
-  const kind = String(src.kind || preset?.kind || '')
-  const platform = String(Object.hasOwn(src, 'platform') ? src.platform : (src.kind ? '' : preset?.platform || ''))
-  if (!id && preset?.id && !seen.has(preset.id)) id = preset.id
-  if (!id) {
-    const stem = slugEnvKey(alias, platform)
-    id = stem === platform ? platform : `${platform}.${stem}`
-    let n = 2
-    const base = id
-    while (seen.has(id)) { id = `${base}${n}`; n += 1 }
-  }
-  if (!id || seen.has(id)) return null
+  const id = String(src.id || '')
+  if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(id) || seen.has(id)) throw new Error('channel_identity_invalid_or_duplicate')
+  const { kind, platform } = environmentChannel(src)
+  const field = String(src.field || '')
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) throw new Error('channel_field_required')
   seen.add(id)
-  const field = slugEnvKey(String(src.field || preset?.field || 'value'), 'value')
   return {
     id,
     ...(src.app_id ? { app_id: String(src.app_id) } : {}),
@@ -190,56 +177,33 @@ function normalizeChannel(raw: unknown, seen: Set<string>): EnvChannel | null {
     alias,
     app_identifier: String(src.app_identifier || '').trim() || (alias ? appIdentifierFromAlias(alias) : ''),
     third_party: src.third_party == null ? Boolean(alias) : Boolean(src.third_party),
-    label: alias || String(src.label || preset?.label || id),
+    label: alias || String(src.label || id),
     field,
-    placeholder: String(src.placeholder || preset?.placeholder || ''),
+    placeholder: String(src.placeholder || ''),
   }
 }
 
 export function normalizeEnvDoc(raw: unknown): EnvDocument {
-  const outer = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const src = (outer.env && typeof outer.env === 'object' ? outer.env : outer) as Record<string, unknown>
-  const profilesIn = (src.profiles && typeof src.profiles === 'object' ? src.profiles : src) as Record<string, unknown>
-  const looksWrapped = !!(src.profiles || src.environments || src.channels || src.pipeline)
-  const profileMap = (looksWrapped ? (src.profiles || {}) : profilesIn) as Record<string, Record<string, Record<string, string>>>
-
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('environment_document_required')
+  const src = raw as Record<string, unknown>
+  if (['env','android','ios','web','test_accounts'].some(k => k in src)) throw new Error('obsolete_environment_fields')
+  if (!Array.isArray(src.channels) || !src.channels.length || !Array.isArray(src.environments) || !src.environments.length) throw new Error('environment_structure_required')
   const seen = new Set<string>()
-  let channels: EnvChannel[] = []
-  for (const row of (Array.isArray(src.channels) ? src.channels : [])) {
-    const ch = normalizeChannel(row, seen)
-    if (ch) channels.push(ch)
-  }
-  if (!channels.length) {
-    const inferred = new Set<string>()
-    Object.values(profileMap || {}).forEach((snap) => {
-      if (snap && typeof snap === 'object') Object.keys(snap).forEach((k) => inferred.add(k))
-    })
-    const want = inferred.size ? [...inferred] : ['mac', 'win', 'android', 'web', 'server']
-    channels = want.map((id) => normalizeChannel(PRESET_BY_ID[id] || { id, label: id, field: 'value' }, seen)).filter(Boolean) as EnvChannel[]
-  }
-
-  let environments: EnvEntry[] = (Array.isArray(src.environments) ? src.environments : [])
-    .map((e) => {
-      const row = e as Record<string, unknown>
-      const key = slugEnvKey(String(row?.key || row?.id || row?.label || ''), '')
-      return { key, label: String(row?.label || ENV_LABELS[key] || key) }
-    })
-    .filter((e) => e.key)
-  if (!environments.length) {
-    const keys = Object.keys(profileMap || {})
-    const list = keys.length ? keys : ['test', 'pre', 'prod']
-    environments = list.map((key) => ({ key, label: ENV_LABELS[key] || key }))
-  }
-  const envKeys = environments.map((e) => e.key)
-  const envSet = new Set(envKeys)
-  let pipeline = (Array.isArray(src.pipeline) ? src.pipeline : []).map((k) => slugEnvKey(String(k), '')).filter((k) => envSet.has(k))
-  if (!pipeline.length) pipeline = ['test', 'pre', 'prod'].filter((k) => envSet.has(k))
-  if (!pipeline.length) pipeline = envKeys
-  const ordered = [
-    ...pipeline.map((k) => environments.find((e) => e.key === k)).filter(Boolean) as EnvEntry[],
-    ...environments.filter((e) => !pipeline.includes(e.key)),
-  ]
-
+  const channels = src.channels.map(row => normalizeChannel(row, seen)!)
+  const envSet = new Set<string>()
+  const ordered = src.environments.map(rawEnv => {
+    const row = rawEnv as Record<string, unknown>
+    const key = String(row.key || '')
+    if (!/^[a-zA-Z0-9_-]{1,24}$/.test(key) || envSet.has(key)) throw new Error('environment_identity_invalid_or_duplicate')
+    envSet.add(key)
+    return { key, label: String(row.label || ENV_LABELS[key] || key), ...(row.secrets ? { secrets: normalizeSecrets(row.secrets) } : {}) }
+  })
+  if (!envSet.has(String(src.default_profile))) throw new Error('default_profile_invalid')
+  const pipeline = src.pipeline
+  if (!Array.isArray(pipeline) || pipeline.some(k => typeof k !== 'string' || !envSet.has(k)) || new Set(pipeline).size !== pipeline.length) throw new Error('environment_pipeline_invalid')
+  if (!src.profiles || typeof src.profiles !== 'object' || Array.isArray(src.profiles)) throw new Error('environment_profiles_required')
+  const profileMap = src.profiles as EnvDocument['profiles']
+  if (Object.keys(profileMap).length !== envSet.size || Object.keys(profileMap).some(k => !envSet.has(k))) throw new Error('environment_profiles_mismatch')
   const profiles: EnvDocument['profiles'] = {}
   for (const env of ordered) {
     const snap = (profileMap?.[env.key] && typeof profileMap[env.key] === 'object' ? profileMap[env.key] : {}) as Record<string, Record<string, string>>
@@ -248,7 +212,7 @@ export function normalizeEnvDoc(raw: unknown): EnvDocument {
       const block = (snap[ch.id] && typeof snap[ch.id] === 'object' ? snap[ch.id] : {}) as Record<string, string>
       profiles[env.key][ch.id] = {
         ...block,
-        [ch.field]: String(block[ch.field] || block.value || block.package || block.bundle || block.base_url || block.path || '').trim(),
+        [ch.field]: String(block[ch.field] ?? '').trim(),
       }
     }
   }
@@ -269,11 +233,11 @@ export function normalizeEnvDoc(raw: unknown): EnvDocument {
   }
 
   return {
-    ...(looksWrapped ? src : {}),
-    default_profile: envSet.has(String(src.default_profile)) ? String(src.default_profile) : ordered[0]?.key || 'test',
+    ...src,
+    default_profile: String(src.default_profile),
     environments: ordered,
     channels,
-    pipeline: ordered.map((e) => e.key),
+    pipeline: pipeline as string[],
     profiles,
     channel_secrets: takeNested(src.channel_secrets, normalizeSecrets),
     channel_gmail_alias: takeNested(src.channel_gmail_alias, (s) => normalizeSlot(s)),
@@ -282,7 +246,6 @@ export function normalizeEnvDoc(raw: unknown): EnvDocument {
 }
 
 export function buildPayload(doc: EnvDocument): EnvDocument {
-  const keys = doc.environments.map((e) => e.key)
   const profiles: EnvDocument['profiles'] = {}
   for (const env of doc.environments) {
     profiles[env.key] = { ...doc.profiles[env.key] }
@@ -310,10 +273,10 @@ export function buildPayload(doc: EnvDocument): EnvDocument {
   }
   return {
     ...doc,
-    default_profile: keys.includes(doc.default_profile) ? doc.default_profile : keys[0] || 'test',
-    environments: doc.environments.map((e) => ({ key: e.key, label: e.label || e.key })),
+    default_profile: doc.default_profile,
+    environments: doc.environments.map((e) => ({ key: e.key, label: e.label || e.key, ...(e.secrets ? { secrets: e.secrets } : {}) })),
     channels: doc.channels,
-    pipeline: keys,
+    pipeline: [...doc.pipeline],
     profiles,
     channel_secrets: secrets,
     channel_gmail_alias: gmail,
@@ -337,6 +300,7 @@ export function environmentWriteIssues(doc: EnvDocument): string[] {
 }
 
 export function buildWritePayload(doc: EnvDocument): EnvDocument {
+  normalizeEnvDoc(doc)
   const issues = environmentWriteIssues(doc)
   if (issues.length) throw new Error(issues.join('；'))
   return buildPayload(doc)
