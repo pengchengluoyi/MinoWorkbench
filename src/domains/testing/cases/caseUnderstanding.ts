@@ -1,7 +1,7 @@
 import { conditionPair, splitNumbered, type NumberedLine } from './caseText'
 
 export type ScriptKind = 'pre' | 'op' | 'ex'
-export type TaskTone = 'action' | 'logic' | 'check' | 'condition' | 'attention'
+export type TaskTone = 'action' | 'logic' | 'check' | 'condition' | 'attention' | 'advisory'
 export type PreviewParameter = { label: string; value: string; source?: string; origin?: 'server' | 'inferred' | 'source' }
 export type PreviewTask = {
   id: string
@@ -17,7 +17,7 @@ export type PreviewTask = {
 }
 export type AutomationDetail = { step: number; text: string; coverable: boolean; reason: string }
 export const recordOf = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
-const textOf = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
+export const textOf = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
 const rowsOf = (value: unknown) => Array.isArray(value) ? value.map(recordOf) : []
 const hasText = (value: unknown) => Array.isArray(value) ? value.length > 0 : !!textOf(value)
 const firstSource = (...values: unknown[]) => values.find(hasText) ?? ''
@@ -44,9 +44,20 @@ export function savedPrograms(row: Record<string, unknown>) {
   return recordOf(recordOf(row.meta).step_program_keys ?? recordOf(recordOf(row.payload).meta).step_program_keys)
 }
 
+/** 行内彩色标注依赖 meta.step_program_keys，摘要行 steps_parsed 不够。 */
+export function hasStructuredPrograms(row: Record<string, unknown>) {
+  return Object.keys(savedPrograms(row)).length > 0
+}
+
 export function hasSavedUnderstanding(row: Record<string, unknown>) {
-  const payload = recordOf(row.payload)
-  return !!Object.keys(savedPrograms(row)).length || row.steps_parsed != null || row.expected_parsed != null || row.automation_details != null || payload.steps_parsed != null || payload.expected_parsed != null || payload.automation_details != null
+  return hasStructuredPrograms(row)
+}
+
+export function caseCompilePhase(row: Record<string, unknown>): 'idle' | 'pending' | 'failed' {
+  const state = textOf(row.compile_state || recordOf(row.compile_job).status).toLowerCase()
+  if (['queued', 'running', 'claimed', 'preparing'].includes(state)) return 'pending'
+  if (['failed', 'interrupted', 'cancelled'].includes(state)) return 'failed'
+  return 'idle'
 }
 
 const labels: Record<string, string> = {
@@ -63,7 +74,7 @@ const values: Record<string, string> = {
   button: '按钮', input: '输入框', element: '元素', page: '页面', dialog: '弹窗', checkbox: '复选框', switch: '开关', image: '图片',
   phone: '手机号', mobile: '手机号', email: '邮箱', sms: '短信验证码', password: '密码', phone_password: '手机号＋密码', email_password: '邮箱＋密码',
   logged_in: '已登录', logged_out: '未登录', guest: '游客', any: '不限', logout: '退出登录', clear_cache: '清除缓存', clear_app_data: '清除应用数据',
-  left: '向左', right: '向右', up: '向上', down: '向下', vlm: '视觉校验', session: '登录态校验', program: '程序校验',
+  left: '向左', right: '向右', up: '向上', down: '向下',   vlm: '视觉校验', session: '登录态校验', program: '程序校验', ui_absent: '不可见校验', human_only: '人工复核',
 }
 function valueLabel(value: unknown): string {
   if (typeof value === 'boolean') return value ? '是' : '否'
@@ -93,6 +104,17 @@ const loginMethods = (texts: string[]) => {
 }
 function planTask(item: Record<string, unknown>, step: number, index: number, kind: ScriptKind): PreviewTask {
   const key = textOf(item.key_ref)
+  if (key === 'operation.author_remark' || textOf(item.kind) === 'remark') {
+    const source = textOf(item.source_clause) || textOf(item.source_line) || textOf(item.title)
+    return {
+      id: textOf(item.id) || `remark-${step}-${index}`,
+      step,
+      title: source ? `说明 · ${source}` : '说明步骤',
+      source,
+      tone: 'advisory',
+      parameters: [],
+    }
+  }
   const source = textOf(item.source_clause) || textOf(item.source_line)
   const cap = textOf(item.hook_cap || item.event_name || item.event_id)
   const params = recordOf(item.params)
@@ -105,8 +127,29 @@ function planTask(item: Record<string, unknown>, step: number, index: number, ki
   const titleInferred = login && !reportedMethod && methods.length > 0
   const rules = recordOf(assertion.rules || params.rules)
   const name = textOf(target.name || target.target_desc) || textOf(item.nav_target) || (kind === 'ex' ? textOf(rules.name || rules.which || rules.text || rules.body) : '')
-  const checkLabel = assertion.mode === 'session' ? '登录态校验' : rules.text || rules.body ? '文案校验' : /dialog|弹窗/.test(`${key} ${rules.name || ''} ${target.role || ''}`) ? '弹窗校验' : rules.present != null || target.role ? '元素校验' : '校验'
-  const event = capLabels[cap] || (item.kind === 'nav' ? '导航' : item.kind === 'flow_block' ? '逻辑流程' : kind === 'ex' ? checkLabel : textOf(item.event_name) || textOf(item.title) || key || '执行任务')
+  if (key === 'expected.human_review' || assertion.mode === 'human_only') {
+    const hint = textOf(assertion.expectation) || source || textOf(item.title)
+    return {
+      id: textOf(item.id) || `human-${step}-${index}`,
+      step,
+      title: hint ? `人工复核 · ${hint}` : '人工复核',
+      source: hint,
+      tone: 'advisory',
+      parameters: parametersOf(assertion.rules || rules),
+    }
+  }
+  const checkLabel = assertion.mode === 'ui_absent' || key === 'expected.ui_absent'
+    ? '不可见校验'
+    : assertion.mode === 'session'
+      ? '登录态校验'
+      : rules.text || rules.body
+        ? '文案校验'
+        : /dialog|弹窗/.test(`${key} ${rules.name || ''} ${target.role || ''}`)
+          ? '弹窗校验'
+          : rules.present != null || target.role
+            ? '元素校验'
+            : '校验'
+  const event = capLabels[cap] || (item.kind === 'nav' || key === 'operation.nav_target' ? '导航' : item.kind === 'flow_block' ? '逻辑流程' : kind === 'ex' ? checkLabel : textOf(item.event_name) || textOf(item.title) || key || '执行任务')
   const title = login ? `登录逻辑${methods.length ? ` · ${methods.join(' / ')}` : ''}` : `${event}${name && !event.includes(name) ? ` · ${name}` : ''}`
   const parameters = [...parametersOf(params), ...parametersOf(assertion)]
   if (item.nav_target && !parameters.some((p) => p.value === textOf(item.nav_target))) parameters.unshift({ label: '目标页面', value: textOf(item.nav_target), origin: 'server' })
@@ -124,12 +167,15 @@ function blockedTask(item: Record<string, unknown>, step: number, index: number,
 }
 
 export function summaryTasks(compiled: unknown, automation: AutomationDetail[] | undefined, kind: ScriptKind, lines: NumberedLine[]): PreviewTask[] {
-  if (automation?.length) return automation.map((item, index) => ({
-    id: `summary-${kind}-${item.step}-${index}`, step: item.step, source: item.text || '',
-    title: item.coverable ? item.reason || (kind === 'pre' ? '准备条件' : kind === 'ex' ? '校验' : '执行任务') : '需处理',
-    tone: !item.coverable ? 'attention' : kind === 'pre' ? 'condition' : kind === 'ex' ? 'check' : 'action',
-    parameters: [], blocked: !item.coverable, reason: !item.coverable ? item.reason : undefined, summaryOnly: true,
-  }))
+  if (automation?.length) return automation.map((item, index) => {
+    const advisory = item.coverable && /说明步骤|人工复核|执行策略为跳过|不阻断/.test(item.reason || '')
+    return {
+      id: `summary-${kind}-${item.step}-${index}`, step: item.step, source: item.text || '',
+      title: item.coverable ? item.reason || (kind === 'pre' ? '准备条件' : kind === 'ex' ? '校验' : '执行任务') : '需处理',
+      tone: !item.coverable ? 'attention' : advisory ? 'advisory' : kind === 'pre' ? 'condition' : kind === 'ex' ? 'check' : 'action',
+      parameters: [], blocked: !item.coverable, reason: !item.coverable ? item.reason : advisory ? item.reason : undefined, summaryOnly: true,
+    }
+  })
   const rows = Array.isArray(compiled) ? compiled : typeof compiled === 'string' ? compiled.split('\n') : []
   return rows.flatMap((item, index) => {
     const row = recordOf(item)
@@ -163,7 +209,10 @@ export function fieldPresentation(row: Record<string, unknown>, kind: ScriptKind
       rowsOf(plan[kind === 'op' ? 'steps' : 'checkpoints']).forEach((item, index) => tasks.push(planTask(item, step, index, kind)))
       rowsOf(plan.compile_warnings).forEach((warning, index) => {
         const blocked = recordOf(warning.blocked)
-        if (Object.keys(blocked).length) tasks.push(blockedTask(blocked, step, index, kind))
+        if (!Object.keys(blocked).length) return
+        const severity = textOf(blocked.severity) || 'blocking'
+        if (severity !== 'blocking') return
+        tasks.push(blockedTask(blocked, step, index, kind))
       })
     }
   }
@@ -185,11 +234,19 @@ export function fieldPresentation(row: Record<string, unknown>, kind: ScriptKind
   return { value, tasks, resourceParameters, resolved: structuredSteps.size > 0 || tasks.some((task) => !task.summaryOnly) || hasText(compiled) || !!automation?.length }
 }
 
-export function rowAttention(row: Record<string, unknown>) {
+export function rowBlockingAttention(row: Record<string, unknown>) {
   if (['incomplete', 'error', 'cancelled'].includes(textOf(row.parse_status))) return true
   if (row.conflict) return true
   if (row.parse_status === 'pending') return false
-  return !!textOf(row.remark) || recordOf(row.ui_automation).coverable === false || ['pre', 'op', 'ex'].some((kind) => fieldPresentation(row, kind as ScriptKind).tasks.some((task) => task.blocked))
+  if (recordOf(row.ui_automation).coverable === false) return true
+  return ['pre', 'op', 'ex'].some((kind) => fieldPresentation(row, kind as ScriptKind).tasks.some((task) => task.blocked))
+}
+
+/** 导入审阅：仅阻断项算「需处理」；人工复核/说明步不算。 */
+export function rowAttention(row: Record<string, unknown>) {
+  if (rowBlockingAttention(row)) return true
+  if (row.parse_status !== 'done') return false
+  return !!textOf(row.remark) && !/人工复核|说明步骤/.test(textOf(row.remark))
 }
 
 export function importDecision(row: Record<string, unknown>) {

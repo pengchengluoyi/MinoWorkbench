@@ -1,7 +1,7 @@
 /**
  * Nexus 接入配置。
  *
- * 铁律（开发手册 §4）：origin 只来自 VITE_NEXUS_URL，默认 mino.local:50104。
+ * 铁律（开发手册 §4）：生产使用 location.origin；开发使用 Vite proxy 或 VITE_NEXUS_URL。
  * Nexus 启动时自己注册这个域名。不做 IP 选择器，不写死 IP，不做地址探测。
  */
 
@@ -32,6 +32,7 @@ const runtimeOrigin = (): string | undefined => {
 
 
 export const nexusOrigin = (): string => {
+  if (!import.meta.env.DEV) return window.location.origin
   const runtime = runtimeOrigin()
   if (runtime !== undefined) return runtime
   const baked = String(import.meta.env.VITE_NEXUS_URL || '').trim().replace(/\/$/, '')

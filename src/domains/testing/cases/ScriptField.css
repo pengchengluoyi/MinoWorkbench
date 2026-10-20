@@ -9,6 +9,8 @@
 .case-script-field [data-tone=check] { --task-color: var(--w-pass); --task-bg: var(--w-pass-bg); }
 .case-script-field [data-tone=condition] { --task-color: var(--w-text-secondary); --task-bg: var(--w-fill); }
 .case-script-field [data-tone=attention] { --task-color: var(--w-warn); --task-bg: var(--w-warn-bg); }
+.case-script-field [data-tone=advisory] { --task-color: var(--w-text-secondary); --task-bg: var(--w-fill); }
+.case-preview-legend[data-tone=advisory]::before { --legend-color: var(--w-text-tertiary); }
 .case-task-annotation { display: inline; margin: 0 4px; border-radius: 4px; padding: 2px 5px; background: var(--task-bg); color: var(--task-color); font-size: 11px; line-height: 1.9; box-decoration-break: clone; -webkit-box-decoration-break: clone; white-space: normal; overflow-wrap: anywhere; }
 .case-task-heading svg { display: inline-block; margin-right: 3px; vertical-align: -1px; }
 .case-task-parameter.is-short, .case-task-heading.is-short { white-space: nowrap; }

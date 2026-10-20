@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import * as XLSX from 'xlsx'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { unwrapOne } from '@/lib/unwrap'
 import { Button, Input, InputNumber, Modal, Select, StatusPill, errText, useFeedback } from '@/ui'
+import { getCaseImportSettings, type CaseImportSettings } from '@/api/integrations'
 import { cancelImportPreview, commitCaseImport, createImportRequirement, getCaseImportReceipt, resumeCaseImportReceipt, getImportPreview, listImportRequirements, previewCaseImport, retryImportPreviewRow, type ImportPreviewRow } from '@/api/projectCases'
 import { getProjectEnv } from '@/api/projectEnv'
-import { unwrapOne } from '@/lib/unwrap'
 import { channelTitle, normalizeEnvDoc } from '../config/envModel'
 import { caseKeys } from './queries'
 import {
@@ -18,7 +19,8 @@ import { buildImportReceipt, type ImportReceipt } from './caseImportReceipt'
 import { useSession } from '@/lib/session'
 import { readImportRecoveries, importRecoveryTaskKey, restoreImportDecisions, type ImportRecovery } from './importRecovery'
 import { CaseReadingLayout, CaseReadingView } from './CaseReadingView'
-import { importDecision, mergePreviewRows, recordOf, rowAttention } from './caseUnderstanding'
+import { advisoryIssueCount, blockingIssueCount, importIssueTier } from './caseAutomation'
+import { importDecision, mergePreviewRows, recordOf, rowBlockingAttention } from './caseUnderstanding'
 import './CaseImportDialog.css'
 
 type Step = 'file' | 'sheet' | 'map' | 'preview' | 'result'
@@ -26,8 +28,31 @@ type Step = 'file' | 'sheet' | 'map' | 'preview' | 'result'
 function remarkOf(row: ImportPreviewRow) {
   const remark = String(row.remark || '').trim()
   if (remark) return remark
-  const flags = Array.isArray(row.flags) ? row.flags.map(String).filter((flag) => flag !== 'ui_not_coverable') : []
+  const coverable = recordOf(row.ui_automation).coverable !== false
+  const flags = Array.isArray(row.flags)
+    ? row.flags.map(String).filter((flag) => coverable ? flag !== 'ui_not_coverable' : true)
+    : []
   return flags.map((flag) => FLAG_LABELS[flag] || flag).join(' · ')
+}
+
+function importRowStatusLabel(row: ImportPreviewRow) {
+  if (row.parse_status === 'pending') return '解析中'
+  if (row.parse_status === 'error') return '失败'
+  if (row.parse_status === 'incomplete') return '缺列'
+  if (row.parse_status === 'cancelled') return '已停止'
+  if (row.conflict) return '同名冲突'
+  if (rowBlockingAttention(row)) return '需处理'
+  if (importIssueTier(row) === 'advisory') return '可导入 · 有提示'
+  return '可导入'
+}
+
+function importRowStatusTone(row: ImportPreviewRow): 'running' | 'fail' | 'muted' | 'warn' | 'pass' {
+  if (row.parse_status === 'pending') return 'running'
+  if (row.parse_status === 'error') return 'fail'
+  if (row.parse_status === 'incomplete' || row.parse_status === 'cancelled') return 'muted'
+  if (rowBlockingAttention(row) || row.conflict) return 'warn'
+  if (importIssueTier(row) === 'advisory') return 'muted'
+  return 'pass'
 }
 
 function selectable(row: ImportPreviewRow) {
@@ -80,6 +105,13 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
   const [activeRow, setActiveRow] = useState<number | null>(null)
   const [progress, setProgress] = useState({ parsed: 0, total: 0, done: true })
   const [pollError, setPollError] = useState('')
+  const importSettings = useQuery({
+    queryKey: ['settings', 'case-import'],
+    enabled: open,
+    refetchOnWindowFocus: false,
+    queryFn: async () => unwrapOne<CaseImportSettings>(await getCaseImportSettings()),
+  })
+  const blockOnImportIssues = !!importSettings.data?.block_on_step_key_issues_default
   const [pollVersion, setPollVersion] = useState(0)
 
   const persist = useCallback((record: ImportRecovery) => {
@@ -204,7 +236,9 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
   const missingFields = requiredFields.filter((field) => columnMap[field.key] == null)
   const duplicateMapping = mapped.size !== Object.keys(columnMap).length
   const hasDataRows = table.some((line, index) => index > headerRow && !skip.includes(index) && line.some((cell) => cell.trim()))
-  const issues = rows.filter(rowAttention)
+  const issues = rows.filter(rowBlockingAttention)
+  const advisoryTotal = rows.reduce((sum, row) => sum + advisoryIssueCount(row), 0)
+  const blockingTotal = rows.reduce((sum, row) => sum + blockingIssueCount(row), 0)
   const shown = onlyIssues ? issues : rows
   const current = shown.find((row) => row.row_index === activeRow) || shown[0]
   const readyCount = rows.filter(selectable).length
@@ -398,6 +432,10 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
     if (busy || commitStarted.current || cancelState !== 'active') return
     if (!progress.done) return fb.warn('解析完成后才能导入')
     if (!token || !writeCount) return fb.warn('请选择可导入的用例；同名冲突需要选择覆盖才会写入')
+    const blockingSelected = rows.filter((row) => row.selected !== false && selectable(row) && rowBlockingAttention(row))
+    if (blockOnImportIssues && blockingSelected.length) {
+      return fb.fail(`导入策略要求先处理阻断项：${blockingSelected.length} 条仍不可自动跑。请修复解析、取消勾选，或在集成配置关闭「密钥问题默认阻止提交」。`)
+    }
     commitStarted.current = true
     requestId.current = 'import-' + crypto.randomUUID()
     const submitted = rows.map(row => ({ ...row }))
@@ -409,6 +447,7 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
         requirement_id: reqId || reqs[0]?.id || '', preview_token: token,
         client_request_id: requestId.current,
         default_on_conflict: 'skip', default_platform: platform,
+        block_on_step_key_issues: blockOnImportIssues,
         rows: submitted.map(row => ({ row_index: row.row_index, selected: row.selected !== false && selectable(row), on_conflict: String(row.on_conflict || 'skip') })),
       })
       const data = res.data
@@ -649,7 +688,9 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
           <div className="case-import-summary">
             <div><strong>{progress.parsed} / {progress.total || rows.length}</strong><span>{progress.done ? '解析已结束' : '正在逐条解析'}</span></div>
             <div><strong>{readyCount}</strong><span>解析成功</span></div>
-            <div data-tone="attention"><strong>{issues.length}</strong><span>需要审阅</span></div>
+            <div data-tone="attention"><strong>{issues.length}</strong><span>阻断待处理</span></div>
+            <div><strong>{advisoryTotal}</strong><span>人工/说明提示</span></div>
+            {blockingTotal ? <span style={{ fontSize: 11, color: 'var(--w-text-tertiary)' }}>共 {blockingTotal} 处阻断项</span> : null}
             <div data-tone={errorCount ? 'error' : undefined}><strong>{errorCount}</strong><span>解析失败</span></div>
             <div className="case-import-progress"><span style={{ width: `${Math.min(100, progress.total ? progress.parsed / progress.total * 100 : 0)}%` }} /></div>
           </div>
@@ -662,7 +703,7 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
                   <button type="button" className="case-import-row-main" onClick={() => setActiveRow(row.row_index)} aria-pressed={row.row_index === current?.row_index}>
                     <strong>{String(row.name || row.title || '未命名用例')}</strong>
                     <span>{String(row.module || '未分组')} · {String(row.platform || platform || '未指定端')}</span>
-                    <span className="case-import-row-meta"><StatusPill status={row.parse_status === 'pending' ? 'running' : row.parse_status === 'error' ? 'fail' : row.parse_status === 'incomplete' || row.parse_status === 'cancelled' ? 'muted' : rowAttention(row) ? 'warn' : 'pass'}>{row.parse_status === 'pending' ? '解析中' : row.parse_status === 'error' ? '失败' : row.parse_status === 'incomplete' ? '缺列' : row.parse_status === 'cancelled' ? '已停止' : row.conflict ? '同名冲突' : rowAttention(row) ? '需审阅' : '可导入'}</StatusPill><span>{String(row.case_id || '自动生成编号')}</span></span>
+                    <span className="case-import-row-meta"><StatusPill status={importRowStatusTone(row)}>{importRowStatusLabel(row)}</StatusPill><span>{String(row.case_id || '自动生成编号')}</span></span>
                   </button>
                 </div>)}
                 {!shown.length ? <p className="case-import-empty">{onlyIssues ? '没有需要处理的用例' : '没有预览记录，请返回检查字段映射'}</p> : null}

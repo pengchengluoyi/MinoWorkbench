@@ -38,7 +38,23 @@ export const getCaseModules = (projectId: string) =>
   request<{ items: { name: string; count: number }[]; total: number }>({ url: `/project/${projectId}/case-modules`, method: 'get' })
 
 export const getProjectCase = (projectId: string, caseId: string) =>
-  request<{ case: CaseRow }>({ url: `/project/${projectId}/cases/${encodeURIComponent(caseId)}`, method: 'get' })
+  request<{ case: CaseRow; step_keys_summary?: Record<string, unknown> }>({
+    url: `/project/${projectId}/cases/${encodeURIComponent(caseId)}`,
+    method: 'get',
+  })
+
+export type CasePreflightResult = {
+  runnable?: string[]
+  blocked?: { case_id: string; name?: string; reasons?: string[] }[]
+  requested_total?: number
+}
+
+export const preflightProjectCases = (projectId: string, appId: string, caseIds: string[]) =>
+  request<CasePreflightResult>({
+    url: `/project/${projectId}/cases/preflight`,
+    method: 'post',
+    data: { app_id: appId, case_ids: caseIds },
+  })
 
 export const deleteProjectCases = (projectId: string, caseIds: string[]) =>
   request({ url: `/project/${projectId}/cases/delete`, method: 'post', data: { case_ids: caseIds } })

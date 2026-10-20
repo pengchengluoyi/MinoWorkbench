@@ -11,6 +11,8 @@ import {
 } from '@/ui'
 import { deleteProjectCases, type CaseRow } from '@/api/projectCases'
 import { SavedCaseReadingView } from './SavedCaseReadingView'
+import { CasePreviewLegend } from './CaseScriptSections'
+import { CaseAutomationBadge } from './CaseAutomationBadge'
 import { RunBar, type DispatchedRun } from './RunBar'
 import { CasePreview } from './CasePreview'
 import { caseKeys, useCaseModules, useCasePage, useLastResults, useProjectCase, type LastResult } from './queries'
@@ -127,7 +129,10 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
         return <div className="case-identity">
           <div className="case-identity-title">{row.title || '未命名用例'}</div>
           <div className="case-identity-meta">{row.module || '未分组'} · {row.platform || '未指定'}</div>
-          <StatusPill status={last?.status === 'pass' ? 'pass' : last?.status === 'fail' ? 'fail' : 'muted'}>{lastResults.isError ? '结果暂不可用' : !lastResults.isSuccess ? '读取结果中' : !last ? '未跑过' : last.status === 'pass' ? '通过' : last.status === 'fail' ? '失败' : '其他'}</StatusPill>
+          <div className="case-identity-badges">
+            <CaseAutomationBadge row={row} />
+            <StatusPill status={last?.status === 'pass' ? 'pass' : last?.status === 'fail' ? 'fail' : 'muted'}>{lastResults.isError ? '结果暂不可用' : !lastResults.isSuccess ? '读取结果中' : !last ? '未跑过' : last.status === 'pass' ? '通过' : last.status === 'fail' ? '失败' : '其他'}</StatusPill>
+          </div>
           {last?.status === 'fail' && last.reason ? <div className="case-identity-reason">{last.reason}</div> : null}
           <div><Button size="small" onClick={() => {
             const next = new URLSearchParams(params)
@@ -229,7 +234,7 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
       </div>
           <DataTable<CaseRow>
             viewId="testing.cases"
-            toolbar={<strong>用例清单 · {rows.length}</strong>}
+            toolbar={<div className="case-library-toolbar"><CasePreviewLegend /><strong>用例清单 · {rows.length}</strong></div>}
             columns={columns}
             dataSource={rows}
             rowKey="case_id"

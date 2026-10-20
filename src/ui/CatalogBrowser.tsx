@@ -28,7 +28,7 @@ export function CatalogReferences({ row }: { row: object }) {
   const definitions = [
     { fields: ['role_id', 'role_ids'], label: '角色', path: '/roles', query: 'role' },
     { fields: ['skill_id', 'skill_ids'], label: '技能', path: '/skills', query: 'skill' },
-    { fields: ['block_id', 'block_ids'], label: '逻辑块', path: '/flow-blocks', query: 'block' },
+    { fields: ['block_id', 'block_ids'], label: '逻辑块', path: '/admin/flow-blocks', query: 'block' },
     { fields: ['job_id', 'job_ids'], label: '任务模板', path: '/jobs', query: 'job' },
   ]
   const links = definitions.flatMap(definition => [...new Set(definition.fields.flatMap(field => {

@@ -16,7 +16,7 @@ const STATIC: Command[] = [
   { id: 'assistant', label: '我的助手', hint: '设置', to: '/assistant' },
   { id: 'nodes', label: 'Scout 节点', hint: '设置', to: '/settings/runtime' },
   { id: 'keys', label: '模型密钥', hint: '设置', to: '/settings/keys' },
-  { id: 'health', label: '运行状态', hint: '管理后台', to: '/health' },
+  { id: 'health', label: '运行状态', hint: '管理后台', to: '/admin/health' },
   { id: 'audit', label: '操作记录', hint: '管理后台', to: '/audit' },
   { id: 'integrations', label: '集成配置', hint: '管理后台', to: '/integrations' },
 ]

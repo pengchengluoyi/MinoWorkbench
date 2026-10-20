@@ -3,8 +3,8 @@ import { CasePreviewLegend, CaseScriptSections } from './CaseScriptSections'
 import './CaseReadingView.css'
 
 /** UI contract: docs/contracts/case-preview-consistency.md. No summary/plain alternative. */
-export function CaseReadingView(props: ComponentProps<typeof CaseScriptSections>) {
-  return <div className="case-reading-view"><CasePreviewLegend /><CaseScriptSections {...props} /></div>
+export function CaseReadingView({ showLegend = true, ...props }: ComponentProps<typeof CaseScriptSections> & { showLegend?: boolean }) {
+  return <div className="case-reading-view">{showLegend ? <CasePreviewLegend /> : null}<CaseScriptSections {...props} /></div>
 }
 
 export function CaseReadingLayout({ list, children, listLabel, detailLabel, className = '' }: {

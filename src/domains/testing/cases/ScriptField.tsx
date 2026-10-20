@@ -39,10 +39,11 @@ export function ScriptField({ value, kind, compiled, automation, tasks: supplied
       {lines.map((line, index) => {
         const items = tasks.filter(task => task.step === line.num)
         const executable = items.filter(task => !task.blocked).length
-        const blocked = items.length - executable
+        const blocked = items.filter(task => task.blocked).length
+        const advisory = items.filter(task => task.tone === 'advisory' && !task.blocked).length
         return <section key={`${line.num}-${index}`} className="case-script-step" aria-label={`原文步骤 ${line.num}`}>
           <p className="case-script-original"><span className="case-script-step-number" aria-label={`步骤 ${line.num}`}>{line.num}</span><AnnotatedSource text={line.text} tasks={items} interaction={interaction} />
-            {(items.length > 1 || blocked > 0) && kind !== 'pre' ? <span className="case-script-count">{kind === 'ex' ? `${executable} 项校验` : `${executable} 个任务`}{blocked ? ` · ${blocked} 处待处理` : ''}</span> : null}
+            {(items.length > 1 || blocked > 0 || advisory > 0) && kind !== 'pre' ? <span className="case-script-count">{kind === 'ex' ? `${executable} 项校验` : `${executable} 个任务`}{advisory ? ` · ${advisory} 处提示` : ''}{blocked ? ` · ${blocked} 处待处理` : ''}</span> : null}
           </p>
         </section>
       })}
@@ -73,7 +74,7 @@ function AnnotatedSource({ text, tasks, interaction }: { text: string; tasks: Pr
 
 function TaskAnnotation({ task, number, unlocated = false, interaction, originalText = '' }: { task: PreviewTask; number: number; unlocated?: boolean; interaction?: ScriptInteraction; originalText?: string }) {
   const parameters = displayParameters(task)
-  const Icon = task.blocked ? TriangleAlert : task.tone === 'logic' ? Sparkles : task.tone === 'check' ? ShieldCheck : task.tone === 'condition' ? Info : MousePointer2
+  const Icon = task.blocked ? TriangleAlert : task.tone === 'advisory' ? Info : task.tone === 'logic' ? Sparkles : task.tone === 'check' ? ShieldCheck : task.tone === 'condition' ? Info : MousePointer2
   const normalizeSummary = (value: string) => value.trim().replace(/[。.!！;；]+$/, '')
   const repeatsSource = !!originalText && task.summaryOnly && !task.blocked && !task.source && normalizeSummary(task.title) === normalizeSummary(originalText)
   const displayTitle = repeatsSource ? task.tone === 'check' ? '校验' : '执行任务' : task.title

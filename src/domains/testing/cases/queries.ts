@@ -48,7 +48,12 @@ export const projectCaseOptions = (projectId: string, caseId: string) => queryOp
     const response = await getProjectCase(projectId, caseId)
     const row = response.data?.case
     if (!row) throw new Error('用例详情未返回')
-    return { ...row, title: row.title || String(row.name || row.case_id) }
+    const summary = response.data?.step_keys_summary
+    return {
+      ...row,
+      title: row.title || String(row.name || row.case_id),
+      ...(summary ? { step_keys_summary: summary } : {}),
+    }
   },
 })
 

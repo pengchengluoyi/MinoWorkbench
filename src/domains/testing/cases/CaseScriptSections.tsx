@@ -3,7 +3,7 @@ import { fieldPresentation, originalLines, type ScriptKind } from './caseUnderst
 import { ScriptField, type ScriptInteraction } from './ScriptField'
 
 export function CasePreviewLegend() {
-  return <div className="case-preview-note"><span>原文完整展示，彩色标注紧随对应片段；数字表示任务顺序；解析摘要、原文推断单独标明。</span><span className="case-preview-legend" data-tone="action">操作 / 逻辑</span><span className="case-preview-legend" data-tone="check">校验</span><span className="case-preview-legend" data-tone="attention">待处理</span></div>
+  return <div className="case-preview-note"><span>原文完整展示，彩色标注紧随对应片段；数字表示任务顺序；解析摘要、原文推断单独标明。</span><span className="case-preview-legend" data-tone="action">操作 / 逻辑</span><span className="case-preview-legend" data-tone="check">校验</span><span className="case-preview-legend" data-tone="advisory">说明 / 人工</span><span className="case-preview-legend" data-tone="attention">待处理</span></div>
 }
 
 export function CaseScriptSections({ row, status = 'ready', onRetry, interactionOf, emptyResultText }: { row: Record<string, unknown>; onRetry?: () => void; interactionOf?: (kind: ScriptKind) => ScriptInteraction; emptyResultText?: string; status?: 'ready' | 'loading' | 'pending' | 'error' | 'cancelled' | 'incomplete' }) {

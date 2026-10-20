@@ -10,11 +10,11 @@ import { CommandPalette } from './CommandPalette'
 import { getServerInfo } from '@/api/me'
 
 /** 导航分组沿用 MinoConsole 的 5 组 16 项，顺序和文案不动。 */
-const AVAILABLE = new Set(['/health', '/audit', '/case-resource', '/skills', '/jobs', '/assistant-tools', '/roles', '/stack', '/packs', '/flow-blocks', '/integrations'])
+const AVAILABLE = new Set(['/admin/health', '/audit', '/case-resource', '/skills', '/jobs', '/assistant-tools', '/roles', '/stack', '/admin/packs', '/admin/flow-blocks', '/integrations'])
 const GROUPS = [
   {
     id: 'overview', label: '概览', items: [
-      { to: '/health', label: '运行状态', icon: Activity },
+      { to: '/admin/health', label: '运行状态', icon: Activity },
     ],
   },
   {
@@ -38,8 +38,8 @@ const GROUPS = [
       { to: '/assistant-tools', label: '助手工具', icon: Bot },
       { to: '/roles', label: '提示词角色', icon: Users },
       { to: '/stack', label: '编排', icon: Layers },
-      { to: '/packs', label: '扩展包', icon: Package },
-      { to: '/flow-blocks', label: 'FSM 逻辑块', icon: GitBranch },
+      { to: '/admin/packs', label: '扩展包', icon: Package },
+      { to: '/admin/flow-blocks', label: 'FSM 逻辑块', icon: GitBranch },
       { to: '/knowledge', label: '知识审核', icon: BookCheck },
     ],
   },

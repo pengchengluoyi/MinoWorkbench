@@ -1,59 +1,28 @@
-## 安装正式版本
-
-GitHub 下载和安装仅提供正式版本，没有测试环境选项。安装菜单只选择 Nexus、Workbench 或两者；包由 GitHub Actions 原生编译并发布到 Releases，用户电脑不编译源码。
-
-支持 Linux x64、Windows x64、macOS Apple Silicon 与 Intel。以下入口随新版四平台 Release 发布后可用：
-
-```bash
-curl -fsSL https://github.com/pengchengluoyi/MinoWorkbench/releases/latest/download/install.sh | bash
-```
-
-Windows 在 [Releases](https://github.com/pengchengluoyi/MinoWorkbench/releases/latest) 下载 `MinoInstaller-win32-x64.exe` 运行，或在 PowerShell 执行：
-
-```powershell
-irm https://github.com/pengchengluoyi/MinoWorkbench/releases/latest/download/install.ps1 | iex
-```
-
-默认安装目录是 `~/Mino/nexus`、`~/Mino/workbench`。Nexus 地址为 `http://127.0.0.1:50104`，Workbench 地址为 `http://127.0.0.1:60104`。Workbench 默认连接本机 Nexus，可用 `--nexus-url` 指定远程地址。无需安装 Python 或 GitHub CLI。安装器验证下载大小和 SHA256；已有目录或端口占用时停止并保留数据。
-
-`bootstrap.sh` / `bootstrap.ps1` 默认只安装本仓库组件；`install.sh` / `install.ps1` 提供组件选择。原生安装器还支持 `--components nexus|workbench|both`、`--download-only` 和 `--package-dir` 离线安装。Linux/Windows 当前以用户后台进程运行，不注册开机自启；可使用安装目录内 `launcher/mino-maintain`（Windows 加 `.exe`）管理启动和停止，Nexus 命令前加 `d2`。
-
-正式安装后打开新终端，可运行 `mino-nexus start|stop|status`、`mino-workbench start|stop|status|open`；不带参数时启动服务。命令注册到用户目录，不依赖全局 Python。已激活的开发虚拟环境仍使用自己的源码入口。
-
-测试环境只从源码／PyCharm 启动，Nexus 使用 `--dev`（50101），Workbench 使用 `npm run dev`（60101）。Scout 不监听独立业务端口，只连接对应 Nexus。
-
 # MinoWorkbench
 
+Mino 的唯一前端，正式版本作为静态文件内置于 Nexus wheel 和 Docker 镜像。浏览器直接访问 Nexus `http://服务器:50104/`，不再独立安装 Workbench，不再监听 60104。
 
-> **唯一前端**：MinoWorkbench。MinoConsole 与 MinoStudio 已取消，所有管理和测试功能均在本项目实现。
-## 本地开发
+## 开发
 
-运行 `npm run dev`，通过 `http://localhost:60101` 访问，仅允许当前开发机访问；默认连接本机 Nexus `50101`。
+```sh
+npm ci
+npm run dev
+```
 
-开发服务默认经 Vite 代理访问 Nexus。若显式设置 `VITE_NEXUS_URL`，该地址需能被访问页面的设备访问，并由 Nexus 允许对应来源的跨域请求。
+通过 localhost:60101 访问，默认由 Vite 代理连接本机 Nexus 50101。生产构建使用 `location.origin`，开发地址覆盖只允许 localhost:50101。
 
-运行 `npm run build` 后，可用 `npm run preview` 在本机 `60101` 预览。正式安装使用 `60104` 并支持局域网访问。
+## 检查与静态发布
 
-## 测试与正式环境
+```sh
+npm run lint
+npm run build -- --base ./
+node scripts/build-web.mjs
+```
 
-| 组件 | 测试 | 正式 |
-|---|---|---|
-| Nexus | 50101 | 50104 |
-| Workbench | 60101 | 60104 |
-| Scout | 主动连接测试 Nexus 的 50101 | 主动连接正式 Nexus 的 50104 |
+push/PR 运行 build。`vX.Y.Z` tag 直接决定发布版本，并发布 `workbench-web-X.Y.Z.tar.gz` 及 SHA256SUMS.txt；包中 `BUILD.json` 记录静态文件版本和来源 commit，用于排障。
 
-Scout 不分配独立业务监听端口。测试与正式使用独立的数据目录、凭据和节点身份。已安装实例的配置不会因更新默认值而自动迁移。
+Nexus 打包直接构建 Workbench main 源码，无需先发布本仓静态包，也不维护 web.lock。前后端组成一个产品版本，实际来源 commit 记录在 BUILD.json。正式安装、Docker、升级和旧安装迁移见 [Nexus 部署手册](../MinoNexus/docs/github-updates.md)。
 
-开发与正式部署隔离及启动方式见 [环境说明](docs/ENVIRONMENTS.md)。
+管理页面使用 `/admin/health`、`/admin/packs`、`/admin/flow-blocks`，避免覆盖同名 API。在线更新页只说明服务端升级方式，不触发 Nexus/Workbench 自更新；Scout 保持独立节点能力。
 
-运行 `mino-workbench open`：启动服务、等待就绪并打开默认浏览器，同时输出访问地址。无桌面环境可运行 `mino-workbench open --print-url` 仅查看地址。升级后首次重启会更新旧命令入口；自定义修改的入口保留，不会覆盖。
-
-安装 Workbench（或同时安装两者）成功后默认打开浏览器。服务器或自动部署可在安装命令末尾加 `--no-open`；无法打开浏览器时仍会打印网址，安装保持成功。
-
-开发环境面板、IDE 联动与独立安装升级合同见 [安装升级合同](docs/contracts/mino-workbench-updates.md)。
-
-### 已有安装升级
-
-重新执行 GitHub Release 安装脚本即可识别已有安装，`--components both` 按 Nexus → Workbench 顺序升级。安装器下载校验全部包后，保留配置与旧启动器再切换；Workbench 升级失败恢复旧应用和启动器，不操作 Nexus 数据库。自定义命令入口或未完成维护会明确阻止更新，原文件不被静默覆盖。两组件各自有恢复记录，不是跨组件原子事务。
-
-本版原生 CI 从 Workbench 0.0.21 安装开始，验收到 0.0.24 的升级、配置保留、`open` 和服务启停。Nexus 的迁移及恢复约束见 Nexus README。
+旧安装器和维护代码已移除；旧现场目录不自动清理或迁移。开发进程仍通过现有 PyCharm 运行配置管理。

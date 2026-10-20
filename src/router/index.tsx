@@ -92,8 +92,8 @@ export const router = createBrowserRouter([{ element: <><DraftNavigationGuard />
   {
     element: <RequireAuth><RequireAdmin><AdminLayout /></RequireAdmin></RequireAuth>,
     children: [
-      { path: '/dashboard', element: <Navigate to="/health" replace /> },
-      { path: '/health', element: lazyPage(<HealthPage />) },
+      { path: '/dashboard', element: <Navigate to="/admin/health" replace /> },
+      { path: '/admin/health', element: lazyPage(<HealthPage />) },
       { path: '/audit', element: lazyPage(<AuditPage />) },
       { path: '/integrations', element: lazyPage(<IntegrationsPage />) },
       { path: '/catalog', element: <Navigate to="/testing" replace /> },
@@ -110,14 +110,14 @@ export const router = createBrowserRouter([{ element: <><DraftNavigationGuard />
       { path: '/assistant-tools', element: lazyPage(<AssistantToolsPage />) },
       { path: '/roles', element: lazyPage(<RolesPage />) },
       { path: '/stack', element: lazyPage(<StackPage />) },
-      { path: '/packs', element: lazyPage(<PacksPage />) },
-      { path: '/flow-blocks', element: lazyPage(<FlowBlocksPage />) },
+      { path: '/admin/packs', element: lazyPage(<PacksPage />) },
+      { path: '/admin/flow-blocks', element: lazyPage(<FlowBlocksPage />) },
       { path: '/knowledge', element: <Planned title="知识审核" phase="阶段 2" source="Knowledge/index.vue + panels/KnowledgePanel 551 行" /> },
       { path: '/network', element: <Planned title="网络 / 内网域名" phase="阶段 2" source="Network/index.vue 72 行" /> },
 
       // Console 旧 URL 兼容
       { path: '/access', element: <Navigate to="/permissions" replace /> },
-      { path: '/system', element: <Navigate to="/health" replace /> },
+      { path: '/system', element: <Navigate to="/admin/health" replace /> },
       { path: '/doc-library', element: <Navigate to="/catalog" replace /> },
       { path: '/app-intel', element: <Navigate to="/catalog" replace /> },
     ],

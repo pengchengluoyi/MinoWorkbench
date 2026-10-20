@@ -6,7 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Checkbox, Input, Modal, errText, useFeedback } from '@/ui'
 import { previewExecution, type ExecutionPreview } from '@/api/v5'
 import { getProjectEnv } from '@/api/projectEnv'
-import type { CaseRow } from '@/api/projectCases'
+import { preflightProjectCases, type CasePreflightResult, type CaseRow } from '@/api/projectCases'
+import { CaseAutomationBadge } from '../cases/CaseAutomationBadge'
 import { runCaseRunner, getRunRequest, isExecutable, deviceFamilyLabel, type RunPayload } from '@/api/run'
 import { unwrapOne } from '@/lib/unwrap'
 import { useRunDevices, casePageOptions } from '../cases/queries'
@@ -134,6 +135,15 @@ export function CreateTaskDialog({
   const start = useMutation({
     mutationFn: async () => {
       if (block) throw new Error(block)
+      const preflight = unwrapOne<CasePreflightResult>(await preflightProjectCases(projectId, appId, picked))
+      const blocked = Array.isArray(preflight.blocked) ? preflight.blocked : []
+      if (blocked.length) {
+        const lines = blocked.flatMap((item) => [
+          `${item.name || item.case_id || '用例'}：`,
+          ...(item.reasons || []).map((reason) => `  · ${reason}`),
+        ])
+        throw new Error(`所选用例中有 ${blocked.length} 条不可自动跑：\n${lines.join('\n')}`)
+      }
       const payload: RunPayload = {
         client_request_id: crypto.randomUUID(),
         app_id: appId,
@@ -300,6 +310,7 @@ export function CreateTaskDialog({
                     <span className="min-w-0">
                       <span className="block truncate" style={{ fontWeight: 650 }}>{row.title || '无标题'}</span>
                       <span className="w-mono block truncate" style={{ fontSize: 11, color: 'var(--w-text-quaternary)' }}>{row.case_id}</span>
+                      <CaseAutomationBadge row={row} />
                     </span>
                   </label>
                 ))}
