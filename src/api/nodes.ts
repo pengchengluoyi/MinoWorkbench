@@ -172,8 +172,8 @@ export const detectScoutSystem = (): ScoutSystem | undefined => {
 
 export interface ScoutUpdateTarget { operation_id: string; build_id: string; release_tag: string }
 export interface ScoutUpdateStatus { operation?: { operation_id: string; state: string; running_version_verified?: boolean; result?: { reason?: string } } }
-export const getScoutUpdateStatus = (nodeId: string) =>
-  request<ScoutUpdateStatus>({ url: `/runtime/nodes/${encodeURIComponent(nodeId)}/update-status`, method: 'get' })
+export const getScoutUpdateStatus = (nodeId: string, operationId = '') =>
+  request<ScoutUpdateStatus>({ url: `/runtime/nodes/${encodeURIComponent(nodeId)}/update-status`, method: 'get', params: operationId ? { operation_id: operationId } : undefined })
 
 export const sendNodeCommand = (nodeId: string, command: NodeCommand, update?: ScoutUpdateTarget) => {
   if (command === 'update' && !update) throw new Error('升级需要固定版本和操作编号，请先检查更新')

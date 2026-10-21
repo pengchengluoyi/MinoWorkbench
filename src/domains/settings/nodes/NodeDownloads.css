@@ -92,3 +92,8 @@
   .w-download-inline-steps li + li::before { width: 6px; }
   .w-download-section-heading { flex-wrap: wrap; }
 }
+
+.w-scout-update { display: grid; gap: 8px; min-width: 0; width: 100%; }
+.w-scout-update-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.w-scout-update .ant-alert { max-width: 100%; }
+.w-scout-update .w-download-state-note { margin: 0; }

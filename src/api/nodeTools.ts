@@ -5,7 +5,7 @@ export interface NodeToolTask {
   operation_id: string
   node_id: string
   tool_id: string
-  action: 'install'
+  action: 'install' | 'update'
   state: 'pending' | 'running' | 'unknown' | 'succeeded' | 'failed' | 'interrupted'
   active: boolean
   stage?: string
@@ -23,11 +23,17 @@ export interface NodeTool {
   purpose: string
   state: string
   version?: string | null
+  runtime_environment?: 'development' | 'production'
+  running_version?: string
+  source_version?: string | null
+  source_changed?: boolean
+  restart_required?: boolean
   configured?: boolean | null
   removable?: boolean
   plugin_class?: string
   plugin_id?: string
   installable?: boolean
+  updatable?: boolean
   required_by_config?: boolean
   config_key?: string
   detail?: string
@@ -37,6 +43,7 @@ export interface NodeTools {
   node_id: string
   online: boolean
   supported: boolean
+  contract_version?: number
   stale: boolean
   reported_at?: number
   items: NodeTool[]
@@ -45,7 +52,7 @@ export interface NodeTools {
 export const getNodeTools = (nodeId: string) => requestData<NodeTools>({
   url: `/runtime/nodes/${encodeURIComponent(nodeId)}/tools`, method: 'get', timeout: 30_000,
 })
-export const submitNodeToolTask = (nodeId: string, toolId: string, operationId: string) => requestData<NodeToolTask>({
+export const submitNodeToolTask = (nodeId: string, toolId: string, operationId: string, action: 'install' | 'update' = 'install') => requestData<NodeToolTask>({
   url: `/runtime/nodes/${encodeURIComponent(nodeId)}/tool-tasks`, method: 'post', timeout: 22_000,
-  data: { tool_id: toolId, operation_id: operationId, action: 'install' },
+  data: { tool_id: toolId, operation_id: operationId, action },
 })

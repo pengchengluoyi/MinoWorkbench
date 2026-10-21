@@ -11,7 +11,7 @@ import { preflightProjectCases, type CasePreflightResult, type CaseRow } from '@
 import { CaseAutomationBadge } from '../cases/CaseAutomationBadge'
 import { runCaseRunner, getRunRequest, isExecutable, deviceFamilyLabel, type RunPayload } from '@/api/run'
 import { unwrapOne } from '@/lib/unwrap'
-import { useRunDevices, casePageOptions } from '../cases/queries'
+import { useRunDevices, casePageOptions, caseKeys } from '../cases/queries'
 import { channelKindText, channelTitle, type EnvChannel, type EnvDocument } from '../config/envModel'
 import { taskKeys } from './queries'
 import { useSession } from '@/lib/session'
@@ -131,15 +131,20 @@ export function CreateTaskDialog({
   const start = useMutation({
     mutationFn: async () => {
       if (block) throw new Error(block)
-      const preflight = unwrapOne<CasePreflightResult>(await preflightProjectCases(projectId, appId, picked))
+      const preflight = unwrapOne<CasePreflightResult>(await preflightProjectCases(projectId, appId, picked, true))
       const blocked = Array.isArray(preflight.blocked) ? preflight.blocked : []
       const runnable = Array.isArray(preflight.runnable) ? preflight.runnable : []
+      const compiling = preflight.compilation_jobs || []
+      if (compiling.length) void qc.invalidateQueries({ queryKey: caseKeys.list(projectId) })
       if (!runnable.length) {
         const lines = blocked.flatMap((item) => [
           `${item.name || item.case_id || '用例'}：`,
           ...(item.reasons || []).map((reason) => `  · ${reason}`),
         ])
-        throw new Error(`所选 ${picked.length} 条用例当前均未通过预检，本次未创建任务：\n${lines.join('\n')}`)
+        const message = compiling.length
+          ? `${compiling.length} 条用例正在编译或已排队重编，请完成后再次点击启动；本次未创建执行任务。`
+          : `所选 ${picked.length} 条用例当前均未通过预检，本次未创建任务：`
+        throw new Error(`${message}\n${lines.join('\n')}`)
       }
       const payload: RunPayload = {
         client_request_id: createUUID(),

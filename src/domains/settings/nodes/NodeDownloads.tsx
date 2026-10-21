@@ -8,6 +8,7 @@ import { Alert, Button, errText, useFeedback } from '@/ui'
 import type { ScoutNode } from '@/api/nodes'
 import type { NodeTool, NodeToolTask } from '@/api/nodeTools'
 import { useNodeTools } from './useNodeTools'
+import { ScoutUpdateControl } from './ScoutUpdateControl'
 import './NodeDownloads.css'
 
 const STATE: Record<string, string> = {
@@ -15,6 +16,7 @@ const STATE: Record<string, string> = {
   cached: '电脑已缓存', missing_python: '缺少 Python 3.11+',
 }
 const TASK: Record<string, string> = { pending: '排队中', running: '安装中', unknown: '结果待确认', succeeded: '安装完成', failed: '安装失败', interrupted: '安装中断' }
+const APK_TASK: Record<string, string> = { pending: '等待下载', running: '下载中', unknown: '结果待确认', succeeded: '缓存已就绪', failed: '下载失败', interrupted: '下载中断' }
 const ICONS = { 'scout.core': Cpu, chromium: Globe2, 'adb.keyboard': Smartphone, 'cli.feishu': Terminal, 'cli.meego': Terminal, langbot: MessagesSquare }
 function tone(state: string) {
   if (['installed', 'matched', 'cached', 'succeeded'].includes(state)) return 'success'
@@ -23,23 +25,24 @@ function tone(state: string) {
   return state === 'failed' ? 'error' : 'neutral'
 }
 function status(tool: NodeTool) {
-  if (tool.tool_id === 'adb.keyboard' && tool.state === 'missing') return '电脑未缓存'
+  if (tool.tool_id === 'adb.keyboard') return tool.state === 'missing' ? 'APK 未缓存（可选）' : tool.state === 'cached' ? 'APK 已缓存' : STATE[tool.state] || '状态未知'
   if (tool.tool_id === 'chromium' && tool.state === 'missing') return '未就绪'
   return STATE[tool.state] || '状态未知'
 }
 function bytes(value: number) {
   return value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)} MB` : `${Math.round(value / 1024)} KB`
 }
-function InstallProgress({ task, label }: { task?: NodeToolTask; label: string }) {
+function InstallProgress({ task, label, apk = false }: { task?: NodeToolTask; label: string; apk?: boolean }) {
+  const updating = task?.action === 'update'
   const current = task?.state === 'running' ? 1 : task?.state === 'pending' ? 0 : -1
   const total = task?.bytes_total || 0
   const received = task?.bytes_received || 0
   return <div className="w-download-inline-progress" role="status">
     <ol className="w-download-inline-steps" aria-label={`${label} 安装步骤`}>
-      {['受理任务', '执行安装', '安装完成'].map((title, index) => <li key={title} data-state={index < current ? 'done' : index === current ? 'current' : 'pending'} aria-current={index === current ? 'step' : undefined}><span aria-hidden>{index < current ? '✓' : index + 1}</span>{title}</li>)}
+      {(apk ? ['受理下载', '下载 APK', '缓存完成'] : updating ? ['受理更新', '安装新版本', '更新完成'] : ['受理任务', '执行安装', '安装完成']).map((title, index) => <li key={title} data-state={index < current ? 'done' : index === current ? 'current' : 'pending'} aria-current={index === current ? 'step' : undefined}><span aria-hidden>{index < current ? '✓' : index + 1}</span>{title}</li>)}
     </ol>
     {task && task.state !== 'succeeded' && <>
-      <span className="w-download-inline-label">{TASK[task.state]}{task.label ? ` · ${task.label}` : ''}</span>
+      <span className="w-download-inline-label">{(apk ? APK_TASK : TASK)[task.state]}{task.label ? ` · ${task.label}` : ''}</span>
       {total > 0 && task.state === 'running' && <div className="w-download-progress"><progress value={Math.min(received, total)} max={total} aria-label={`${label} 下载进度`} /><span>{bytes(received)} / {bytes(total)}</span></div>}
       {task.error && <span className="w-download-task-error">{task.error}</span>}
       <details className="w-download-details"><summary>任务详情</summary><span className="w-download-task-id">{task.task_id} · {new Date(task.created_at * 1000).toLocaleString()}</span></details>
@@ -55,11 +58,11 @@ export function NodeDownloads({ node }: { node: ScoutNode }) {
   const [queueing, setQueueing] = useState(false)
   const queueGuard = useRef(false)
   const data = tools.data
-  const installableCount = data?.items.filter(tool => ['cli.feishu', 'cli.meego', 'langbot'].includes(tool.tool_id) && tool.installable).length || 0
-  const install = async (toolId: string, operationId?: string) => {
+  const installableCount = data?.items.filter(tool => tool.installable).length || 0
+  const install = async (toolId: string, operationId?: string, action: 'install' | 'update' = 'install') => {
     try {
-      const task = await tools.install(toolId, operationId)
-      if (task) fb.ok(task.state === 'succeeded' ? '已安装，请继续配置' : '已受理，请以任务最终结果为准')
+      const task = await tools.install(toolId, operationId, action)
+      if (task) { if (task.state === 'succeeded') fb.ok(task.label || '操作完成'); else if (['failed', 'interrupted', 'unknown'].includes(task.state)) fb.warn(task.error || task.label || '操作结果需要核对'); else fb.ok('已受理，请以任务最终结果为准') }
     } catch (error) {
       fb.fail(errText(error, '请求结果未确认；刷新只查询状态，再次点击会使用原请求编号'))
     }
@@ -101,7 +104,7 @@ export function NodeDownloads({ node }: { node: ScoutNode }) {
   }
   return <section className="w-downloads" aria-labelledby="node-downloads-title">
     <header className="w-download-header">
-      <div><h2 id="node-downloads-title">下载中心</h2><p>查看节点组件，安装工作项接入工具。</p></div>
+      <div><h2 id="node-downloads-title">下载中心</h2><p>统一安装与升级节点组件，查看当前版本和执行进度。</p></div>
       <div className="w-download-refresh">
         <Button icon={<RefreshCw size={14} aria-hidden />} loading={tools.isFetching} onClick={() => void tools.refetch()}>刷新状态</Button>
         {data?.reported_at && <span>{data.stale ? '上次上报' : '更新于'} {new Date(data.reported_at * 1000).toLocaleTimeString()}</span>}
@@ -122,8 +125,11 @@ export function NodeDownloads({ node }: { node: ScoutNode }) {
           const active = tasks.find(task => task.active)
           const latest = active || tasks[0]
           const cli = ['cli.feishu', 'cli.meego'].includes(tool.tool_id)
+          const apk = tool.tool_id === 'adb.keyboard'
           const managed = tool.removable === true || cli || tool.tool_id === 'langbot'
-          const installed = tool.state === 'installed'
+          const installed = ['installed', 'matched', 'cached'].includes(tool.state)
+          const dependency = ['chromium', 'adb.keyboard'].includes(tool.tool_id)
+          const actionable = managed || dependency
           const removable = tool.removable ?? (managed && installed)
           const configured = tool.configured ?? node.plugins?.find(p => p.class === (tool.plugin_class || (tool.tool_id === 'langbot' ? 'im' : 'cli')) && p.id === (tool.plugin_id || (tool.tool_id === 'langbot' ? 'langbot' : tool.tool_id.split('.')[1])))?.configured
           const blocked = !data.online || !data.supported || data.stale || !!tools.busy || queueing || !!removing || node.plugins_ready !== true
@@ -134,30 +140,33 @@ export function NodeDownloads({ node }: { node: ScoutNode }) {
               <div className="w-download-component-copy"><strong>{tool.label}</strong><p>{tool.tool_id === 'langbot' ? '飞书、钉钉、企业微信对话' : tool.purpose}</p></div>
             </div></td>
             <td><div className="w-download-state-line">
-              <span className="w-download-badge" data-tone={tone(active?.state || tool.state)}>{active ? TASK[active.state] : status(tool)}</span>
-              {tool.version && <span className="w-download-version">{tool.tool_id === 'chromium' ? `Revision ${tool.version}` : `v${tool.version}`}</span>}
+              <span className="w-download-badge" data-tone={tone(active?.state || tool.state)}>{active ? (apk ? APK_TASK : TASK)[active.state] : status(tool)}</span>
+              {tool.version && <span className="w-download-version">{tool.tool_id === 'chromium' ? `Revision ${tool.version}` : tool.tool_id === 'scout.core' ? `运行 v${tool.version}` : `v${tool.version}`}</span>}
               {cli && tool.state === 'installed' && !tool.version && <span className="w-download-version">版本未知</span>}
             </div>
               {cli && tool.state === 'installed' && <p className="w-download-state-note">{tool.configured === true ? '已配置 · 连通性需单独测试' : tool.configured === false ? '待配置接入信息' : '配置状态未知'}</p>}
+              {apk && tool.state === 'missing' && <p className="w-download-state-note">{tool.devices?.some(device => device.state === 'installed') ? '已安装的设备可直接使用，无需重复下载。' : '仅给设备安装输入法时需要 APK。'}</p>}
               {tool.devices?.length ? <div className="w-download-devices">{tool.devices.map(device => <span key={device.sn} title={device.checked_at ? `最近自检：${new Date(device.checked_at * 1000).toLocaleString()}` : '尚无自检时间'}><Smartphone size={12} aria-hidden /><code>{device.sn}</code><span>{STATE[device.state] || '状态未知'}</span></span>)}</div> : null}
               {tool.detail && <details className="w-download-details"><summary>{tool.tool_id === 'adb.keyboard' ? '缓存与设备说明' : '组件说明'}</summary><p>{tool.detail}</p></details>}
             </td>
             <td><div className="w-download-actions">
-              {tool.tool_id === 'scout.core' && <details className="w-download-details w-download-upgrade"><summary>手动升级说明</summary><p>请按「添加节点」中的安装说明升级完整 Scout。</p></details>}
-              {managed && (!installed || active) && <InstallProgress task={latest?.state === 'succeeded' ? undefined : latest} label={tool.label} />}
+              {tool.tool_id === 'scout.core' && <ScoutUpdateControl key={node.node_id} node={node} tool={tool} refreshing={tools.isFetching} onRefresh={() => void tools.refetch()} />}
+              {actionable && latest && latest.state !== 'succeeded' && <InstallProgress task={latest} label={tool.label} apk={apk} />}
               {managed && installed && !active && (configured === true
                 ? <Button type="text" className="w-download-in-use" title="已配置；具体连接状态可在配置页查看" onClick={() => configure(tool)}>{data.stale || !data.online ? '已配置（状态待刷新）' : '正在使用'}</Button>
                 : <Button onClick={() => configure(tool)}>去配置</Button>)}
-              {managed && !installed && tool.installable && !active && <Button type="primary" icon={<Download size={14} aria-hidden />} disabled={blocked} loading={tools.busy === tool.tool_id} onClick={() => void install(tool.tool_id)}>{latest && ['failed', 'interrupted'].includes(latest.state) ? '重试安装' : '安装'}</Button>}
-              {active?.state === 'unknown' && <Button disabled={blocked} onClick={() => void install(tool.tool_id, active.operation_id)}>核对原请求</Button>}
+              {actionable && !installed && tool.installable && !active && <Button type={apk ? 'default' : 'primary'} icon={<Download size={14} aria-hidden />} disabled={blocked} loading={tools.busy === tool.tool_id} onClick={() => void install(tool.tool_id)}>{latest && ['failed', 'interrupted'].includes(latest.state) ? apk ? '重试下载 APK' : '重试安装' : apk ? '下载 APK' : '安装'}</Button>}
+              {active?.state === 'unknown' && <Button disabled={blocked} onClick={() => void install(tool.tool_id, active.operation_id, active.action)}>核对原请求</Button>}
+              {actionable && installed && (tool.updatable ?? true) && !active && <Button icon={<RefreshCw size={14} />} disabled={blocked || (data.contract_version || node.tool_tasks_version || 0) < 2} title={(data.contract_version || node.tool_tasks_version || 0) < 2 ? '此旧版 Scout 仅支持首次安装，升级 Scout 后即可更新组件' : tool.detail} loading={tools.busy === tool.tool_id} onClick={() => void install(tool.tool_id, undefined, 'update')}>{apk ? '更新 APK 缓存' : '检查并更新'}</Button>}
+              {actionable && latest?.state === 'succeeded' && !active && <span className="w-download-state-note" role="status">{latest.label || (latest.action === 'update' ? '更新完成' : '安装完成')}</span>}
               {managed && installed && removable && <Button danger loading={removing === tool.tool_id} disabled={blocked || !!active} onClick={() => void uninstall(tool)}>卸载</Button>}
-              {managed && !installed && !tool.installable && !active && <span className="w-download-readonly">{tool.state === 'missing_python' ? '请先准备 Python 3.11+' : '等待节点上报安装能力'}</span>}
-              {!managed && tool.tool_id !== 'scout.core' && <span className="w-download-readonly">仅查看</span>}
+              {actionable && !installed && !tool.installable && !active && <span className="w-download-readonly">{tool.state === 'missing_python' ? '请先准备 Python 3.11+' : '等待节点上报安装能力'}</span>}
+              {!actionable && tool.tool_id !== 'scout.core' && <span className="w-download-readonly">仅查看</span>}
             </div></td>
           </tr>
         })}</tbody>
       </table>
-      <div className="w-download-note"><Info size={15} aria-hidden /><span>安装后需前往「配置」完成设置。飞书 / Meego CLI 用于工作项，不负责 Webhook 或对话。</span></div>
+      <div className="w-download-note"><Info size={15} aria-hidden /><span>安装后前往「配置」完成接入。升级保留配置、数据和授权；Chromium 匹配 Scout 运行时，ADB Keyboard 的电脑缓存与设备状态分开显示。</span></div>
     </div>}
 
   </section>

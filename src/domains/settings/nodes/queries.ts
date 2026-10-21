@@ -114,9 +114,10 @@ export const useClaimLegacyNode = () => {
   })
 }
 
-export const useScoutUpdateStatus = (nodeId: string) => useQuery({
-  queryKey: [...nodeKeys.all, nodeId, 'fixed-update'],
+export const useScoutUpdateStatus = (nodeId: string, operationId = '', waiting = false) => useQuery({
+  queryKey: [...nodeKeys.all, nodeId, 'fixed-update', operationId],
+  enabled: !!nodeId,
   retry: false,
-  refetchInterval: 3_000,
-  queryFn: async () => unwrapOne<ScoutUpdateStatus>(await getScoutUpdateStatus(nodeId)) || {},
+  refetchInterval: query => waiting || query.state.data?.operation && !['succeeded', 'failed', 'rolled_back', 'cancelled', 'expired'].includes(query.state.data.operation.state) ? 3_000 : false,
+  queryFn: async () => unwrapOne<ScoutUpdateStatus>(await getScoutUpdateStatus(nodeId, operationId)) || {},
 })

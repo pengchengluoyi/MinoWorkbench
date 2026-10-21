@@ -47,13 +47,14 @@ export type CasePreflightResult = {
   runnable?: string[]
   blocked?: { case_id: string; name?: string; reasons?: string[] }[]
   requested_total?: number
+  compilation_jobs?: { case_id: string; job_id: string; status: string }[]
 }
 
-export const preflightProjectCases = (projectId: string, appId: string, caseIds: string[]) =>
+export const preflightProjectCases = (projectId: string, appId: string, caseIds: string[], recompileStale = false) =>
   request<CasePreflightResult>({
     url: `/project/${projectId}/cases/preflight`,
     method: 'post',
-    data: { app_id: appId, case_ids: caseIds },
+    data: { app_id: appId, case_ids: caseIds, recompile_stale: recompileStale },
   })
 
 export const deleteProjectCases = (projectId: string, caseIds: string[]) =>

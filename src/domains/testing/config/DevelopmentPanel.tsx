@@ -13,6 +13,7 @@ import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 
 function connectionIssue(result?: PreparationResult) {
   const legacyRestriction = /样例项目|MINO 控制链|自身代码目录/.test(result?.reason || '')
+  const legacySourceRestriction = result?.reason_code === 'ide_source_outside_project'
   const titles: Record<string, string> = {
     ide_directory_invalid: '项目目录无法访问',
     ide_source_outside_project: '源码目录与项目不匹配',
@@ -26,10 +27,10 @@ function connectionIssue(result?: PreparationResult) {
     ide_plugin_incompatible: '运行控制插件与当前 PyCharm 不兼容',
   }
   return {
-    title: legacyRestriction ? '上次检查被旧版项目规则拦截' : titles[result?.reason_code || ''] || '项目连接检查未完成',
-    reason: legacyRestriction ? '上次检查在连接 PyCharm 前被样例项目规则拦截，尚未验证 IDE 和项目。' : result?.reason || '未收到完整的项目核对结果。',
-    remediation: result?.remediation || (legacyRestriction ? '当前项目路径无需修改。让所选 Scout 加载更新后的代码，再重新检查；不再需要登记样例项目。' : '核对所选开发电脑、PyCharm 的 MCP 服务器连接与实际打开的项目路径，按上述原因修正后重新检查。'),
-    field: result?.error_field,
+    title: legacySourceRestriction ? '上次检查被旧版目录规则拦截' : legacyRestriction ? '上次检查被旧版项目规则拦截' : titles[result?.reason_code || ''] || '项目连接检查未完成',
+    reason: legacySourceRestriction ? '旧版 Scout 要求源码必须位于 IDE 项目目录内，拦截了同一个 IDE 项目管理相邻仓库的合法配置；尚未检查 IDE 连接。' : legacyRestriction ? '上次检查在连接 PyCharm 前被样例项目规则拦截，尚未验证 IDE 和项目。' : result?.reason || '未收到完整的项目核对结果。',
+    remediation: legacySourceRestriction ? '保留实际 IDE 项目和应用源码路径，让所选 Scout 加载更新后的代码，再重新检查；不要为了通过检查而改填其他应用的源码目录。' : result?.remediation || (legacyRestriction ? '当前项目路径无需修改。让所选 Scout 加载更新后的代码，再重新检查；不再需要登记样例项目。' : '核对所选开发电脑、PyCharm 的 MCP 服务器连接与实际打开的项目路径，按上述原因修正后重新检查。'),
+    field: legacySourceRestriction ? undefined : result?.error_field,
   }
 }
 
@@ -306,6 +307,7 @@ function DevelopmentEditor({ appId, android }: { appId: string; android: boolean
   const stopping = requestedOperation?.action === 'stop'
   const runtimeLabel = stopping ? '停止中' : restarting ? '重启中' : !online ? '开发电脑离线' : reachable ? '服务可访问' : running ? '运行中 · 已复用' : runtime?.state === 'stopped' ? '未运行' : runtime?.state === 'ambiguous' ? '多个实例' : '待检查'
   const supportsRestart = check?.support?.restart === true && ['debugger_mcp', 'run_control_mcp'].includes(check.support.restart_mode || '')
+  const supportsStop = check?.support?.stop === true || (check?.support?.stop === undefined && supportsRestart)
   const runtimeMessage = stopping ? '正在由 IDE 停止当前配置并确认进程退出…' : restarting ? '正在由 IDE 停止旧实例、启动并验证当前配置…' : inspecting ? '正在检查运行状态…' : !online ? '开发电脑离线，上次运行状态仅供参考。' : runtimeResult?.result.restarted ? '当前配置已重启，新实例运行正常。' : reachable ? '已使用现有服务，服务访问正常。' : running ? '已使用现有实例，进程运行正常。' : runtime?.reason || '点击检查运行状态，可发现并使用已经启动的服务。'
   const requestRestart = () => {
     if (supportsRestart) { action.mutate('restart'); return }
@@ -328,8 +330,8 @@ function DevelopmentEditor({ appId, android }: { appId: string; android: boolean
     <Button disabled={busy} onClick={() => editStep(1)}>切换启动配置</Button>
     <div className="w-ide-runtime-status" data-running={usingExisting} role="status" aria-live="polite"><strong>{runtimeMessage}</strong>{observedAt && <span>上次检查：{new Date(observedAt * 1000).toLocaleTimeString()}{runtime?.instances.some(instance => instance.pid > 0) ? ` · PID ${runtime.instances.filter(instance => instance.pid > 0).map(instance => instance.pid).join('、')}` : ''}{runtime?.instances.some(instance => instance.session_id) ? ` · 运行会话 ${runtime.instances.filter(instance => instance.session_id).map(instance => instance.session_id).join('、')}` : ''}</span>}</div>
     {runtimeIssue && <Alert type="warning" showIcon message={runtimeIssue} />}
-    {!usingExisting && permissionReason && <p role="status">{permissionReason}</p>}
-    <Space wrap style={{ marginTop: 12 }}>{!usingExisting && <Button type="primary" aria-label="启动当前配置" loading={requestedOperation?.action === 'execute'} disabled={!allowed || busy || !online || !runConfigured || check?.support?.execute === false} onClick={() => action.mutate('execute')}>启动当前配置</Button>}<Button type={usingExisting ? 'primary' : 'default'} aria-label="重启当前配置" loading={restarting || checkingRestart} disabled={!allowed || busy || !online || !runConfigured} onClick={requestRestart}>重启当前配置</Button>{supportsRestart && <Button aria-label="停止当前配置" loading={stopping} disabled={!allowed || busy || !online || !runConfigured} onClick={() => action.mutate('stop')}>停止当前配置</Button>}<Button aria-label={draft.target_url ? '验证当前服务' : '刷新运行状态'} aria-busy={inspecting} loading={inspecting} disabled={!canInspect} onClick={() => action.mutate('probe')}>{draft.target_url ? '验证当前服务' : '刷新运行状态'}</Button></Space>
+    {permissionReason && <p role="status">{permissionReason}</p>}
+    <Space wrap style={{ marginTop: 12 }}>{!usingExisting && <Button type="primary" aria-label="启动当前配置" loading={requestedOperation?.action === 'execute'} disabled={!allowed || busy || !online || !runConfigured || check?.support?.execute === false} onClick={() => action.mutate('execute')}>启动当前配置</Button>}<Button type={usingExisting ? 'primary' : 'default'} aria-label="重启当前配置" loading={restarting || checkingRestart} disabled={!allowed || busy || !online || !runConfigured} onClick={requestRestart}>重启当前配置</Button>{supportsStop && <Button aria-label="停止当前配置" loading={stopping} disabled={!allowed || busy || !online || !runConfigured} onClick={() => action.mutate('stop')}>停止当前配置</Button>}<Button aria-label={draft.target_url ? '验证当前服务' : '刷新运行状态'} aria-busy={inspecting} loading={inspecting} disabled={!canInspect} onClick={() => action.mutate('probe')}>{draft.target_url ? '验证当前服务' : '刷新运行状态'}</Button></Space>
     <p className="w-ide-action-caption">停止与重启针对当前保存的项目和运行配置；刷新只读取状态。</p>
     <details className="w-ide-runtime-details"><summary>检测详情与可选配置</summary>
       {runtime && <p>实例来源：{runtime.reason}</p>}
@@ -386,8 +388,9 @@ function DevelopmentEditor({ appId, android }: { appId: string; android: boolean
       </div>}
       </div>
       <label>IDE 项目路径<Input ref={projectInput} status={checkFailed && issue.field === 'project_path' ? 'error' : undefined} aria-invalid={checkFailed && issue.field === 'project_path'} placeholder="PyCharm 当前打开的项目根目录" value={draft.project_path} disabled={busy} onChange={e => patch({ project_path: e.target.value })} /></label>
-      <label>应用源码目录<Input ref={sourceInput} status={checkFailed && issue.field === 'source_dir' ? 'error' : undefined} aria-invalid={checkFailed && issue.field === 'source_dir'} placeholder="该应用源码所在目录；单应用项目通常与上面相同" value={draft.source_dir} disabled={busy} onChange={e => patch({ source_dir: e.target.value })} /></label>
+      <label>应用源码目录<Input ref={sourceInput} status={checkFailed && issue.field === 'source_dir' ? 'error' : undefined} aria-invalid={checkFailed && issue.field === 'source_dir'} placeholder="该应用的实际源码目录，不要求位于 IDE 项目内" value={draft.source_dir} disabled={busy} onChange={e => patch({ source_dir: e.target.value })} /></label>
       </div>
+      <Typography.Paragraph type="secondary">IDE 项目路径用于定位 PyCharm 项目和读取启动配置；应用源码目录用于定位本应用代码与辅助核对运行进程。两者可以相同、为同级目录或位于不同位置；实际启动命令和工作目录以所选 PyCharm 运行配置为准。</Typography.Paragraph>
       </div></section>}
       {activeStep === 1 && <section className="w-ide-step" aria-label="选择启动方式"><h3>2. 选择启动方式</h3><div className="w-ide-step-content">
       <label className="block">IDE 启动配置<Select className="w-full" allowClear placeholder="选择 PyCharm 启动配置" value={draft.run_configuration || undefined} disabled={busy || !check?.configurations} options={(check?.configurations ?? []).map(name => ({ value: name, label: name }))} onChange={name => patch({ run_configuration: name || '' })} /></label>

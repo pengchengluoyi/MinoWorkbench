@@ -24,18 +24,18 @@ export function useNodeTools(nodeId: string, enabled = true) {
   useEffect(() => {
     if (terminalSignature) void qc.invalidateQueries({ queryKey: nodeKeys.all })
   }, [terminalSignature, qc])
-  const install = async (toolId: string, originalId?: string) => {
+  const install = async (toolId: string, originalId?: string, action: 'install' | 'update' = 'install') => {
     if (submitting.current) return
     submitting.current = true
     setBusy(toolId)
-    const storageKey = `mino:tool-operation:${origin}:${owner}:${nodeId}:${toolId}`
+    const storageKey = `mino:tool-operation:${origin}:${owner}:${nodeId}:${toolId}${action === 'update' ? ':update' : ''}`
     try {
       const stored = sessionStorage.getItem(storageKey)
       const receipt = query.data?.tasks.find(task => task.operation_id === stored)
       const operationId = originalId || (stored && (!receipt || receipt.active) ? stored : createUUID())
       // Persist BEFORE dispatch. Transport failures keep this identifier across refresh.
       sessionStorage.setItem(storageKey, operationId)
-      return await submitNodeToolTask(nodeId, toolId, operationId)
+      return await submitNodeToolTask(nodeId, toolId, operationId, action)
     } finally {
       submitting.current = false
       setBusy('')

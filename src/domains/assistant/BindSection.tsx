@@ -14,6 +14,7 @@ export function BindSection({ route, nodeId }: { route?: BindRoute; nodeId?: str
   const ids = useIdentities()
   const [issued, setIssued] = useState<{ code: string; expiresAt: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const automaticBinding = route?.channel === 'wechat' || route?.channel === 'feishu_cli'
 
   useEffect(() => {
     if (!issued) return undefined
@@ -25,16 +26,17 @@ export function BindSection({ route, nodeId }: { route?: BindRoute; nodeId?: str
   const left = issued ? Math.max(0, Math.ceil((issued.expiresAt - now) / 1000)) : 0
   const expired = !!issued && left === 0
 
-  const gen = () => route && m.bindCode.mutate(route, {
+  const gen = () => route && !automaticBinding && m.bindCode.mutate(route, {
     onSuccess: (d) => { setNow(Date.now()); setIssued({ code: d.code, expiresAt: Date.now() + d.expires_in * 1000 }) },
     onError: (e) => fb.fail(errText(e, '生成绑定码失败')),
   })
 
   return (
     <section className="w-surface-card" style={{ padding: 14 }}>
-      <h3 style={{ margin: 0, fontSize: 'var(--w-font-title)' }}>认领我的 IM 账号</h3>
+      <h3 style={{ margin: 0, fontSize: 'var(--w-font-title)' }}>{automaticBinding ? '我的 IM 账号' : '认领我的 IM 账号'}</h3>
       {!route && <p><Link to={`/settings/runtime?pane=connect${nodeId ? `&node=${encodeURIComponent(nodeId)}` : ''}`}>前往 Scout 节点配置绑定渠道</Link></p>}
-      {route && <>
+      {automaticBinding && <p>扫码授权本人发送私聊消息时会自动关联当前账号，无需生成或发送绑定码。</p>}
+      {route && !automaticBinding && <>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="primary" loading={m.bindCode.isPending} onClick={gen}>{issued ? '重新生成绑定码' : '生成绑定码'}</Button>
         {issued ? (
@@ -60,7 +62,7 @@ export function BindSection({ route, nodeId }: { route?: BindRoute; nodeId?: str
       {ids.isLoading ? <Skeleton active paragraph={{ rows: 2 }} title={false} /> : ids.isError ? (
         <QueryProblem error={ids.error} what="绑定列表" onRetry={() => void ids.refetch()} />
       ) : !visible.length ? (
-        <EmptyState title="还没有绑定任何 IM" hint={route ? "生成绑定码后，发送给当前渠道的机器人。" : "在 Scout 节点的渠道配置中绑定账号。"} />
+        <EmptyState title={automaticBinding ? '尚未关联账号' : '还没有绑定任何 IM'} hint={automaticBinding ? '完成扫码授权后，使用扫码本人账号向机器人发送一条私聊消息，即可自动关联。' : route ? '生成绑定码后，发送给当前渠道的机器人。' : '在 Scout 节点的渠道配置中绑定账号。'} />
       ) : (
         <div style={{ marginTop: 6 }}>
           {(visible as AssistantIdentity[]).map((i) => (

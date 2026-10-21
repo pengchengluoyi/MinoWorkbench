@@ -7,7 +7,7 @@ import { Alert, Button, EmptyState, FormSection, Input, Skeleton, StatusPill, To
 import { usePersistedFlag } from '@/hooks/usePersistedFlag'
 import { connectedNodeDevices, executableDevices, heldChannels, nodeIsAsleep, nodeIsOnline, type NodeCommand, type ScoutNode } from '@/api/nodes'
 import { EMPTY_ARRAY } from '@/lib/unwrap'
-import { useNodeCommand, useNodes, useClaimLegacyNode } from './queries'
+import { useNodeCommand, useNodes, useClaimLegacyNode, useScoutUpdateStatus } from './queries'
 import { useSession } from '@/lib/session'
 import { NodeDownloads } from './NodeDownloads'
 import { NodeLogs } from './NodeLogs'
@@ -334,8 +334,11 @@ function NodeToolbar({ node, pane, onPane }: { node: ScoutNode; pane: Pane; onPa
   const online = nodeIsOnline(node)
   const asleep = nodeIsAsleep(node)
   const current = String(node.scout_version || '')
+  const updateStatus = useScoutUpdateStatus(node.node_id)
+  const updateOperation = updateStatus.data?.operation
+  const updating = !!node.update_job?.active || !!updateOperation && !['succeeded', 'failed', 'rolled_back', 'cancelled', 'expired'].includes(updateOperation.state)
   const [commandError, setCommandError] = useState('')
-  const commandBlocked = !online ? '节点离线，恢复连接后才能操作。' : cmd.isPending ? '命令正在下发，请稍候。' : ''
+  const commandBlocked = !online ? '节点离线，恢复连接后才能操作。' : updating ? '正在升级，请等待节点重新连接并确认运行版本。' : cmd.isPending ? '命令正在下发，请稍候。' : ''
 
   const run = async (command: NodeCommand, label: string, danger = false) => {
     const ok = await fb.confirm({
