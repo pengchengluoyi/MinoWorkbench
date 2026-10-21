@@ -30,7 +30,6 @@ export interface AssistantProfile {
 
 export interface ProfilePatch {
   persona?: string
-  enabled?: boolean
 }
 
 export interface BindCode {
@@ -186,17 +185,18 @@ export const getAssistantProfile = () => call<AssistantProfile>({ url: '/assista
 export const putAssistantProfile = (body: ProfilePatch) =>
   call<AssistantProfile>({ url: '/assistant/profile', method: 'put', data: body })
 
-export const createBindCode = () => call<BindCode>({ url: '/assistant/bind/code', method: 'post' })
+export interface BindRoute { node_id: string; channel: string; instance_id: string }
+export const createBindCode = (route: BindRoute) => call<BindCode>({ url: '/assistant/bind/code', method: 'post', data: route })
 export const listIdentities = () => call<{ items: AssistantIdentity[] }>({ url: '/assistant/identities', method: 'get' })
 export const deleteIdentity = (id: number) => call<unknown>({ url: `/assistant/identities/${id}`, method: 'delete' })
 
 export const listAssistantTools = () => call<{ items: AssistantTool[] }>({ url: '/assistant/tools', method: 'get' })
 
-export const listTurns = (params: { limit: number; offset: number; surface?: string }) =>
+export const listTurns = (params: { limit: number; offset: number; surface?: string; node_id?: string }) =>
   call<{ items: AssistantTurn[]; total: number }>({
     url: '/assistant/turns',
     method: 'get',
-    params: { limit: params.limit, offset: params.offset, ...(params.surface ? { surface: params.surface } : {}) },
+    params: { node_id: params.node_id, limit: params.limit, offset: params.offset, ...(params.surface ? { surface: params.surface } : {}) },
   })
 export const getTurn = (turnId: string) =>
   call<AssistantTurn>({ url: `/assistant/turns/${encodeURIComponent(turnId)}`, method: 'get' })
@@ -208,8 +208,8 @@ export const createMcpToken = (name: string) =>
   call<McpTokenCreated>({ url: '/assistant/mcp-tokens', method: 'post', data: { name } })
 export const revokeMcpToken = (id: number) => call<unknown>({ url: `/assistant/mcp-tokens/${id}`, method: 'delete' })
 
-export const listSubscriptions = () =>
-  call<{ items: AssistantSubscription[] }>({ url: '/assistant/subscriptions', method: 'get' })
+export const listSubscriptions = (node_id?: string) =>
+  call<{ items: AssistantSubscription[] }>({ url: '/assistant/subscriptions', method: 'get', params: { node_id } })
 export const deleteSubscription = (id: number) =>
   call<unknown>({ url: `/assistant/subscriptions/${id}`, method: 'delete' })
 
@@ -255,7 +255,7 @@ export interface AssistantGroupPolicy {
   disclose_results: boolean
   project_ids: string[]
 }
-export const getAssistantRequests = () => call<AssistantRequests>({ url: '/assistant/requests', method: 'get' })
+export const getAssistantRequests = (node_id?: string) => call<AssistantRequests>({ url: '/assistant/requests', method: 'get', params: { node_id } })
 export const respondAssistantRequest = (id: string, revision: number, values: Record<string, unknown>) =>
   call<{ card: MinoCard }>({ url: `/assistant/requests/${encodeURIComponent(id)}/respond`, method: 'post', data: { revision, values } })
 export const cancelAssistantRequest = (id: string, revision: number) =>

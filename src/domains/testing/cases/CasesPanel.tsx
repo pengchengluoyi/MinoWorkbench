@@ -270,7 +270,6 @@ function CasesPanelContent({ appId, projectId, platforms, onImport }: CasesPanel
         selected={selected.map(String)}
         labels={selectionLabels}
         currentPageIds={rows.map(row => row.case_id)}
-        onRemove={id => setSelected(prev => prev.filter(key => String(key) !== id))}
         onClear={() => setSelected([])}
         deleting={remove.isPending}
         onDelete={() => void removeSelected()}

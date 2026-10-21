@@ -1,5 +1,6 @@
 export interface ImChannelStatus {
   channel: string
+  instance_id?: string
   installed: boolean | null
   running: boolean | null
   process_state: string

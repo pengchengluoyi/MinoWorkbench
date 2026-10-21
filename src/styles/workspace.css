@@ -21,7 +21,7 @@
 .w-form-grid-thirds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .w-form-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .w-form-field-wide { grid-column: 1 / -1; }
-.w-form-label { font-size: var(--w-font-sm); font-weight: 600; color: var(--w-text-secondary); }
+.w-form-label { font-size: var(--w-font-sm); min-height: 28px; display: flex; align-items: center; font-weight: 500; color: var(--w-text-secondary); }
 .w-form-hint { font-size: var(--w-font-sm); color: var(--w-text-tertiary); line-height: 1.6; overflow-wrap: anywhere; }
 .w-capability-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .w-action-bar { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--w-border-strong); background: var(--w-surface); }

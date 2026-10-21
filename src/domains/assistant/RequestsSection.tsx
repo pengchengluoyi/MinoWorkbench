@@ -80,17 +80,17 @@ function RequestItem({ item, focused, taskFocused, onResult }: { item: PendingAs
   )
 }
 
-export function RequestsSection() {
+export function RequestsSection({ nodeId }: { nodeId?: string }) {
   const [filter, setFilter] = useState('active')
   const [result, setResult] = useState<MinoCard | null>(null)
-  const query = useQuery({ queryKey: [...assistantKeys.all, 'requests'], queryFn: getAssistantRequests, refetchInterval: 10_000, retry: 1 })
+  const query = useQuery({ queryKey: [...assistantKeys.all, 'requests', nodeId || ''], queryFn: () => getAssistantRequests(nodeId), refetchInterval: 10_000, retry: 1 })
   if (query.isLoading) return <Skeleton active paragraph={{ rows: 5 }} />
   if (query.isError) return <QueryProblem error={query.error} what="执行请求" onRetry={() => void query.refetch()} />
   const items = query.data?.items || []
   const visible = items.filter((item) => filter === 'all' || (filter === 'pending' ? item.state === 'need_input' : ['need_input', 'resolving', 'uncertain', 'cancelling'].includes(item.state) || (!!item.task_id && !['done', 'completed', 'failed', 'cancelled', 'canceled'].includes(item.task_status || ''))))
   return <div>
     <div className="flex items-start justify-between flex-wrap gap-3" style={{ margin: '16px 0' }}>
-      <div><strong className="flex items-center gap-2"><MessageCircle size={16} />请求与任务</strong><p style={{ color: 'var(--w-text-tertiary)', fontSize: 13, marginTop: 6 }}>追问用于补齐参数，通知说明执行结果，对话用于平台咨询。多个任务分别保留，切换关注不会停止任务。</p></div>
+      <div><strong className="flex items-center gap-2"><MessageCircle size={16} />执行进度</strong></div>
       <Segmented value={filter} onChange={(value) => setFilter(String(value))} options={[{ label: '当前请求', value: 'active' }, { label: '等待补充', value: 'pending' }, { label: '全部记录', value: 'all' }]} />
     </div>
     {result ? <div style={{ marginBottom: 16 }}><div className="flex justify-between items-center" style={{ marginBottom: 6 }}><strong>最近一次处理结果</strong><Button type="text" size="small" onClick={() => setResult(null)}>收起回复</Button></div><MinoCardView card={result} /></div> : null}

@@ -12,7 +12,7 @@
 .work-shell-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 12px 10px 6px; font-size: var(--w-font-meta); color: var(--w-text-tertiary); }
 .work-shell-subnav { margin: 2px 0 8px 17px; padding-left: 12px; border-left: 1px solid var(--w-border); }
 .work-shell-sublink { font-size: var(--w-font-sm); min-height: 34px; }
-.work-shell-divider { height: 1px; margin: 12px 2px; background: var(--w-border); }
+.work-shell-divider { flex-shrink: 0; height: 1px; margin: 12px 2px; background: var(--w-border); }
 .work-shell-user { flex-shrink: 0; padding: 8px; border-top: 1px solid var(--w-border); }
 .work-shell-content { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .work-shell-main { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; padding: clamp(12px, 1.5vw, 24px); }
@@ -24,7 +24,7 @@
 .work-shell-mobile-bar > strong { flex: 1; min-width: 0; white-space: nowrap; }
 @media (max-width: 767px) { .work-shell-main { padding: 12px; } .work-shell-link, .work-shell-sublink, .work-shell-mobile-bar .ant-btn { min-height: 44px; } }
 
-.work-shell-primary-nav { flex: 0 1 auto; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--w-border-strong, #c4cbd5) transparent; }
+.work-shell-primary-nav { display: flex; flex-direction: column; flex: 0 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
 .work-shell-settings-nav { flex: 0 0 auto; min-width: 0; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--w-border); }
 .work-shell-main.work-shell-main--conversation { padding: 0; background: var(--w-surface); }
 .work-shell-chevron { margin-left: auto; transition: transform .16s ease; }
@@ -34,9 +34,7 @@
 .work-shell-conversation-tools > .ant-btn:first-child { min-width: 0; padding-inline: 6px; }
 .work-shell-conversation { display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 2px 0; padding: 8px; border-radius: var(--w-radius-sm); color: var(--w-text-secondary); text-decoration: none; font-size: var(--w-font-sm); }
 .work-shell-conversation > svg { flex-shrink: 0; }
-.work-shell-conversation-label { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
-.work-shell-conversation-label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.work-shell-conversation-label small { font-size: 11px; color: var(--w-text-tertiary); }
+.work-shell-conversation-label { display: block; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .work-shell-conversation.is-active { background: var(--w-primary-soft); color: var(--w-primary); font-weight: 600; }
 .work-shell-conversation:hover, .work-shell-link:hover:not(.is-active) { background: var(--w-bg); }
 .work-shell-unread { flex-shrink: 0; min-width: 18px; border-radius: 9px; padding: 1px 4px; color: var(--w-surface); background: var(--w-primary); font-size: 10px; text-align: center; }
@@ -51,3 +49,27 @@
   .work-shell-conversation-tools > .ant-btn { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) { .work-shell-chevron { transition: none; } }
+
+
+/* 列表各自滚动，底部设置入口始终可见。 */
+.work-shell-projects-section, .work-shell-bots-nav { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 42px; min-width: 0; overflow: hidden; }
+.work-shell-projects-section > .work-shell-link, .work-shell-bots-nav > .work-shell-link { flex-shrink: 0; }
+.work-shell-project-list, .work-shell-conversations { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--w-border-strong, #c4cbd5) transparent; }
+.work-shell-project-list { padding-left: 10px; }
+.work-shell-project-list .work-shell-sublink { overflow-wrap: anywhere; }
+.work-shell-project-list::-webkit-scrollbar, .work-shell-conversations::-webkit-scrollbar { width: 6px; }
+.work-shell-project-list::-webkit-scrollbar-thumb, .work-shell-conversations::-webkit-scrollbar-thumb { background: var(--w-border-strong, #c4cbd5); border-radius: 6px; }
+.work-shell-project-list::-webkit-scrollbar-track, .work-shell-conversations::-webkit-scrollbar-track { background: var(--w-bg); }
+.work-shell-bots-nav:has(> button[aria-expanded="false"]) { flex: 0 0 auto; }
+.work-shell-rail[data-collapsed="true"] .work-shell-projects-section { flex: 0 1 auto; }
+
+.work-shell-conversations .ant-conversations { width:100%; padding:0; }
+.work-shell-conversations .ant-conversations-label { min-width:0; flex:1; }
+.work-shell-conversation-title { display:flex; align-items:center; gap:8px; min-width:0; width:100%; }
+.work-shell-conversation-actions { display:inline-flex; align-items:center; gap:2px; flex-shrink:0; }
+.work-shell-conversation-actions .ant-btn { width:24px; min-width:24px; height:26px; padding:0; color:var(--w-text-secondary); }
+.work-shell-workspace-menu .ant-dropdown-menu { min-width:168px; }
+
+.work-shell-project-return { margin-left:auto; display:flex; align-items:center; flex-shrink:0; opacity:0; }
+.work-shell-link:hover .work-shell-project-return, .work-shell-link:focus-visible .work-shell-project-return { opacity:1; }
+@media (hover:none) { .work-shell-project-return { opacity:1; } }

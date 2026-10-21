@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Filter, RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
-import { Input, Select, Button, DataTable, Drawer, Dropdown, Space, PageHeader, EmptyState, Segmented, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
+import { RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
+import { Input, Select, Button, DataTable, Drawer, Dropdown, Space, PageHeader, EmptyState, Skeleton, StatusPill, Tooltip, errText, useFeedback, type DataColumn } from '@/ui'
 import { cancelTestingTask } from '@/api/caseRunner'
 import { onRealtimeState, realtimeState, type RealtimeState } from '@/lib/realtime'
 import type { PlatformInput } from '@/constants/appPlatforms'
@@ -44,7 +44,6 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
   const detail = useTaskDetail(urlRun, true)
   const task = detail.data
   const live = verdictOf(task?.status) === 'running'
-  const [onlyAttention, setOnlyAttention] = useState(true)
   const [creating, setCreating] = useState(false)
   const [cancelBusy, setCancelBusy] = useState(false)
   const [cancelNotice, setCancelNotice] = useState('')
@@ -53,15 +52,6 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
   useEffect(() => onRealtimeState(setRt), [])
 
   const allCases = useMemo(() => [...(task?.cases || [])].sort(byAttention), [task?.cases])
-  const cases = useMemo(() => {
-    if (!onlyAttention) return allCases
-    const attention = allCases.filter((c) => {
-      const v = verdictOf(c.status || c.overall_status)
-      return v === 'fail' || v === 'other'
-    })
-    return attention
-  }, [allCases, onlyAttention])
-
   const counts = useMemo(() => {
     const out: Record<Verdict, number> = { pass: 0, fail: 0, running: 0, other: 0 }
     for (const c of allCases) out[verdictOf(c.status || c.overall_status)] += 1
@@ -178,16 +168,22 @@ export function TasksPanel({ appId, projectId, platforms }: { appId: string; pro
           <Stat kicker="进行中" value={String(counts.running)} />
           <Stat kicker="其他" value={String(counts.other)} note="取消、阻塞、跳过及未核验结果，不计为通过" />
         </dl>}
+        {!!task?.skipped_cases?.length && <details aria-label="未纳入执行的用例" open>
+          <summary>{task.skipped_cases.length} 条未纳入本次执行</summary>
+          <ul>{task.skipped_cases.map(item => <li key={item.case_id}>
+            <strong>{item.name || item.case_id}</strong> · <code>{item.case_id}</code>
+            <p>{item.reasons?.join('；') || '服务端未提供原因，请查看当前用例编译状态。'}</p>
+          </li>)}</ul>
+        </details>}
         {!live && task && <Suspense fallback={<p>正在读取资源状态…</p>}><RunSafety key={urlRun} runId={urlRun} onStarted={id => setQuery({ run: id, tcase: null, unit: null })} /></Suspense>}
         {detail.isLoading ? <Skeleton active paragraph={{ rows: 6 }} title={false} /> : detail.isError ? <EmptyState title="读取批次详情失败" hint={errText(detail.error, '这个批次可能已被清理。')} action={<Button onClick={() => void detail.refetch()}>重试</Button>} /> : <div className="task-detail-results">
           <DataTable<TaskCase>
-            viewId="testing.task.cases" fill rowKey={executionKey} dataSource={cases} columns={caseColumns}
+            viewId="testing.task.cases" fill rowKey={executionKey} dataSource={allCases} columns={caseColumns}
             rowLabel={row => row.title || '用例结果'}
             renderCard={row => { const status = taskStatus(row.status || row.overall_status); return <><div className="w-record-line"><StatusPill status={status.tone}>{status.label}</StatusPill><span>{caseDuration(row)}</span></div><strong className="w-record-title">{row.title || '未命名用例'}</strong><span className="w-record-excerpt">{String(row.summary || failReason(row) || '查看执行详情')}</span></> }}
             onRowClick={row => setQuery({ tcase: caseId(row), unit: executionKey(row) })}
-            toolbar={<Segmented aria-label="结果筛选" value={onlyAttention ? 'attention' : 'all'} onChange={value => setOnlyAttention(value === 'attention')} options={[{ value: 'attention', label: <span className="flex items-center gap-1"><Filter size={12} />需关注</span> }, { value: 'all', label: '全部结果' }]} />}
-            emptyTitle={onlyAttention && allCases.length ? '当前没有需关注项' : '这个批次还没有用例结果'}
-            emptyHint={onlyAttention && allCases.length ? '切换到全部结果可以查看本次执行记录。' : '执行结果尚未回传，可稍后刷新。'}
+            emptyTitle="这个批次还没有用例结果"
+            emptyHint="执行结果尚未回传，可稍后刷新。"
           />
         </div>}
       </div>

@@ -65,7 +65,6 @@ const columns: DataColumn<JobRow>[] = [
   },
   { key: 'summary', title: '说明', ellipsis: true, render: (_: unknown, row) => row.summary || '无' },
   { key: 'engine', title: '引擎', width: 120, render: (_: unknown, row) => row.engine || '无' },
-  { key: 'version', title: '版本', width: 72, render: (_: unknown, row) => String(row.prompt_version || '') },
   { key: 'sha', title: 'sha', width: 88, render: (_: unknown, row) => <span className="w-mono">{(row.prompt_sha || '').slice(0, 7)}</span> },
   { key: 'path', title: '文件', ellipsis: true, render: (_: unknown, row) => <span className="w-mono">{row.source_path || ''}</span> },
   { key: 'role', title: '角色', width: 140, render: (_: unknown, row) => <span className="w-mono">{row.role_id || '无'}</span> },

@@ -59,7 +59,6 @@ const columns: DataColumn<SkillRow>[] = [
     ellipsis: true,
     render: (_: unknown, row) => row.summary || row.description || '无',
   },
-  { key: 'version', title: '版本', width: 72, render: (_: unknown, row) => String(row.version || '') },
   { key: 'path', title: '文件', ellipsis: true, render: (_: unknown, row) => <span className="w-mono">{row.source_path || ''}</span> },
   {
     key: 'enabled',

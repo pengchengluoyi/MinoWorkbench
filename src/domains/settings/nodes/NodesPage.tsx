@@ -1,3 +1,4 @@
+import { NodeAssistant } from './NodeAssistant'
 import { usesDesktopExecutor } from '@/constants/platformContract'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -8,17 +9,20 @@ import { connectedNodeDevices, executableDevices, heldChannels, nodeIsAsleep, no
 import { EMPTY_ARRAY } from '@/lib/unwrap'
 import { useNodeCommand, useNodes, useClaimLegacyNode } from './queries'
 import { useSession } from '@/lib/session'
+import { NodeDownloads } from './NodeDownloads'
 import { NodeLogs } from './NodeLogs'
 import { NodePlugins, PLUGIN_PANES, type PluginPane } from './NodePlugins'
 import { AddNodeModal } from './AddNodeModal'
 
 import './NodesPage.css'
 
-type Pane = 'overview' | 'connect' | 'logs'
+type Pane = 'overview' | 'downloads' | 'connect' | 'logs' | 'assistant'
 
 const PANES: { id: Pane; label: string }[] = [
   { id: 'overview', label: '概览' },
-  { id: 'connect', label: '接入配置' },
+  { id: 'downloads', label: '下载中心' },
+  { id: 'connect', label: '配置' },
+  { id: 'assistant', label: '记录' },
   { id: 'logs', label: '日志' },
 ]
 
@@ -38,6 +42,15 @@ export function NodesPage() {
   const [addingNode, setAddingNode] = useState(false)
   const [params, setParams] = useSearchParams()
   const [listCollapsed, setListCollapsed] = usePersistedFlag('mino.nodes.rail', false)
+  useEffect(() => {
+    if (params.get('pane') === 'assistant' && params.get('tab') === 'setup') {
+      const next = new URLSearchParams(params)
+      next.set('pane', 'connect')
+      next.delete('tab')
+      setParams(next, { replace: true })
+    }
+  }, [params, setParams])
+  const globalSettings = params.get('pane') === 'settings'
   const picked = params.get('node') || ''
   const [nodeOrder, setNodeOrder] = useState<string[]>([])
   useEffect(() => {
@@ -94,11 +107,13 @@ export function NodesPage() {
   const selectNode = (id: string) => {
     const next = new URLSearchParams(params)
     next.set('node', id)
+    next.delete('turn')
+    next.delete('turnPage')
     setParams(next, { replace: false })
   }
 
   return (
-    <div className="w-workspace flex flex-col" style={{ height: '100%', minHeight: 0, gap: 'var(--w-space-3)' }}>
+    <div className="w-workspace w-nodes-page flex flex-col" style={{ flex: 1, minHeight: 0, overflow: 'hidden', gap: 'var(--w-space-3)' }}>
       <div className="flex flex-wrap items-center gap-3 shrink-0">
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--w-text)' }}>
           Scout 节点
@@ -115,6 +130,12 @@ export function NodesPage() {
           ) : null}
         </span>
         <span style={{ flex: 1 }} />
+        <Button aria-pressed={globalSettings} onClick={() => {
+          const next = new URLSearchParams(params)
+          next.set('pane', globalSettings ? 'overview' : 'settings')
+          next.delete('tab'); next.delete('turn'); next.delete('turnPage')
+          setParams(next)
+        }}>{globalSettings ? '返回节点' : '全局设置'}</Button>
         <Button icon={<Plus size={14} />} onClick={() => setAddingNode(true)}>添加节点</Button>
         <Tooltip title="刷新">
           <Button size="small" icon={<RefreshCw size={13} />} loading={nodes.isFetching} onClick={() => { setNodeOrder([]); void nodes.refetch() }} aria-label="刷新" />
@@ -124,7 +145,7 @@ export function NodesPage() {
 
 
       {nodes.isError && nodes.data && <Alert type="warning" showIcon message="节点刷新失败，以下保留上次读取信息" description={errText(nodes.error)} />}
-              {active?.owner_user_id ? (
+              {!globalSettings && active?.owner_user_id ? (
           <NodeToolbar key={active.node_id}
             node={active}
             pane={paneOf(params.get('pane'))}
@@ -132,12 +153,13 @@ export function NodesPage() {
               const next = new URLSearchParams(params)
               next.set('node', active.node_id)
               next.set('pane', id)
+              next.delete('tab'); next.delete('turn'); next.delete('turnPage')
               setParams(next, { replace: false })
             }}
           />
         ) : null}
 
-      {emptyContent ? emptyContent : <>
+      {globalSettings ? <section className="w-surface-card" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}><NodeAssistant key="global" /></section> : emptyContent ? emptyContent : <>
       {active && !nodeIsOnline(active) ? (
         <div role="status" style={{ padding: '8px 12px', borderRadius: 'var(--w-radius-sm)', background: 'var(--w-warn-bg)', color: 'var(--w-warn)', fontSize: 'var(--w-font-sm)', fontWeight: 650 }}>
           当前节点离线，无法配置插件或下发指令。仍可添加其他电脑的节点。
@@ -145,13 +167,13 @@ export function NodesPage() {
       ) : null}
 
       <div className="w-nodes-body">
-        <NodeRail
+        {list.length > 1 && <NodeRail
           list={list}
           activeId={activeId}
           collapsed={listCollapsed}
           onToggle={() => setListCollapsed((v) => !v)}
           onSelect={selectNode}
-        />
+        />}
 
         {active ? <NodeDetail key={active.node_id} node={active} pane={active.owner_user_id ? paneOf(params.get('pane')) : 'overview'} pluginPane={pluginPaneOf(params.get('pane'))} /> : null}
       </div>
@@ -181,7 +203,8 @@ function NodeRail({
     <aside
       className="w-rail w-node-col shrink-0 overflow-y-auto flex flex-col"
       style={{
-        width: collapsed ? 56 : 272,
+        width: collapsed ? 56 : '20%',
+        flex: collapsed ? '0 0 56px' : '0 0 20%',
         background: 'var(--w-surface)',
         border: '1px solid var(--w-border)',
         borderRadius: 'var(--w-radius-lg)',
@@ -298,7 +321,9 @@ function pluginPaneOf(raw: string | null): PluginPane | undefined {
 }
 
 function paneOf(raw: string | null): Pane {
+  if (raw === 'assistant') return 'assistant'
   if (raw === 'logs') return 'logs'
+  if (raw === 'downloads') return 'downloads'
   if (raw === 'connect' || pluginPaneOf(raw)) return 'connect'
   return 'overview'
 }
@@ -375,8 +400,8 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
 
   return (
     <section
-      className="w-surface-card flex min-h-0 min-w-0 flex-1 flex-col"
-      style={{ minHeight: 0, overflow: pane === 'connect' ? 'hidden' : 'auto', paddingBottom: pane === 'connect' ? 0 : 28 }}
+      className="w-surface-card w-node-detail flex min-h-0 min-w-0 flex-1 flex-col"
+      style={{ minHeight: 0, overflow: pane === 'connect' ? 'hidden' : 'auto', paddingBottom: pane === 'connect' || pane === 'downloads' ? 0 : 28 }}
     >
       {pane === 'overview' ? (
         <>
@@ -445,6 +470,8 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
           {permissionsOpen ? <p id="node-permission-help" className="w-node-permission-help">macOS：打开系统设置 → 隐私与安全性，为运行 Scout 的程序授予屏幕录制和辅助功能权限；按系统提示重启该程序，心跳会自动更新状态。</p> : null}
         </>
       ) : null}
+      {pane === 'assistant' ? <NodeAssistant key={node.node_id} nodeId={node.node_id} /> : null}
+      {pane === 'downloads' ? <NodeDownloads key={node.node_id} node={node} /> : null}
       {pane === 'connect' ? <div className="flex min-h-0 flex-1 flex-col"><NodePlugins key={node.node_id} node={node} initialPane={pluginPane} /></div> : null}
       {pane === 'logs' ? <div style={{ padding: 'var(--w-space-3)' }}><NodeLogs nodeId={node.node_id} embedded /></div> : null}
     </section>

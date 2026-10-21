@@ -21,7 +21,7 @@ export const fmtTokens = (prompt?: number, completion?: number, usageStatus?: un
 }
 
 const CHANNEL_LABELS: Record<string, string> = {
-  wechat: '微信', weixin: '微信', feishu: '飞书', lark: '飞书', wecom: '企业微信', dingtalk: '钉钉', qq: 'QQ', mcp: 'MCP',
+  wechat: '微信', weixin: '微信', feishu: '飞书', feishu_cli: '飞书 CLI 对话', lark: '飞书', wecom: '企业微信', dingtalk: '钉钉', qq: 'QQ', mcp: 'MCP',
 }
 export const channelLabel = (c: string): string => {
   const key = String(c || '').toLowerCase().replace(/^langbot:/, '')

@@ -1,0 +1,83 @@
+.w-node-config-context { padding: 18px 24px; }
+.w-node-config-context > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.w-node-config-context > div strong { font-size: 18px; font-weight: 700; }
+.w-node-config-context > div span { font-size: var(--w-font-meta); color: var(--w-text-tertiary); }
+.w-node-config-nav { padding: 10px 8px 20px; width: clamp(210px, 24%, 290px); background: var(--w-surface-subtle); }
+.w-node-config-nav .w-plugin-nav-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 11px 12px; border: 0; border-radius: 8px; margin: 3px 0; min-height: 62px; text-align: left; cursor: pointer; }
+.w-plugin-nav-copy { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.w-plugin-nav-copy > span { font-weight: 600; overflow-wrap: anywhere; }
+.w-plugin-nav-copy small { color: var(--w-text-tertiary); font-size: 11px; letter-spacing: .2px; font-weight: 500; }
+.w-plugin-nav-state { flex-shrink: 0; color: var(--w-text-tertiary); font-size: 11px; }
+.w-plugin-nav-state[data-ready] { color: var(--w-pass); }
+.w-node-config-nav button:focus-visible { outline: 2px solid var(--w-primary); outline-offset: -2px; }
+.w-node-config-editor { padding: 24px 28px 40px; }
+.w-plugin-editor-content { width: 100%; min-width: 0; max-width: none; }
+.w-plugin-editor-heading { display: flex; align-items: center; gap: 10px; }
+.w-plugin-editor-heading h2 { margin: 0; font-size: 22px; font-weight: 700; }
+.w-plugin-type { padding: 3px 8px; border-radius: 6px; color: var(--w-primary); background: var(--w-primary-soft); font-size: 12px; font-weight: 600; }
+.w-plugin-editor-description { margin: 7px 0 20px; color: var(--w-text-tertiary); font-size: var(--w-font-sm); line-height: 1.7; }
+.w-plugin-relation { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--w-border); background: var(--w-surface-subtle); border-radius: 10px; padding: 15px 16px; margin-bottom: 24px; font-size: var(--w-font-sm); }
+.w-plugin-relation > svg { margin-top: 3px; flex-shrink: 0; color: var(--w-text-tertiary); }
+.w-plugin-relation > div { flex: 1; min-width: 0; }
+.w-plugin-relation strong { font-weight: 600; }
+.w-plugin-relation p { margin: 5px 0 0; font-size: var(--w-font-meta); color: var(--w-text-tertiary); line-height: 1.7; }
+.w-plugin-setup { border: 1px solid var(--w-border); border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
+.w-plugin-install-step, .w-plugin-config-step { display: flex; gap: 12px; align-items: flex-start; padding: 18px; }
+.w-plugin-install-step { background: var(--w-surface-subtle); border-bottom: 1px solid var(--w-border); }
+.w-plugin-step-number { width: 28px; height: 28px; display: grid; place-items: center; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--w-border); font-size: 12px; color: var(--w-text-secondary); background: var(--w-surface); }
+.w-plugin-step-number[data-complete] { color: var(--w-pass); border-color: currentColor; }
+.w-plugin-step-copy { flex: 1; min-width: 0; }
+.w-plugin-step-copy strong { font-size: var(--w-font-sm); font-weight: 650; line-height: 28px; }
+.w-plugin-step-copy p { margin: 4px 0 0; color: var(--w-text-tertiary); font-size: var(--w-font-meta); line-height: 1.7; }
+.w-plugin-step-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.w-plugin-auth-help { padding: 0 18px 18px 58px; font-size: var(--w-font-meta); line-height: 1.7; color: var(--w-text-secondary); }
+.w-plugin-auth-help summary { color: var(--w-primary); cursor: pointer; }
+.w-plugin-auth-help p { margin: 8px 0; }
+.w-plugin-auth-help code { background: var(--w-surface-subtle); padding: 1px 4px; border-radius: 3px; }
+.w-plugin-fields-title { grid-column: 1 / -1; margin: 0 0 4px; font-size: var(--w-font-base); font-weight: 650; }
+.w-plugin-install-placeholder { padding: 24px; color: var(--w-text-tertiary); font-size: var(--w-font-sm); text-align: center; border: 1px dashed var(--w-border); border-radius: 10px; }
+@container (max-width: 959px) {
+  .w-node-config-nav { width: 100%; }
+  .w-node-config-editor { padding: 20px; }
+  .w-plugin-install-step { flex-wrap: wrap; }
+  .w-plugin-step-actions { width: 100%; justify-content: flex-start; padding-left: 40px; }
+}
+@media (max-width: 600px) {
+  .w-node-config-context { padding: 16px; gap: 12px; }
+  .w-plugin-relation { flex-wrap: wrap; }
+  .w-plugin-editor-heading h2 { font-size: 20px; }
+  .w-plugin-auth-help { padding-left: 18px; }
+}
+
+/* Shared connection surfaces */
+.w-plugin-setup.w-setup-card { border-radius: 16px; }
+.w-plugin-install-step { padding: 22px 28px; }
+.w-plugin-relation-note { flex: 1; color: var(--w-text-secondary); font-size: 12px; }
+.w-channel-form { padding: 24px 28px 0; }
+.w-channel-form-header { grid-column: 1 / -1; margin-bottom: 6px; }
+.w-channel-form-header h3 { margin: 0; font-size: 17px; font-weight: 650; }
+.w-channel-form-header p { margin: 7px 0 0; font-size: 12px; line-height: 1.7; color: var(--w-text-tertiary); }
+.w-channel-form .ant-input, .w-channel-form .ant-input-affix-wrapper { border-radius: 8px; min-height: 38px; }
+.w-channel-form .ant-input-affix-wrapper .ant-input { min-height: auto; }
+.w-channel-form .w-node-config-actions { margin: 8px -28px 0; padding: 16px 28px; background: var(--w-surface-subtle); gap: 12px; }
+.w-channel-form .w-node-config-actions .ant-btn { min-height: 32px; padding-inline: 14px; border-radius: 8px; }
+.w-channel-form > div:last-child:not(.w-node-config-actions) { padding-bottom: 20px; }
+.w-channel-login { padding: 24px 28px; display: flex; flex-direction: column; gap: 18px; }
+.w-channel-login-actions { display: flex; flex-wrap: wrap; gap: 12px; background: var(--w-surface-subtle); border-top: 1px solid var(--w-border); margin: 0 -28px -24px; padding: 16px 28px; }
+.w-channel-login:has(label) .w-channel-login-actions { margin-bottom: 0; }
+.w-plugin-editor-content > .w-download-task { margin-bottom: 20px; }
+@container (max-width: 600px) {
+ .w-channel-form { padding: 22px 18px 0; }
+ .w-channel-form .w-node-config-actions { margin-inline: -18px; padding-inline: 18px; }
+ .w-channel-login { padding: 22px 18px; }
+ .w-channel-login-actions { margin-inline: -18px; margin-bottom: -22px; padding-inline: 18px; }
+ .w-plugin-install-step { padding: 18px; }
+}
+
+.w-channel-form > label { min-width: 0; }
+.w-channel-form > label > .w-field-heading > span:first-child { font-weight: 500 !important; }
+.w-channel-form .w-secret-saved .ant-input-prefix { color: var(--w-pass); margin-inline-end: 8px; }
+.w-channel-form .w-node-config-actions { gap: 10px; padding-block: 16px; }
+.w-channel-form .w-node-config-actions .ant-btn { font-weight: 500; }
+.w-channel-form > .w-channel-test-result:last-child { grid-column: 1 / -1; margin-bottom: 20px; padding: 12px 14px; }
+.w-channel-form .w-form-actions-note { color: var(--w-text-tertiary); }

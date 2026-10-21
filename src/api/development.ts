@@ -22,9 +22,20 @@ export interface DevelopmentConfig {
   test_parameters_confirmed: boolean
 }
 export interface IDEConnection { connection_id: string; revision: number; url: string; transport: string }
+export interface IDERuntime {
+  state: 'running' | 'stopped' | 'ambiguous' | 'conflict' | 'unknown'
+  scope: 'project' | 'configuration'
+  configuration_verified: boolean
+  configuration_name?: string
+  observed_at: number
+  instances: { pid: number; name: string; created_at: number; execution_id?: number; session_id?: string; debug_state?: string; execution_mode?: 'run' | 'debug' }[]
+  reason: string
+}
 export interface PreparationResult {
   reason?: string
   reason_code?: string
+  remediation?: string
+  error_field?: 'project_path' | 'source_dir' | 'connection_id'
   operation_id?: string
   stage?: string
   stages?: { name: string; at: number }[]
@@ -33,7 +44,13 @@ export interface PreparationResult {
   expected_build?: string
   actual_instance_id?: string
   instance_verified?: boolean
-  support?: { read: boolean; execute: boolean; restart: boolean; restart_mode?: string; logs: boolean }
+  support?: { read: boolean; execute: boolean; restart: boolean; stop?: boolean; restart_mode?: string; restart_reason?: string; inspect_running?: boolean; logs: boolean }
+  runtime?: IDERuntime
+  process_running?: boolean
+  reused_existing?: boolean
+  restarted?: boolean
+  stopped?: boolean
+  native_operation_id?: string
   recovery?: { at: number; source: string }
   receipt_lookup?: { reason?: string }
   package?: string
@@ -45,6 +62,8 @@ export interface PreparationResult {
   target_ready?: boolean
   build_verified?: boolean
   configurations?: string[]
+  control_connection?: { connection_id?: string; revision?: number; url: string }
+  configuration_details?: { name: string; canDebug?: boolean; canRun?: boolean }[]
   tools?: string[]
   server?: { name?: string; version?: string }
   checked_at?: number

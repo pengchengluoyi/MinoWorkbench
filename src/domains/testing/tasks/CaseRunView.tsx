@@ -13,6 +13,7 @@ import { CaseScriptSections } from '../cases/CaseScriptSections'
 import type { ScriptInteraction } from '../cases/ScriptField'
 import { CaseVersionChain } from '../cases/CaseVersionChain'
 import { caseId, failReason, verdictOf, type TaskCase } from './types'
+import { taskStatus } from './presentation'
 import { traceKey, type TraceStep } from './trace'
 import { parseInteraction, type TraceInteraction } from './interaction'
 import { ScreenshotOverlay } from './ScreenshotOverlay'
@@ -29,7 +30,7 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
   const sessionId = String(row.session_id || (String(row.report_run_id || '').includes('::') ? '' : row.report_run_id) || '')
   const runId = String(row.report_run_id || (taskId && id ? `${taskId}::${id}` : ''))
   const verdict = verdictOf(row.status || row.overall_status)
-  const label = verdict === 'pass' ? '通过' : verdict === 'fail' ? '失败' : verdict === 'running' ? '执行中' : '其他'
+  const outcomeStatus = taskStatus(row.status || row.overall_status)
   const fallback = String(row.summary || failReason(row) || '')
 
   const session = useSessionDetail(sessionId, verdict === 'running')
@@ -86,7 +87,7 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
     <div className="case-run-view flex h-full min-h-0 flex-col" style={{ gap: 10 }}>
       <header className="flex shrink-0 flex-wrap items-center gap-2">
         <Button size="small" onClick={onBack}>返回这个批次</Button>
-        <StatusPill status={verdict === 'other' ? 'muted' : verdict}>{label}</StatusPill>
+        <StatusPill status={outcomeStatus.tone}>{outcomeStatus.label}</StatusPill>
         <h1 className="w-record-title">{row.title || row.name as string || '用例结果'}</h1>
         <CopyId
           text={taskId && id ? `${taskId} ${id}` : (taskId || id)}
@@ -102,6 +103,12 @@ export function CaseRunView({ row, taskId, platforms, onBack }: { row: TaskCase;
           options={[{ value: 'script', label: '用例内容' }, { value: 'trace', label: '执行步骤' }, { value: 'log', label: '详细日志' }]}
         />
       </header>
+
+      {row.reason_code ? <div className="w-task-meta" role="note">
+        原因：<code>{String(row.reason_code)}</code>
+        {row.failure_stage ? ` · 阶段：${String(row.failure_stage)}` : ''}
+        {Number(row.case_step) > 0 ? ` · 步骤 ${Number(row.case_step)}` : ''}
+      </div> : null}
 
       {trace.isError && trace.data ? <div className="execution-source-alert" role="alert">轨迹刷新失败，当前保留上次读取的记录。<Button size="small" onClick={() => void trace.refetch()}>重新读取</Button></div> : null}
       {trace.data?.errors.length ? <div className="execution-source-alert" role="alert">{trace.data.errors.map((item) => <span key={item.source}>{item.source}读取失败：{errText(item.error)}。 </span>)}<Button size="small" onClick={() => void trace.refetch()}>重试缺失来源</Button></div> : null}

@@ -16,12 +16,11 @@ import { Alert, Button, EmptyState, Input, Modal, Select, Skeleton, errText, use
 import { ControlRegistry } from './ControlRegistry'
 import { MaintainersPanel } from './MaintainersPanel'
 import { getProjectEnv, updateProjectEnv } from '@/api/projectEnv'
-import { unwrapOne } from '@/lib/unwrap'
 import { copyToClipboard } from '@/lib/clipboard'
 import { AppEnvCard } from './AppEnvCard'
 import {
   buildPayload, buildWritePayload, environmentWriteIssues, channelConfigVar, channelKindText, channelTitle,
-  emptySecrets, normalizeEnvDoc, normalizeSecrets, normalizeSlot, slugEnvKey,
+  emptySecrets, normalizeSecrets, normalizeSlot, slugEnvKey,
   type EnvDocument,
 } from './envModel'
 
@@ -53,7 +52,7 @@ export function EnvironmentSettings({ projectId, application }: { projectId: str
   const query = useQuery({
     queryKey: ['project', projectId, 'env'],
     enabled: !!projectId,
-    queryFn: async () => normalizeEnvDoc(unwrapOne(await getProjectEnv(projectId))),
+    queryFn: () => getProjectEnv(projectId),
   })
 
   const draftSnapshot = useRef({ doc, saved })

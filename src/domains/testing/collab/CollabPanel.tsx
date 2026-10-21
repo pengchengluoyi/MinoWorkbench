@@ -1,10 +1,11 @@
+import { Bubble } from '@ant-design/x'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
 import { request } from '@/lib/request'
 import { Button, Modal, Drawer, Dropdown, Tooltip, errText } from '@/ui'
 import { projectHref } from '../workbench/projectNavigation'
-import { Plus, ArrowUp, MoreHorizontal, PanelRightOpen, X } from 'lucide-react'
+import { ImagePlus, Paperclip, FileText, Download, MoreHorizontal, PanelRightOpen, Users, ListTodo, MessageSquare, Copy, X } from 'lucide-react'
 import { useWorkspaceNavigation, removeWorkspaceFromCache, isMissingWorkspace } from '@/domains/bots/workspaceNavigation'
 import { MemberAvatar, MemberEditor, MemberText, MentionInput } from './WorkspacePeople'
 import type { WorkspaceMember as Member } from './WorkspacePeople'
@@ -35,7 +36,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
 }) {
   const qc = useQueryClient()
   const attachmentInput = useRef<HTMLInputElement>(null)
-  const messageEnd = useRef<HTMLDivElement>(null)
+  const screenshotInput = useRef<HTMLInputElement>(null)
   const composerInput = useRef<HTMLTextAreaElement>(null)
   const imageUrls = useRef(new Set<string>())
   const sendLock = useRef(false)
@@ -74,24 +75,24 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
     void request({ url: base + '/' + selectedId + '/read', method: 'post' })
       .then(() => qc.invalidateQueries({ queryKey: [...key, 'list'] })).catch(() => undefined)
   }, [base, selectedId, lastMessage, qc, key])
-  useEffect(() => { messageEnd.current?.scrollIntoView({ block: 'end' }) }, [lastMessage, selectedId])
   const composerScope = projectId + '/' + selectedId
   const currentScope = useRef(composerScope)
   currentScope.current = composerScope
-  const pendingImages = attachments.filter(item => item.scope === composerScope)
-  const removeImage = (id: string) => {
+  const pendingAttachments = attachments.filter(item => item.scope === composerScope)
+  const removeAttachment = (id: string) => {
     const item = attachments.find(image => image.id === id)
     if (item) { URL.revokeObjectURL(item.url); imageUrls.current.delete(item.url) }
     setAttachments(current => current.filter(image => image.id !== id))
   }
-  const addImages = (files: File[]) => {
+  const addAttachments = (files: File[]) => {
     const accepted: typeof attachments = []
     const rejected: string[] = []
     for (const file of files) {
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { rejected.push('支持 PNG、JPEG 或 WebP 截图'); continue }
-      if (file.size > 8 * 1024 * 1024) { rejected.push('单张截图不能超过 8MB'); continue }
-      const url = URL.createObjectURL(file)
-      imageUrls.current.add(url)
+      const image = ['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name)
+      if (file.size > (image ? 8 : 20) * 1024 * 1024) { rejected.push(image ? '单张截图不能超过 8MB' : '单个附件不能超过 20MB'); continue }
+      if (!file.size) { rejected.push('不能发送空文件'); continue }
+      const url = image ? URL.createObjectURL(file) : ''
+      if (url) imageUrls.current.add(url)
       accepted.push({ id: crypto.randomUUID(), scope: composerScope, file, url })
     }
     setAttachments(current => [...current, ...accepted])
@@ -123,7 +124,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   }
   const send = () => {
     const value = draft.trim()
-    if ((!value && !pendingImages.length) || sendLock.current || readOnly || !selectedId) return
+    if ((!value && !pendingAttachments.length) || sendLock.current || readOnly || !selectedId) return
     sendLock.current = true
     setSending(true)
     setError('')
@@ -131,11 +132,11 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
     const messageDraft = draft
     void (async () => {
       try {
-        for (const item of pendingImages) {
+        for (const item of pendingAttachments) {
           const form = new FormData()
-          form.append('file', item.file, item.file.name || '截图.png')
+          form.append('file', item.file, item.file.name || '附件')
           await request({ url: base + prefix + '/attachments', method: 'post', data: form })
-          removeImage(item.id)
+          removeAttachment(item.id)
           void qc.invalidateQueries({ queryKey: key })
         }
         if (value) {
@@ -164,16 +165,12 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   </article>
   const loadError = topics.error || options.error || (isMissingWorkspace(detail.error) ? null : detail.error)
   const unavailable = (loadError as { response?: { status?: number } } | null)?.response?.status === 404
-  const resources = data?.snapshot.resources
-  const resourceCard = <article className="steward-run-card"><strong>当前资源事实</strong>
-    <p>在线设备 {resources?.online_devices ?? 0} · 可用账号 {resources?.available_accounts ?? '—'} · 编译就绪 {resources?.compile_ready ?? 0} · 运行绑定将在执行前检查</p>
-    <p>{resources?.account_note}</p><Button onClick={() => void detail.refetch()}>重新检查</Button> <Button onClick={() => { setShowDetails(true); setTab('scope') }}>编辑资源</Button></article>
   const card = (m: Message) => {
     if (m.card_kind === 'run') { const run = data?.runs[m.ref_id]; return run ? runCard(run) : <p>运行记录不可用</p> }
     if (m.card_kind === 'workspace') return <Button onClick={() => {
       void request<Detail>({ url: base + '/' + encodeURIComponent(m.ref_id) }).then(r => setSelected(m.ref_id, Boolean(r.data?.topic.archived))).catch(e => setError(errText(e)))
     }}>打开已有工作区</Button>
-    if (m.card_kind === 'resources') return resourceCard
+    if (m.card_kind === 'resources') return null
     if (m.card_kind === 'case' || m.card_kind === 'case_candidate') {
       const c = options.data?.cases.find(c => c.case_id === m.ref_id)
       return <article className="steward-run-card"><strong>{c?.name || m.ref_id}</strong><p>{c?.module}</p>
@@ -184,13 +181,13 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
     if (m.card_kind === 'attachment') return <Attachment url={base + prefix + '/attachments/' + m.ref_id} name={m.body} />
     return null
   }
-  return <div className="collab-page v7-workspaces">
+  return <div className="collab-page v7-workspaces workspace-im">
     {missingNotice && <div role="status">{missingNotice}<Button onClick={() => setMissingNotice('')}>关闭</Button></div>}
     {error && <div className="v7-error" role="alert">{error}<Button onClick={() => setError('')}>关闭</Button></div>}
     <div className="collab-panel"><section className="collab-main">
       {loadError && <div className="v7-empty v7-error-state" role="alert"><span className="v7-empty-icon">!</span><h2>{unavailable ? '工作区服务尚未就绪' : '暂时无法读取工作区'}</h2><p>{unavailable ? '当前连接的 Nexus 未提供工作区接口。服务更新后，点击重新连接。' : errText(loadError)}</p><p>已停止自动重试；现有数据不会被清空。</p><Button type="primary" onClick={() => void qc.invalidateQueries({ queryKey: key })}>重新连接</Button></div>}
       {!loadError && !topics.isPending && !selectedId && <div className="v7-empty"><span className="v7-empty-icon">◇</span><span className="v7-eyebrow">从一句话开始</span><h2>{archived ? '暂无归档工作区' : '今天想测什么？'}</h2><p>先聊目标，或发来用例。范围、应用和环境都可以边聊边补充。</p>{!archived && <Button type="primary" disabled={mutation.isPending} onClick={() => create()}>开始对话</Button>}</div>}
-      {!loadError && topics.isPending && <div className="v7-empty" role="status"><div className="v7-skeleton"/><div className="v7-skeleton"/><p>正在连接测试工作区…</p></div>}
+      {!loadError && topics.isPending && <div className="v7-empty" role="status"><div className="v7-skeleton"/><div className="v7-skeleton"/><p>正在连接工作区…</p></div>}
       {linkedCase && <section className="steward-run-card"><strong>加到工作区：{options.data?.cases.find(c => c.case_id === linkedCase)?.name || linkedCase}</strong>
         <select aria-label="目标工作区" value={pinTarget} onChange={e => setPinTarget(e.target.value)}><option value="">选择已有工作区</option>
           {(topics.data || []).filter(t => !t.archived && t.workspace_kind === 'scope').map(t => <option key={t.topic_id} value={t.topic_id}>{t.title}</option>)}</select>
@@ -199,17 +196,24 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
       </section>}
       {detail.isPending && selectedId && <p role="status">正在读取工作区…</p>}
       {!loadError && topic && data && <>
-        <header className="v7-chat-header"><div className="workspace-chat-heading"><h2>{topic.title}</h2><button className="workspace-member-summary" onClick={() => { setTab('members'); setShowDetails(true) }}><span className="workspace-avatar-stack">{(data.members || []).slice(0, 5).map(m => <MemberAvatar key={m.id} id={m.id} name={m.sender_name} />)}</span>{data.members?.length || 0} 位成员<span>· @ 指定回复</span></button></div><div>
-          <Tooltip title="查看成员、测试目标与任务"><Button type="text" aria-label="对话详情" icon={<PanelRightOpen size={17}/>} onClick={() => setShowDetails(true)} /></Tooltip>
+        <header className="v7-chat-header workspace-im-header">
+          <div className="workspace-im-heading"><div className="workspace-im-icon"><MessageSquare size={20} /></div>
+            <div className="workspace-im-title"><h2>{topic.title}</h2><span>{data.members?.length || 0} 位成员{readOnly ? ' · 只读' : topic.paused ? ' · 已暂停' : ''}</span></div>
+          </div>
+          <div className="workspace-im-header-actions">
+            <Tooltip title="成员"><Button type="text" aria-label="成员" icon={<Users size={18}/>} onClick={() => { setTab('members'); setShowDetails(true) }} /></Tooltip>
+            <Tooltip title="任务"><Button type="text" aria-label="任务" icon={<ListTodo size={18}/>} onClick={() => { setTab('tasks'); setShowDetails(true) }} /></Tooltip>
+            <Tooltip title="工作区详情"><Button type="text" aria-label="对话详情" icon={<PanelRightOpen size={18}/>} onClick={() => setShowDetails(true)} /></Tooltip>
           <Dropdown trigger={['click']} menu={{ items: [
-            { key: 'archive', label: topic.archived ? '恢复对话' : '归档对话', disabled: topic.workspace_kind.startsWith('legacy'), onClick: () => submit(patch({ archived: !topic.archived })) },
+            { key: 'import', label: '导入用例…', disabled: readOnly || !topic.app_id || sending, onClick: () => { setImportUrl(''); setImportOpen(true) } },
+            { key: 'archive', label: topic.archived ? '恢复工作区' : '归档工作区', disabled: topic.workspace_kind.startsWith('legacy'), onClick: () => submit(patch({ archived: !topic.archived })) },
             { key: 'pause', label: topic.paused ? '恢复工作区' : '暂停工作区', disabled: readOnly, onClick: () => submit(patch({ paused: !topic.paused })) },
             { key: 'history', label: archived ? '返回当前对话' : '查看归档', onClick: () => setArchived(!archived) },
-            { key: 'delete', label: '删除对话', danger: true, onClick: () => { setDeleteOpen(true) } }
+            { key: 'delete', label: '删除工作区', danger: true, onClick: () => { setDeleteOpen(true) } }
           ] }}><Button type="text" aria-label="对话菜单" icon={<MoreHorizontal size={18}/>} /></Dropdown>
         </div></header>
-        {readOnly && <p>已归档工作区只读，历史消息与证据保留。</p>}
-        {topic.paused ? <p>工作区已暂停，可继续查询；恢复后可提交写操作。</p> : null}
+        {readOnly && <div className="workspace-im-notice" role="status">此工作区只读，历史消息与证据保留。</div>}
+        {topic.paused ? <div className="workspace-im-notice" role="status">工作区已暂停，可继续查询。</div> : null}
         <Drawer title="对话详情" open={showDetails} onClose={() => setShowDetails(false)} width="min(620px, 100vw)" className="v7-details-drawer">
           <div className="v7-workspaces v7-drawer-content"><nav className="v7-tabs" aria-label="工作区详情">
             {[['members', '成员'], ['scope', '测试目标'], ['tasks', '任务']].map(([id, label]) => <Button key={id} type={tab === id ? 'primary' : 'default'} onClick={() => setTab(id)}>{label}</Button>)}
@@ -221,25 +225,50 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
           {tab === 'scope' && <><ResourceEditor key={JSON.stringify([topic.topic_id, topic.requirement_id, topic.modules, topic.env_profile, topic.env_surface])} topic={topic} options={options.data} readOnly={readOnly} save={body => submit(patch(body))} /></>}
           {tab === 'tasks' && <WorkspaceTasks key={selectedId} base={base + prefix} projectId={projectId} />}
           </div>
-        </Drawer><section className="collab-card-chat"><div className="collab-messages">
-          {!data.messages.length && <p className="v7-chat-hint">可以让管家检查资源、执行用例，或汇总最近的问题。结论会附上可追溯的运行证据。</p>}{data.messages.map(m => <article key={m.message_id} className={'collab-message ' + (m.author_kind === 'user' ? 'is-user' : 'is-assistant')}><MemberAvatar id={m.role || m.author_kind} name={m.sender_name || ''} /><div className="collab-message-content"><small>{m.sender_name}{m.created_at && <time dateTime={m.created_at}>{new Date(m.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>}{m.reply_status && <span className="workspace-message-status">{labels[m.reply_status] || (m.reply_status === 'succeeded' ? '已回复' : m.reply_status)}</span>}{m.origin === 'migrated' ? ' · 历史归并' : ''}</small><div className="collab-message-body"><p><MemberText text={m.body} members={data.members || []} /></p>{card(m)}{m.reply_error && <p role="alert">{labels[m.reply_status || ''] || '处理未完成'}：{m.reply_error}</p>}</div></div></article>)}{replying && <p role="status" className="v7-planning-status">正在处理…</p>}<div ref={messageEnd}/></div>
-          {!readOnly && <div className="v7-composer">
-            {!!pendingImages.length && <div className="v7-image-drafts" aria-label="待发送截图">{pendingImages.map(item => <div className="v7-image-draft" key={item.id}><img src={item.url} alt={'待发送截图：' + item.file.name} /><Button type="text" size="small" aria-label={'移除截图：' + item.file.name} icon={<X size={13}/>} disabled={sending} onClick={() => removeImage(item.id)} /></div>)}</div>}
-            <MentionInput inputRef={composerInput} members={data.members || []} disabled={sending} onSend={() => { if (!mutation.isPending && !sending) send() }} onPaste={e => {
+        </Drawer><section className="collab-card-chat">
+          {!data.messages.length && <div className="workspace-im-empty"><MessageSquare size={32} strokeWidth={1.4}/><strong>开始聊天</strong><span>发送消息或附件，输入 @ 提及成员</span></div>}
+          <Bubble.List key={selectedId} className="workspace-x-messages" autoScroll items={[
+            ...data.messages.map(m => ({
+              key: m.message_id,
+              className: m.author_kind === 'user' ? 'workspace-im-message workspace-im-message--self' : 'workspace-im-message',
+              shape: 'corner' as const,
+              variant: 'filled' as const,
+              placement: m.author_kind === 'user' ? 'end' as const : 'start' as const,
+              avatar: <MemberAvatar id={m.role || m.author_kind} name={m.sender_name || ''} />,
+              header: <span className="workspace-im-author">{m.sender_name || (m.author_kind === 'user' ? '我' : '助手')}</span>,
+              footer: <div className="workspace-im-message-meta">
+                {m.created_at && <time dateTime={m.created_at} title={new Date(m.created_at).toLocaleString('zh-CN')}>{new Date(m.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>}
+                {m.reply_status && <span>{labels[m.reply_status] || (m.reply_status === 'succeeded' ? '已回复' : m.reply_status)}</span>}
+                {m.origin === 'migrated' && <span>历史归并</span>}
+                {!!m.body && <Button type="text" size="small" className="workspace-im-copy" aria-label="复制消息" title="复制消息" icon={<Copy size={12}/>} onClick={() => {
+                  void navigator.clipboard.writeText(m.body).catch(() => setError('复制失败，请手动选择消息文字复制。'))
+                }} />}
+              </div>,
+              content: <div className="collab-message-body"><p><MemberText text={m.body} members={data.members || []} /></p>{card(m)}{m.reply_error && <p role="alert">{labels[m.reply_status || ''] || '处理未完成'}：{m.reply_error}</p>}</div>,
+            })),
+            ...(replying ? [{ key: 'replying', loading: true, header: <span role="status">正在处理…</span> }] : []),
+          ]} />
+          {!readOnly && <div className="workspace-x-composer">
+            <div className="workspace-im-compose-toolbar">
+              <Tooltip title="发送截图"><Button type="text" aria-label="附加截图" icon={<ImagePlus size={18}/>} disabled={sending} onClick={() => screenshotInput.current?.click()} /></Tooltip>
+              <Tooltip title="发送附件"><Button type="text" aria-label="附加文件" icon={<Paperclip size={18}/>} disabled={sending} onClick={() => attachmentInput.current?.click()} /></Tooltip>
+            </div>
+            <MentionInput inputRef={composerInput} members={data.members || []} disabled={sending || mutation.isPending} loading={sending} sendDisabled={(!draft.trim() && !pendingAttachments.length) || mutation.isPending || sending} onSend={() => { if (!mutation.isPending && !sending) send() }} onPaste={e => {
               const files = Array.from(e.clipboardData.items).filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter((file): file is File => !!file)
               if (!files.length) return
               e.preventDefault()
-              addImages(files)
+              addAttachments(files)
               const text = e.clipboardData.getData('text/plain')
               if (text) { const start = e.currentTarget.selectionStart; const end = e.currentTarget.selectionEnd; setDraft(current => current.slice(0, start) + text + current.slice(end)) }
-            }} value={draft} onChange={setDraft} />
-            <div className="v7-composer-tools"><div><Dropdown trigger={['click']} menu={{ items: [
-              { key: 'file', label: '导入用例文件 / 飞书表格', disabled: !topic.app_id, onClick: () => { setImportUrl(''); setImportOpen(true) } },
-              { key: 'image', label: '附加截图', disabled: sending, onClick: () => attachmentInput.current?.click() }
-            ] }}><Button type="text" aria-label="添加附件" icon={<Plus size={18}/>} /></Dropdown><span>Enter 发送 · Shift + Enter 换行</span></div>
-              <div>
-              <Button type="primary" shape="circle" aria-label="发送" icon={<ArrowUp size={17}/>} disabled={(!draft.trim() && !pendingImages.length) || mutation.isPending || sending} loading={sending} onClick={send} /></div>
-            </div><input ref={attachmentInput} hidden multiple type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { addImages(Array.from(e.target.files || [])); e.target.value = '' }} />
+            }} value={draft} onChange={setDraft}
+              header={pendingAttachments.length ? <div className="v7-image-drafts" aria-label="待发送附件">{pendingAttachments.map(item => <div className={item.url ? 'v7-image-draft' : 'workspace-im-file-draft'} key={item.id}>
+                {item.url ? <img src={item.url} alt={'待发送截图：' + item.file.name} /> : <><FileText size={22}/><span title={item.file.name}>{item.file.name}<small>{fileSize(item.file.size)}</small></span></>}
+                <Button type="text" size="small" aria-label={'移除附件：' + item.file.name} icon={<X size={13}/>} disabled={sending} onClick={() => removeAttachment(item.id)} />
+              </div>)}</div> : undefined}
+              footer={<span className="workspace-im-send-hint">Enter 发送，Shift + Enter 换行</span>}
+            />
+            <input ref={screenshotInput} hidden multiple type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { addAttachments(Array.from(e.target.files || [])); e.target.value = '' }} />
+            <input ref={attachmentInput} aria-label="选择聊天附件" hidden multiple type="file" onChange={e => { addAttachments(Array.from(e.target.files || [])); e.target.value = '' }} />
           </div>}
         </section>
       </>}
@@ -267,11 +296,25 @@ function ResourceEditor({ topic, options, readOnly, save }: { topic: Workspace; 
   </fieldset>
 }
 
+function fileSize(bytes: number) {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.ceil(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 function Attachment({ url, name }: { url: string; name: string }) {
-  const [image, setImage] = useState('')
+  const [file, setFile] = useState<{ url: string; image: boolean; size: number } | null>(null)
   const [error, setError] = useState('')
-  useEffect(() => { let active = true; let objectUrl = ''; void request<Blob>({ url, responseType: 'blob' }).then(result => {
-    if (active) { objectUrl = URL.createObjectURL(result as unknown as Blob); setImage(objectUrl) }
-  }).catch(e => { if (active) setError(errText(e)) }); return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) } }, [url])
-  return error ? <p role="alert">截图读取失败：{error}</p> : image ? <a href={image} download={name}><img src={image} alt={name} style={{ maxWidth: '100%', maxHeight: 300 }} /></a> : <p>正在读取截图…</p>
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    let active = true; let objectUrl = ''
+    setError(''); setFile(null)
+    void request<Blob>({ url, responseType: 'blob' }).then(result => {
+      const blob = result as unknown as Blob
+      if (active) { objectUrl = URL.createObjectURL(blob); setFile({ url: objectUrl, image: blob.type === 'image/png', size: blob.size }) }
+    }).catch(e => { if (active) setError(errText(e)) })
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [url, attempt])
+  if (error) return <div role="alert">附件读取失败：{error}<Button type="link" onClick={() => setAttempt(current => current + 1)}>重试</Button></div>
+  if (!file) return <p role="status">正在读取附件：{name}…</p>
+  return file.image ? <a href={file.url} download={name}><img src={file.url} alt={name} style={{ maxWidth: '100%', maxHeight: 300 }} /></a>
+    : <a className="workspace-im-file" href={file.url} download={name}><FileText size={26}/><span>{name}<small>{fileSize(file.size)}</small></span><Download size={16}/></a>
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Button, Drawer, Dropdown, EmptyState, Skeleton, Space, errText } from '@/ui'
+import { Button, Drawer, Tabs, EmptyState, Skeleton, Space, errText } from '@/ui'
 import { useProjects } from '../apps/queries'
 import { CreateDialog } from '../apps/CreateDialog'
 import { formatPlatformTags } from '@/constants/appPlatforms'
@@ -30,11 +30,12 @@ export function ProjectAppsPanel({ projectId, legacySection }: { projectId: stri
   if (projects.isError || !project) return <EmptyState title="无法读取项目应用" hint={errText(projects.error)} />
   if (requested && !app) return <EmptyState title="该应用不属于当前项目或已不存在" action={<Button onClick={() => navigate('')}>返回应用列表</Button>} />
   if (app) return <section className="config-workspace config-workspace--fill">
-    <header className="config-workspace-heading"><div><h1>{app.name}</h1><p>{formatPlatformTags(app.platforms).join(' · ')} · 应用运行配置</p></div><Space wrap><Button onClick={() => navigate('')}>应用列表</Button><Button onClick={manageEnvironment}>项目环境</Button><Dropdown trigger={['click']} menu={{ items: [{ key: 'login', label: '登录校验设置' }, { key: 'development', label: '开发联动设置' }], onClick: ({ key }) => navigate(app.id, key) }}><Button>高级设置</Button></Dropdown></Space></header>
-    <div className="project-panel-content"><EnvironmentSettings key={app.id} projectId={projectId} application={app} /></div>
-    <Drawer title={section === 'development' ? '开发联动设置' : '登录校验设置'} width="min(960px, 100vw)" open={section === 'development' || section === 'login'} onClose={() => navigate(app.id)} destroyOnHidden>
-      {section === 'development' ? <DevelopmentPanel key={app.id} appId={app.id} platforms={app.platforms} /> : section === 'login' ? <LoginEvidencePolicyPanel key={app.id} appId={app.id} /> : null}
-    </Drawer>
+    <header className="config-workspace-heading"><div><h1>{app.name}</h1><p>{formatPlatformTags(app.platforms).join(' · ')} · 应用运行配置</p></div><Space wrap><Button onClick={() => navigate('')}>应用列表</Button><Button onClick={manageEnvironment}>项目环境</Button></Space></header>
+    <Tabs key={app.id} className="config-app-tabs" defaultActiveKey={['development', 'login'].includes(section) ? section : 'runtime'} destroyOnHidden={false} items={[
+      { key: 'runtime', label: '运行环境', children: <EnvironmentSettings projectId={projectId} application={app} /> },
+      { key: 'development', label: '开发联动', children: <DevelopmentPanel appId={app.id} platforms={app.platforms} /> },
+      { key: 'login', label: '登录校验', children: <LoginEvidencePolicyPanel appId={app.id} /> },
+    ]} />
     {environmentPanel}
   </section>
   return <section className="config-workspace config-workspace--fill">

@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, EmptyState, Popconfirm, Skeleton, errText, useFeedback } from '@/ui'
-import type { AssistantIdentity } from '@/api/assistant'
+import type { AssistantIdentity, BindRoute } from '@/api/assistant'
 import { channelLabel, fmtTime } from './format'
 import { useAssistantMutations, useIdentities } from './queries'
 import { QueryProblem } from './AssistantNotReady'
 import { CopyButton } from './CopyButton'
 
 /** 绑定 IM：生成 6 位码 → 在 IM 里发 /绑定 码。已绑定的可解绑。 */
-export function BindSection() {
+export function BindSection({ route, nodeId }: { route?: BindRoute; nodeId?: string }) {
   const fb = useFeedback()
   const m = useAssistantMutations()
   const ids = useIdentities()
@@ -21,10 +21,11 @@ export function BindSection() {
     return () => window.clearInterval(t)
   }, [issued])
 
+  const visible = (ids.data ?? []).filter(i => route ? (i.node_id === route.node_id && i.channel === route.channel) : !nodeId || i.node_id === nodeId)
   const left = issued ? Math.max(0, Math.ceil((issued.expiresAt - now) / 1000)) : 0
   const expired = !!issued && left === 0
 
-  const gen = () => m.bindCode.mutate(undefined, {
+  const gen = () => route && m.bindCode.mutate(route, {
     onSuccess: (d) => { setNow(Date.now()); setIssued({ code: d.code, expiresAt: Date.now() + d.expires_in * 1000 }) },
     onError: (e) => fb.fail(errText(e, '生成绑定码失败')),
   })
@@ -32,9 +33,8 @@ export function BindSection() {
   return (
     <section className="w-surface-card" style={{ padding: 14 }}>
       <h3 style={{ margin: 0, fontSize: 'var(--w-font-title)' }}>认领我的 IM 账号</h3>
-      <p style={{ margin: '4px 0 10px', fontSize: 'var(--w-font-sm)', color: 'var(--w-text-tertiary)' }}>
-        这一步不是登录机器人。机器人要先在 <Link to="/settings/runtime">Scout 节点 → 接入 → 对话</Link> 扫码登录。然后在这里生成绑定码，到已经在线的机器人里发送，Nexus 才知道这条微信是你。
-      </p>
+      {!route && <p><Link to={`/settings/runtime?pane=connect${nodeId ? `&node=${encodeURIComponent(nodeId)}` : ''}`}>前往 Scout 节点配置绑定渠道</Link></p>}
+      {route && <>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="primary" loading={m.bindCode.isPending} onClick={gen}>{issued ? '重新生成绑定码' : '生成绑定码'}</Button>
         {issued ? (
@@ -55,17 +55,19 @@ export function BindSection() {
         </div>
       ) : null}
 
+      </>}
       <div style={{ marginTop: 16, fontSize: 'var(--w-font-sm)', fontWeight: 700 }}>已绑定渠道</div>
       {ids.isLoading ? <Skeleton active paragraph={{ rows: 2 }} title={false} /> : ids.isError ? (
         <QueryProblem error={ids.error} what="绑定列表" onRetry={() => void ids.refetch()} />
-      ) : !(ids.data ?? []).length ? (
-        <EmptyState title="还没有绑定任何 IM" hint="点上面的「生成绑定码」，再到 IM 里发给机器人。" />
+      ) : !visible.length ? (
+        <EmptyState title="还没有绑定任何 IM" hint={route ? "生成绑定码后，发送给当前渠道的机器人。" : "在 Scout 节点的渠道配置中绑定账号。"} />
       ) : (
         <div style={{ marginTop: 6 }}>
-          {(ids.data as AssistantIdentity[]).map((i) => (
+          {(visible as AssistantIdentity[]).map((i) => (
             <div key={i.id} className="flex flex-wrap items-center gap-3" style={{ padding: '8px 0', borderTop: '1px solid var(--w-border)', fontSize: 'var(--w-font-base)' }}>
               <strong style={{ minWidth: 72 }}>{channelLabel(i.channel)}</strong>
               <span className="w-mono">{i.sender_id_masked}</span>
+              {!route && <Link to={`/settings/runtime?node=${encodeURIComponent(i.node_id)}&pane=connect`}>{i.node_name || i.node_id}</Link>}
               {i.tenant ? <span style={{ color: 'var(--w-text-tertiary)' }}>{i.tenant}</span> : null}
               <span style={{ color: 'var(--w-text-quaternary)', fontSize: 'var(--w-font-sm)' }}>绑定于 {fmtTime(i.bound_at)}</span>
               <span style={{ flex: 1 }} />

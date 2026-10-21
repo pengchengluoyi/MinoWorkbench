@@ -11,7 +11,7 @@ import { CaseAutomationBadge } from '../cases/CaseAutomationBadge'
 import { runCaseRunner, getRunRequest, isExecutable, deviceFamilyLabel, type RunPayload } from '@/api/run'
 import { unwrapOne } from '@/lib/unwrap'
 import { useRunDevices, casePageOptions } from '../cases/queries'
-import { channelKindText, channelTitle, normalizeEnvDoc, type EnvChannel, type EnvDocument } from '../config/envModel'
+import { channelKindText, channelTitle, type EnvChannel, type EnvDocument } from '../config/envModel'
 import { taskKeys } from './queries'
 import { useSession } from '@/lib/session'
 
@@ -40,7 +40,7 @@ export function CreateTaskDialog({
   const env = useQuery({
     queryKey: ['project', projectId, 'env'],
     enabled: open && !!projectId,
-    queryFn: async () => normalizeEnvDoc(unwrapOne(await getProjectEnv(projectId))),
+    queryFn: () => getProjectEnv(projectId),
   })
 
   const projects = useProjects()
@@ -53,7 +53,6 @@ export function CreateTaskDialog({
   const [profile, setProfile] = useState('')
   const [sn, setSn] = useState('')
   const [scheme, setScheme] = useState<'visual' | 'dom_preferred'>('dom_preferred')
-  const [mode, setMode] = useState<'legacy' | 'v5'>('legacy')
   const [picked, setPicked] = useState<string[]>([])
   const [kw, setKw] = useState('')
   const settledSearch = useDebouncedValue(kw)
@@ -66,7 +65,6 @@ export function CreateTaskDialog({
   useEffect(() => {
     if (!open) return
     setScheme('dom_preferred')
-    setMode('legacy')
     setPicked(initialSelection.current || [])
     setCaseCache({})
     setPage(1)
@@ -103,7 +101,6 @@ export function CreateTaskDialog({
 
   const device = (devices.data || []).find((item) => item.sn === sn)
   const webDevice = device?.platform === 'web'
-  useEffect(() => { if (!webDevice) setMode('legacy') }, [webDevice])
   const block = uncertain ? '受理状态待确认，请先到任务列表核对，避免重复执行'
     : env.isError ? '环境配置读取失败，请重试'
     : env.isLoading ? '正在读取环境配置'
@@ -113,17 +110,15 @@ export function CreateTaskDialog({
     : devices.isLoading ? '正在查询设备'
     : devices.isError ? errText(devices.error, '设备信息读取失败')
       : !device || !isExecutable(device) ? device?.blocked_reason || '请选择兼容且就绪的执行设备'
-        : mode === 'v5' && device.platform !== 'web' ? '严格执行仅支持 Web 设备'
-          : mode === 'v5' && picked.some(id => !caseCache[id] || caseCache[id].v5_plan_state !== 'published') ? '所选用例尚未发布或需要重新核验'
             : !picked.length ? '先勾选用例' : ''
 
-  const previewKey = JSON.stringify([projectId, appId, picked, sn, profile, surface, scheme, mode])
+  const previewKey = JSON.stringify([projectId, appId, picked, sn, profile, surface, scheme])
   const executionPreview = useMutation({ mutationFn: async () => {
     const key = previewKey
     const rows: { caseId: string; result: ExecutionPreview }[] = []
     for (const caseId of [...picked]) {
       const result = unwrapOne<ExecutionPreview>(await previewExecution(projectId, caseId, {
-        app_id: appId, sn, env_profile: profile, env_surface: surface, action_scheme: scheme, execution_mode: mode,
+        app_id: appId, sn, env_profile: profile, env_surface: surface, action_scheme: scheme, execution_mode: 'agent',
       }))
       rows.push({ caseId, result })
     }
@@ -137,12 +132,13 @@ export function CreateTaskDialog({
       if (block) throw new Error(block)
       const preflight = unwrapOne<CasePreflightResult>(await preflightProjectCases(projectId, appId, picked))
       const blocked = Array.isArray(preflight.blocked) ? preflight.blocked : []
-      if (blocked.length) {
+      const runnable = Array.isArray(preflight.runnable) ? preflight.runnable : []
+      if (!runnable.length) {
         const lines = blocked.flatMap((item) => [
           `${item.name || item.case_id || '用例'}：`,
           ...(item.reasons || []).map((reason) => `  · ${reason}`),
         ])
-        throw new Error(`所选用例中有 ${blocked.length} 条不可自动跑：\n${lines.join('\n')}`)
+        throw new Error(`所选 ${picked.length} 条用例当前均未通过预检，本次未创建任务：\n${lines.join('\n')}`)
       }
       const payload: RunPayload = {
         client_request_id: crypto.randomUUID(),
@@ -155,7 +151,7 @@ export function CreateTaskDialog({
         env_surface: surface || undefined,
         action_scheme: scheme,
         run_type: 'manual',
-        execution_mode: mode,
+        execution_mode: 'agent',
         playwright_headless: true,
       }
       pending.current = payload
@@ -163,17 +159,23 @@ export function CreateTaskDialog({
       const res = await runCaseRunner(payload)
       const runId = res?.data?.run_id || res?.data?.task_id
       if (!runId) throw new Error('没有返回任务编号，无法跟踪这次执行')
-      return runId
+      return { runId, total: res.data?.total ?? runnable.length, skipped: res.data?.skipped_cases ?? blocked }
     },
-    onSuccess: (runId) => {
+    onSuccess: ({ runId, total, skipped }) => {
       sessionStorage.removeItem(pendingKey)
       pending.current = null
       setUncertain(false)
       void qc.invalidateQueries({ queryKey: taskKeys.list(appId) })
-      fb.ok(`已下发 ${picked.length} 条用例`)
+      if (skipped.length) fb.warn(`已创建任务，计划执行 ${total} 条；${skipped.length} 条未纳入执行，原因见任务详情`)
+      else fb.ok(`已创建任务，计划执行 ${total} 条用例`)
       onStarted(runId)
     },
-    onError: (error) => { setUncertain(true); void qc.invalidateQueries({ queryKey: taskKeys.list(appId) }); fb.fail(errText(error, '请求未得到受理结果，请核对任务列表')) },
+    onError: (error) => {
+      const submitted = !!pending.current
+      setUncertain(submitted)
+      if (submitted) void qc.invalidateQueries({ queryKey: taskKeys.list(appId) })
+      fb.fail(errText(error, submitted ? '请求未得到受理结果，请核对任务列表' : '预检未通过，本次未创建任务'))
+    },
   })
 
   const recover = useMutation({ mutationFn: async () => {
@@ -262,10 +264,9 @@ export function CreateTaskDialog({
         <Section n="4" title="执行方案">
           <div className="task-choice-grid" style={grid(2)}>
             <Choice pressed={scheme === 'dom_preferred'} onClick={() => setScheme('dom_preferred')} title="DOM 优先" hint="有有效结构用结构，无法定位时用当前截图兜底" />
-            <Choice pressed={scheme === 'visual'} onClick={() => { setScheme('visual'); setMode('legacy') }} title="看图 visual" hint="纯视觉：按模型坐标、输入、滑动" />
+            <Choice pressed={scheme === 'visual'} onClick={() => { setScheme('visual') }} title="看图 visual" hint="纯视觉：按模型坐标、输入、滑动" />
           </div>
           {webDevice ? <div style={{ marginTop: 8 }}>
-            <label className="flex items-start gap-2"><Checkbox checked={mode === 'v5'} disabled={scheme !== 'dom_preferred'} onChange={event => setMode(event.target.checked ? 'v5' : 'legacy')} /><span>按已发布计划严格执行</span></label>
             <p style={{ ...hint, marginTop: 4 }}>仅用于 DOM 优先的 Web 测试；按已审阅发布的步骤和校验执行，运行中不临时改写计划。</p>
           </div> : null}
         </Section>
@@ -286,7 +287,7 @@ export function CreateTaskDialog({
         </section>
 
         <Section n="5" title="勾选用例">
-          <p style={hint}>当前应用范围 · 已选 {picked.length} 条（跨页保留）。两个运行入口使用相同配置和请求规则。</p>
+          <p style={hint}>当前应用范围 · 已选 {picked.length} 条（跨页保留）。启动时执行通过预检的用例，未纳入项及原因保留在任务详情。</p>
           {!!picked.length && <section aria-label="完整所选清单" style={{ padding: '8px 10px', border: '1px solid var(--w-border)', borderRadius: 8 }}>
             <strong>全部所选（包含其他页面和筛选范围）</strong>
             <ul style={{ margin: '6px 0 0', padding: 0, listStyle: 'none', maxHeight: 160, overflow: 'auto' }}>{picked.map(id => <li key={id} className="flex items-start justify-between gap-3" style={{ padding: '4px 0' }}>

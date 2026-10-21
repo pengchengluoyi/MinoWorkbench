@@ -6,7 +6,7 @@ import { Button, Input, InputNumber, Modal, Select, StatusPill, errText, useFeed
 import { getCaseImportSettings, type CaseImportSettings } from '@/api/integrations'
 import { cancelImportPreview, commitCaseImport, createImportRequirement, getCaseImportReceipt, resumeCaseImportReceipt, getImportPreview, listImportRequirements, previewCaseImport, retryImportPreviewRow, type ImportPreviewRow } from '@/api/projectCases'
 import { getProjectEnv } from '@/api/projectEnv'
-import { channelTitle, normalizeEnvDoc } from '../config/envModel'
+import { channelTitle } from '../config/envModel'
 import { caseKeys } from './queries'
 import {
   FIELD_OPTS, FLAG_LABELS, detectHeaderRow, headerRowLooksValid, suggestColumnMap,
@@ -195,7 +195,7 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
   const env = useQuery({
     queryKey: ['project', projectId, 'env'],
     enabled: open && !!projectId,
-    queryFn: async () => normalizeEnvDoc(unwrapOne(await getProjectEnv(projectId))),
+    queryFn: () => getProjectEnv(projectId),
   })
   const reqs = useMemo(() => requirements.data || [], [requirements.data])
   const platforms = useMemo(() => (env.data?.channels || []).map((channel) => ({ id: channel.id, label: channelTitle(channel) })), [env.data])

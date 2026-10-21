@@ -48,7 +48,7 @@ export function RolesPage() {
             <>
               <strong>{row?.label || id}</strong>
               <span className="w-mono" style={{ color: 'var(--w-text-tertiary)', fontSize: 12 }}>
-                {row?.version != null ? `v${row.version}` : '版本未返回'} {row?.sha ? row.sha.slice(0, 7) : ''}
+                {row?.sha ? row.sha.slice(0, 7) : ''}
               </span>
               <span className="w-mono" style={{ color: 'var(--w-text-tertiary)', fontSize: 12 }}>{row?.source_path || id}</span>
               {row ? <CatalogReferences row={row} /> : null}

@@ -16,13 +16,6 @@ export interface V5Preview {
 const base = (projectId: string, caseId: string) => `/project/${encodeURIComponent(projectId)}/cases/${encodeURIComponent(caseId)}/v5`
 export const getV5Preview = (projectId: string, caseId: string) => request<V5Preview>({ url: `${base(projectId, caseId)}/preview`, method: 'get' })
 export const compileV5Draft = (projectId: string, caseId: string, expectedRevision: number, requestId: string) => request<{ preview: V5Preview }>({ url: `${base(projectId, caseId)}/compile`, method: 'post', data: { expected_revision: expectedRevision, client_request_id: requestId } })
-export const configureV5Baseline = (projectId: string, caseId: string, expectedRevision: number, controlId: string) => request({ url: `${base(projectId, caseId)}/baseline`, method: 'put', data: { expected_revision: expectedRevision, control_id: controlId } })
-export const publishV5Case = (projectId: string, caseId: string, expectedRevision: number, retry: boolean, expectedCompileJobId: string) => request({
-  url: `${base(projectId, caseId)}/publish`, method: 'post', data: {
-    expected_revision: expectedRevision, expected_compile_job_id: expectedCompileJobId, reviewed_expected_strength: true,
-    retry_policy: retry ? { on: ['not_started'], max: 1 } : { on: [], max: 0 }, reversible: false,
-  },
-})
 export const getV5Metrics = (projectId: string) => request<Record<string, unknown>>({ url: `/project/${encodeURIComponent(projectId)}/v5/metrics`, method: 'get' })
 export const getV5Controls = (projectId: string) => request<{ items: Record<string, unknown>[] }>({ url: `/project/${encodeURIComponent(projectId)}/controls`, method: 'get' })
 
@@ -40,7 +33,7 @@ export interface V5Control {
 }
 const controlBase = (projectId: string, controlId: string) => `/project/${encodeURIComponent(projectId)}/controls/${encodeURIComponent(controlId)}`
 export const listV5Controls = (projectId: string) => request<{ items: V5Control[]; identity_conflicts: { control_id: string; count: number }[] }>({ url: `/project/${encodeURIComponent(projectId)}/controls`, method: 'get' })
-export const saveV5Control = (projectId: string, controlId: string, data: { expected_revision: number; locator_spec: V5Control['locator_spec']; sensitive: boolean; publish: boolean }) => request<V5Control>({ url: controlBase(projectId, controlId), method: 'put', data })
+export const saveV5Control = (projectId: string, controlId: string, data: { expected_revision: number; locator_spec: V5Control['locator_spec']; sensitive: boolean; publish?: boolean }) => request<V5Control>({ url: controlBase(projectId, controlId), method: 'put', data })
 export const probeV5Control = (projectId: string, controlId: string, data: { expected_revision: number; sn: string; url: string }) => request<Record<string, unknown>>({ url: `${controlBase(projectId, controlId)}/probe`, method: 'post', data, timeout: 25_000 })
 
 

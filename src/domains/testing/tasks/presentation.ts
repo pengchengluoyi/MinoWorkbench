@@ -5,6 +5,10 @@ import { verdictOf } from './types'
 export const taskCount = (raw: unknown): number | undefined => typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 ? raw : undefined
 export function taskStatus(raw: unknown): { label: string; tone: StatusKind } {
   const value = String(raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (value === 'product_fail') return { label: '产品断言失败', tone: 'fail' }
+  if (value === 'tool_blocked') return { label: '工具受阻', tone: 'warn' }
+  if (value === 'env_blocked') return { label: '环境受阻', tone: 'warn' }
+  if (value === 'unverified') return { label: '未核验', tone: 'warn' }
   if (['cancelled', 'canceled'].includes(value)) return { label: '已取消', tone: 'cancel' }
   if (['blocked', 'waiting_input', 'need_input', 'waiting_for_input'].includes(value)) return { label: '受阻 / 待补充', tone: 'warn' }
   if (value === 'skipped') return { label: '已跳过', tone: 'muted' }

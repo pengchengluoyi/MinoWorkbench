@@ -14,7 +14,7 @@ type Source = { precondition: string; steps_raw: string; expected_raw: string }
 type Item = { phase: string; id: string; message: string; missing_fields: string[]; origin: string; reason_code: string; category: string | null; action: string; source_clause: string; review_status: string; point_ref: string; operation_ref: string; freshness?: string }
 type History = { record_id: string; item_id: string; review_status: string; reviewer_user_id: string; reviewed_at: string; reason: string; source_revision: number; evidence: { session_id?: string; execution_verified?: boolean } }
 type Review = { project_id: string; case_id: string; owner_user_id: string; expected_revision: number; expected_job_id: string; source: Source; status: string; requirements: Item[]; history: History[]; compile_job: CompileJob | null; execution_verified: boolean; resolution_status: string }
-const initialContext = () => ({ app_id: '', sn: '', env_profile: '', env_surface: '', execution_mode: '', action_scheme: 'dom_preferred', provider_id: '' })
+const initialContext = () => ({ app_id: '', sn: '', env_profile: '', env_surface: '', execution_mode: 'agent', action_scheme: 'dom_preferred', provider_id: '' })
 const categories: Record<string, string> = { case_definition: '用例定义', semantic_parsing: '语义解析 / 应用识别', capability_gap: '动作 / 核验能力', configuration: '配置 / 环境 / 资源', execution_toolchain: '执行工具链', external_evidence: '外部证据 / 人工前置' }
 const statuses: Record<string, string> = { pending_review: '待复核', needs_input: '待补充信息', needs_configuration: '待完善配置', confirmed: '已确认', fixed_pending_run: '复检缺口已清除，待实跑', verified_resolved: '实跑证据已验证解决' }
 const actions: Record<string, string> = { configure: '请在现有应用环境、资源或控件配置中处理，再复检。', platform_fix: '登记或确认平台缺陷；修复后复检。', recover_compile: '请在上方编译任务中恢复或重新编译。', wait: '等待任务完成后复检。', provide_evidence: '请关联同版本的实跑证据，或在复核理由中记录所需人工前置。', review: '先复核原句与系统理解，确认根因后再修复。', recheck: '该目标诊断已过时，请带原目标重新复检。' }
@@ -74,7 +74,7 @@ export function CaseReview({ projectId, caseId, appId }: { projectId: string; ca
       <label>复核 / 复检理由<input style={{ display: 'block', width: '100%' }} value={reviewReason} maxLength={1000} onChange={e => setReviewReason(e.target.value)} /></label>
       <details><summary>复检指定执行目标 / 关联实跑证据（可选）</summary>
         {(['app_id', 'sn', 'env_profile', 'env_surface'] as const).map((field, i) => <label key={field} style={{ display: 'block' }}>{['应用编号', '设备编号', '环境配置', '目标渠道'][i]}<input value={context[field]} onChange={e => setContext({ ...context, [field]: e.target.value })} /></label>)}
-        <label>执行路线 <select value={context.execution_mode} onChange={e => setContext({ ...context, execution_mode: e.target.value })}><option value="">按当前发布状态选择</option><option value="legacy">普通执行</option><option value="v5">严格 Web</option></select></label>
+        <label>执行路线 <select value={context.execution_mode} onChange={e => setContext({ ...context, execution_mode: e.target.value })}><option value="agent">普通执行</option><option value="v5">严格 Web</option></select></label>
         <label>执行方式 <select value={context.action_scheme} onChange={e => setContext({ ...context, action_scheme: e.target.value })}><option value="dom_preferred">DOM 优先</option><option value="visual">看图</option></select></label>
         <label>模型配置编号（可选）<input value={context.provider_id} onChange={e => setContext({ ...context, provider_id: e.target.value })} /></label>
         <label>已完成且核验通过的 session 编号<input value={sessionId} onChange={e => setSessionId(e.target.value)} /></label><p>目标复检只读取当前登记信息和绑定解析，不租设备、不调用执行器。历史证据必须属于当前账号、用例、原文与编译产物。</p>

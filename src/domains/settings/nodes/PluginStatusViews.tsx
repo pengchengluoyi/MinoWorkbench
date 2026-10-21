@@ -1,17 +1,26 @@
 import { QRCode } from '@/ui'
 import { heldChannels, type ScoutNode, type NodePluginStatus, type NodePluginJob } from '@/api/nodes'
+import { imConnectionLabel } from '@/lib/imStatus'
+import type { ImChannelStatus } from '@/types/im'
 import { fmtAgo } from '@/lib/timeText'
 import type { ItemDef } from './pluginCatalog'
-export function ConnLine({ st }: { st: NodePluginStatus | undefined }) {
+export function ConnLine({ st, channel, normalized = false, online = true }: { st: NodePluginStatus | undefined; channel?: ImChannelStatus; normalized?: boolean; online?: boolean }) {
   const s = st?.status
   const known = s && typeof s.connected === 'boolean'
+  const label = normalized ? imConnectionLabel(channel, online) : !online
+    ? { text: '节点离线', kind: 'fail' }
+    : s?.error ? { text: '渠道异常', kind: 'fail' }
+      : !known ? { text: '连接状态：未知', kind: 'muted' }
+        : { text: s.connected ? '已连接' : '未连接', kind: s.connected ? 'pass' : 'warn' }
+  const error = normalized ? channel?.error || s?.error : s?.error
+  const lastMessage = normalized ? channel?.last_message_at : s?.last_message_at
+  const color = label.kind === 'muted' ? 'var(--w-text-tertiary)' : `var(--w-${label.kind})`
   return (
     <div className="flex flex-wrap items-center gap-3" style={{ margin: '-8px 0 14px', fontSize: 'var(--w-font-sm)' }}>
-      <span style={{ fontWeight: 700, color: !known ? 'var(--w-text-tertiary)' : s.connected ? 'var(--w-pass)' : 'var(--w-warn)' }}>
-        {!known ? '连接状态：未知' : s.connected ? '● 已连接' : '○ 未连接'}
-      </span>
-      {known ? <span style={{ color: 'var(--w-text-tertiary)' }}>最后收到消息 {fmtAgo(s.last_message_at)}</span> : null}
-      {s?.error ? <span style={{ color: 'var(--w-fail)' }}>{s.error}</span> : null}
+      <span style={{ fontWeight: 700, color }}>{label.text}</span>
+      <span style={{ color: 'var(--w-text-tertiary)' }}>{lastMessage ? `最后收到消息 ${fmtAgo(lastMessage)}` : '尚未收到消息'}</span>
+      {error ? <span role="alert" style={{ color: 'var(--w-fail)' }}>{error}</span> : null}
+      {normalized && channel?.connection_state === 'pending' ? <span>宿主已运行，尚未确认渠道连接成功。</span> : null}
     </div>
   )
 }
@@ -24,7 +33,7 @@ export function ImNotes({ node, hasDynamic }: { node: ScoutNode; hasDynamic: boo
       <div style={{ ...box, background: held.length ? 'var(--w-warn-bg)' : 'var(--w-surface-subtle)' }}>
           <strong>这台机器上的机器人</strong>
         <div style={{ marginTop: 2 }}>
-          这里只让机器人登录到这台 Scout。谁的微信账号可以指挥它，在「我的助手」里用绑定码认领，两步都要做，不是二选一。
+          微信和飞书 CLI 的扫码授权本人会自动关联当前账号，无需再输绑定码；其他聊天账号及仅配置应用凭据的机器人仍需单独绑定。
           {held.length
             ? ` 本节点正连着「${held.join('、')}」，需要常驻。`
             : ' 本节点当前没有连着对话渠道。'}
@@ -42,11 +51,11 @@ export function ImNotes({ node, hasDynamic }: { node: ScoutNode; hasDynamic: boo
 
 
 export const HINT: Record<string, string> = {
-  feishu: '拉需求，把结果写回去',
-  meego: '读写工作项',
-  wechat: '让机器人登录到这台机器。登录态只留在这里。个人账号的认领在「我的助手」，不要在这里填绑定码。',
-  feishu_bot: '往群里发一条消息',
-  wecom: '往群里发一条消息',
+  feishu: '连接飞书文档与私聊消息；授权完成后自动接入，无需单独启用。',
+  meego: '用于飞书项目（Meego）工作项接入，凭据验证后直接使用，无需助手绑定；此入口不接收聊天消息。',
+  wechat: '扫码连接微信，扫码本人私聊时自动关联当前账号，无需助手绑定码。登录凭据仅保存在此节点。',
+  feishu_bot: '通过群机器人的 Webhook 发送通知；无需安装飞书 CLI，也不负责接收对话。',
+  wecom: '通过企业微信群机器人的 Webhook 发送通知，与对话机器人分别配置。',
   gmail: '收验证码',
 }
 
@@ -82,7 +91,7 @@ export function wechatHint(state: { error: string; logged_in: boolean; status: s
   if (state.logged_in) return '这台机器已登录微信'
   if (state.status === 'expired') return '二维码过期了，重新拿一张。'
   if (state.status === 'scaned' || state.status === 'scanned') return '已扫码，在手机上确认。'
-  if (state.qrcode_img) return '用将要作为机器人的微信号扫这一张。扫完后，每个人再到「我的助手」生成绑定码。'
+  if (state.qrcode_img) return '使用你的微信扫码。扫码本人可直接私聊使用，无需再次输入助手绑定码。'
   return '点显示二维码，让机器人微信号登录这台机器。'
 }
 

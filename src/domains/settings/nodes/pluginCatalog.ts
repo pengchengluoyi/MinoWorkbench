@@ -67,7 +67,7 @@ export function imChannels(row: NodePluginStatus): ItemDef[] {
       navId: `${row.id}:${groupId}`,
       pluginId: row.id,
       groupId,
-      label,
+      label: `${label}对话`,
       kind: 'im' as const,
       conn: true,
       needsInstall: true,
@@ -102,7 +102,7 @@ export function channelState(st: NodePluginStatus | undefined, item: ItemDef, no
 export const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
   {
     id: 'cli',
-    title: '工作项',
+    title: '工作项与文档',
     items: [
       {
         id: 'case_api',
@@ -115,7 +115,7 @@ export const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
       },
       {
         id: 'feishu',
-        label: '飞书',
+        label: '飞书 CLI',
         needsInstall: true,
         fields: [
           { key: 'app_id', label: 'App ID' },
@@ -124,7 +124,7 @@ export const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
       },
       {
         id: 'meego',
-        label: 'Meego',
+        label: 'Meego CLI',
         needsInstall: true,
         fields: [
           { key: 'plugin_id', label: '插件 ID' },
@@ -137,25 +137,25 @@ export const GROUPS: { id: PluginPane; title: string; items: ItemDef[] }[] = [
   },
   {
     id: 'bot',
-    title: '通知',
+    title: '群通知 · Webhook',
     items: [
       {
         id: 'feishu_bot',
-        label: '飞书机器人',
+        label: '飞书 Webhook',
         fields: [{ key: 'webhook_url', label: 'Webhook', secret: true }],
       },
       {
         id: 'wecom',
-        label: '企业微信',
+        label: '企业微信 Webhook',
         fields: [{ key: 'webhook_url', label: 'Webhook', secret: true }],
       },
     ],
   },
   {
     id: 'im',
-    title: '对话',
+    title: '对话机器人',
     items: [
-      { id: 'wechat', label: '微信 iLink', kind: 'im', wechat: true, conn: true },
+      { id: 'wechat', label: '微信 iLink', kind: 'bot', wechat: true, conn: true },
     ],
   },
   {

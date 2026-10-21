@@ -1,6 +1,6 @@
 import { useCallback, useState, useSyncExternalStore } from 'react'
 import { NavLink, Outlet, useMatch, useLocation, useSearchParams } from 'react-router-dom'
-import { Bot, Cpu, KeyRound, LayoutGrid, Menu, PanelLeftClose, PanelLeftOpen, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, Cpu, KeyRound, LayoutGrid, Menu, PanelLeftClose, PanelLeftOpen, type LucideIcon } from 'lucide-react'
 import { useSession } from '@/lib/session'
 import { Button, Drawer, Dropdown, ErrorBoundary, Tooltip, UserMenu } from '@/ui'
 import { CommandPalette } from './CommandPalette'
@@ -30,6 +30,8 @@ export function WorkShell() {
   const location = useLocation()
   const uid = useSession(state => state.user?.user_id || '')
   const projectId = useMatch('/testing/projects/:projectId')?.params.projectId || ''
+  const projects = useProjects()
+  const projectName = projects.data?.find(project => project.id === projectId)?.name || '当前项目'
   const mobile = useSyncExternalStore(subscribeMobile, () => window.matchMedia(mobileQuery).matches, () => false)
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -46,10 +48,12 @@ export function WorkShell() {
       {!mobile && <Button size="small" type="text" icon={narrow ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} onClick={toggle} aria-label={narrow ? '展开导航' : '折叠导航'} aria-expanded={!narrow} />}
     </div>
     <nav aria-label="工作台导航" className="work-shell-links">
-      <div className="work-shell-primary-nav"><RailLink to="/testing" end label="项目" icon={LayoutGrid} collapsed={narrow} onNavigate={closeMenu} />
-      {projectId && <ProjectNavBlock projectId={projectId} collapsed={narrow} onNavigate={closeMenu} />}
+      <div className="work-shell-primary-nav"><div className="work-shell-projects-section">
+        <RailLink to="/testing" returnHint={projectId ? '返回项目列表' : undefined} end label={projectId ? projectName : '项目'} icon={LayoutGrid} collapsed={narrow} onNavigate={closeMenu} />
+        {projectId ? <div className="work-shell-project-list"><ProjectNavBlock projectId={projectId} collapsed={narrow} onNavigate={closeMenu} /></div>
+          : !narrow && <ProjectListBlock onNavigate={closeMenu} />}
+      </div>
       <div className="work-shell-divider" />
-      <RailLink to="/assistant" label="我的助手" icon={Bot} collapsed={narrow} onNavigate={closeMenu} />
       <BotsNavBlock collapsed={narrow} onExpand={toggle} onNavigate={closeMenu} /></div>
       <div className="work-shell-settings-nav">{SETTINGS_NAV.map(item => <RailLink key={item.to} {...item} collapsed={narrow} onNavigate={closeMenu} />)}</div>
     </nav>
@@ -68,9 +72,21 @@ export function WorkShell() {
   </div>
 }
 
-function RailLink({ to, label, icon: Icon, collapsed, end, onNavigate }: { to: string; label: string; icon: LucideIcon; collapsed: boolean; end?: boolean; onNavigate: () => void }) {
-  const link = <NavLink to={to} end={end} onClick={onNavigate} className={({ isActive }) => `work-shell-link w-hit${isActive ? ' is-active' : ''}`} aria-label={label}><Icon size={17} aria-hidden />{!collapsed && <span>{label}</span>}</NavLink>
+function RailLink({ to, label, icon: Icon, collapsed, end, onNavigate, returnHint }: { returnHint?: string; to: string; label: string; icon: LucideIcon; collapsed: boolean; end?: boolean; onNavigate: () => void }) {
+  const link = <NavLink to={to} end={end} onClick={onNavigate} className={({ isActive }) => `work-shell-link w-hit${isActive ? ' is-active' : ''}`} aria-label={label} title={returnHint}><Icon size={17} aria-hidden />{!collapsed && <span>{label}</span>}{returnHint && !collapsed && <span className="work-shell-project-return" aria-hidden="true"><ArrowLeft size={15} /></span>}</NavLink>
   return collapsed ? <Tooltip title={label} placement="right">{link}</Tooltip> : link
+}
+
+function ProjectListBlock({ onNavigate }: { onNavigate: () => void }) {
+  const projects = useProjects()
+  return <div className="work-shell-project-list" role="region" aria-label="项目列表" tabIndex={0}>
+    {projects.isPending && <p className="work-shell-nav-hint">正在加载项目…</p>}
+    {projects.isError && <div className="work-shell-nav-hint" role="alert">项目加载失败<Button type="text" size="small" onClick={() => void projects.refetch()}>重试</Button></div>}
+    {!projects.isPending && !projects.isError && !projects.data?.length && <p className="work-shell-nav-hint">暂无项目</p>}
+    {(projects.data || []).map(project => <div key={project.id}>
+      <NavLink to={`/testing/projects/${encodeURIComponent(project.id)}`} onClick={onNavigate} className="work-shell-sublink w-hit" title={project.name}>{project.name}</NavLink>
+    </div>)}
+  </div>
 }
 
 function ProjectNavBlock({ projectId, collapsed, onNavigate }: { projectId: string; collapsed: boolean; onNavigate: () => void }) {
@@ -98,7 +114,6 @@ function ProjectNavBlock({ projectId, collapsed, onNavigate }: { projectId: stri
   let sub = defaults ? params.get(defaults.key) || defaults.value : ''
   if (tab === 'config' && ['environment', 'development', 'login-evidence'].includes(sub)) sub = 'apps'
   return <div className="work-shell-project-nav">
-    {!collapsed && <p className="work-shell-project-name" title={project?.name}>{project?.name || '当前项目'}</p>}
     {APP_NAV.map(item => {
       const active = tab === item.id || !!item.alsoActiveOn?.includes(tab)
       const Icon = item.icon

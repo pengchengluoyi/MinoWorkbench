@@ -35,11 +35,11 @@ export const useIdentities = () =>
 export const useAssistantTools = () =>
   useQuery({ queryKey: assistantKeys.tools, queryFn: async () => (await listAssistantTools())?.items ?? [], retry: retryUnlessNotReady })
 
-export const useTurns = (page: number, size: number, surface: string) =>
+export const useTurns = (page: number, size: number, surface: string, nodeId?: string) =>
   useQuery({
-    queryKey: assistantKeys.turns(page, size, surface),
+    queryKey: [...assistantKeys.turns(page, size, surface), nodeId || ''],
     queryFn: async () => {
-      const r = await listTurns({ limit: size, offset: (page - 1) * size, surface })
+      const r = await listTurns({ limit: size, offset: (page - 1) * size, surface, node_id: nodeId })
       return { items: r?.items ?? [], total: r?.total ?? 0 }
     },
     retry: retryUnlessNotReady,
@@ -54,8 +54,8 @@ export const useTurnMessages = (id: string) =>
 export const useMcpTokens = () =>
   useQuery({ queryKey: assistantKeys.tokens, queryFn: async () => (await listMcpTokens())?.items ?? [], retry: retryUnlessNotReady })
 
-export const useSubscriptions = () =>
-  useQuery({ queryKey: assistantKeys.subs, queryFn: async () => (await listSubscriptions())?.items ?? [], retry: retryUnlessNotReady })
+export const useSubscriptions = (nodeId?: string) =>
+  useQuery({ queryKey: [...assistantKeys.subs, nodeId || ''], queryFn: async () => (await listSubscriptions(nodeId))?.items ?? [], retry: retryUnlessNotReady })
 
 export function useAssistantMutations() {
   const qc = useQueryClient()

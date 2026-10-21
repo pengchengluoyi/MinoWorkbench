@@ -40,3 +40,15 @@
   .w-node-config-shell { min-height: 480px; }
   .w-node-command-group { align-items: flex-start; }
 }
+
+/* Keep page chrome inside the shell; only the detail pane owns vertical scrolling. */
+.w-nodes-page { min-width: 0; max-height: 100%; }
+.w-nodes-page > .w-nodes-body { overflow: hidden; }
+.w-node-detail { overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+.w-node-detail > .w-downloads { flex: 0 0 auto; }
+@container (max-width: 959px) {
+  .w-nodes-page > .w-nodes-body { overflow-y: auto; overscroll-behavior-y: contain; }
+}
+/* Portaled tooltips must not create a second document scrollbar outside the shell. */
+html:has(.w-nodes-page), body:has(.w-nodes-page) { overflow: hidden; overscroll-behavior-y: none; }
+body:has(.w-nodes-page) { position: fixed; inset: 0; width: 100%; }

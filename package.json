@@ -1,7 +1,7 @@
 {
   "name": "mino-workbench",
   "private": true,
-  "version": "0.0.34",
+  "version": "0.0.35",
   "type": "module",
   "description": "Mino Workbench — 测试工作台与管理后台（纯 Web）",
   "engines": {
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
+    "@ant-design/x": "1.6.1",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-virtual": "^3.11.0",
     "@xyflow/react": "^12.12.0",

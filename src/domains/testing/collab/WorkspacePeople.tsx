@@ -1,5 +1,6 @@
+import { Sender } from '@ant-design/x'
 import { useEffect, useRef, useState } from 'react'
-import type { ClipboardEventHandler, RefObject } from 'react'
+import type { ClipboardEventHandler, RefObject, ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AtSign, Check, ChevronDown, Search, ShieldCheck, UserPlus, Users, X } from 'lucide-react'
 import { Button, Dropdown, errText } from '@/ui'
@@ -62,8 +63,9 @@ export function MemberEditor({ base, members, readOnly, change, mention, restore
   </section>
 }
 
-export function MentionInput({ value, onChange, members, disabled, onSend, onPaste, inputRef }: {
+export function MentionInput({ value, onChange, members, disabled, onSend, onPaste, inputRef, footer, header, sendDisabled, loading }: {
   value: string; onChange: (value: string) => void; members: WorkspaceMember[]; disabled: boolean
+  footer?: ReactNode; header?: ReactNode; sendDisabled?: boolean; loading?: boolean
   onSend: () => void; onPaste: ClipboardEventHandler<HTMLTextAreaElement>; inputRef: RefObject<HTMLTextAreaElement | null>
 }) {
   const [caret, setCaret] = useState(0)
@@ -93,7 +95,9 @@ export function MentionInput({ value, onChange, members, disabled, onSend, onPas
     setCaret(position + prefix.length); setDismissed(false); setActive(0)
     requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(position + prefix.length, position + prefix.length) })
   }
-  return <div className="workspace-mention-input">
+  return <div className="workspace-mention-input" onSelectCapture={event => {
+    if (event.target instanceof HTMLTextAreaElement) setCaret(event.target.selectionStart)
+  }}>
     {open && <div className="workspace-mention-menu"><header><Users size={14} /><strong>提及群成员</strong><span>↑↓ 选择 · Enter 确认</span></header>
       <div role="listbox" id="workspace-mention-options" aria-label="选择提及成员" ref={listRef}>
         {matches.map((m, index) => <button type="button" role="option" id={'workspace-mention-' + index} aria-selected={index === selected} key={m.id} onMouseDown={e => e.preventDefault()} onClick={() => pick(m)}>
@@ -101,10 +105,29 @@ export function MentionInput({ value, onChange, members, disabled, onSend, onPas
         </button>)}
         {!matches.length && <p className="workspace-no-results">没有匹配的群成员，可到成员页添加。</p>}
       </div></div>}
-    <textarea ref={inputRef} aria-label="工作区消息" role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={open ? 'workspace-mention-options' : undefined} aria-activedescendant={open && matches.length ? 'workspace-mention-' + selected : undefined}
-      disabled={disabled} value={value} onPaste={onPaste} rows={2} placeholder="描述测试目标，输入 @ 邀请成员参与，也可粘贴截图…"
-      onSelect={e => setCaret(e.currentTarget.selectionStart)} onBlur={() => setDismissed(true)}
-      onChange={e => { onChange(e.target.value); setCaret(e.target.selectionStart); setDismissed(false); setActive(0) }}
+    <Sender ref={sender => {
+      const input = sender?.nativeElement.querySelector('textarea') || null
+      inputRef.current = input
+      if (input) {
+        input.setAttribute('aria-label', '工作区消息')
+        input.setAttribute('role', 'combobox')
+        input.setAttribute('aria-autocomplete', 'list')
+        input.setAttribute('aria-expanded', String(open))
+        if (open) input.setAttribute('aria-controls', 'workspace-mention-options')
+        else input.removeAttribute('aria-controls')
+        if (open && matches.length) input.setAttribute('aria-activedescendant', 'workspace-mention-' + selected)
+        else input.removeAttribute('aria-activedescendant')
+      }
+    }}
+      value={value} disabled={disabled} loading={loading} submitType={false}
+      placeholder="输入消息，@ 提及成员"
+      autoSize={{ minRows: 2, maxRows: 6 }}
+      onPaste={event => onPaste(event as React.ClipboardEvent<HTMLTextAreaElement>)}
+      onBlur={() => setDismissed(true)}
+      onChange={(next, event) => { onChange(next); setCaret((event?.target as HTMLTextAreaElement | undefined)?.selectionStart ?? next.length); setDismissed(false); setActive(0) }}
+      prefix={<Button type="text" aria-label="提及成员" title="提及成员" disabled={disabled} icon={<AtSign size={17} />} onMouseDown={e => e.preventDefault()} onClick={openMenu} />}
+      footer={footer} header={header}
+      actions={(_, { components: { SendButton } }) => <SendButton aria-label="发送" shape="default" icon={null} disabled={sendDisabled || disabled} loading={loading} onClick={onSend}>发送</SendButton>}
       onKeyDown={e => {
         if (e.nativeEvent.isComposing || e.keyCode === 229) return
         if (open) {
@@ -114,6 +137,6 @@ export function MentionInput({ value, onChange, members, disabled, onSend, onPas
         }
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() }
       }} />
-    <Button type="text" className="workspace-mention-trigger" aria-label="提及成员" title="提及成员" disabled={disabled} icon={<AtSign size={17} />} onMouseDown={e => e.preventDefault()} onClick={openMenu} />
+
   </div>
 }

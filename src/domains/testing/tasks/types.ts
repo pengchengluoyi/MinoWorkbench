@@ -20,6 +20,8 @@ export interface TaskCase {
 }
 
 export interface TaskRow {
+  requested_total?: number
+  skipped_cases?: { case_id: string; name?: string; reasons?: string[] }[]
   task_id?: string
   taskId?: string
   run_id?: string
@@ -48,7 +50,7 @@ export type Verdict = 'pass' | 'fail' | 'running' | 'other'
 
 export const verdictOf = (raw: unknown): Verdict => {
   const status = String(raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
-  if (['fail', 'failed', 'failure', 'error', 'fatal', 'exception', 'give_up', 'declined'].includes(status)) return 'fail'
+  if (['product_fail', 'fail', 'failed', 'failure', 'error', 'fatal', 'exception', 'give_up', 'declined'].includes(status)) return 'fail'
   if (['pass', 'passed', 'success', 'successful', 'succeeded', 'ok'].includes(status)) return 'pass'
   if (['running', 'pending', 'queued', 'queue', 'in_progress', 'progress', 'init', 'initializing', 'created', 'submitted', 'executing', 'started'].includes(status)) return 'running'
   return 'other'
@@ -60,4 +62,4 @@ export const byAttention = (a: TaskCase, b: TaskCase): number =>
   ORDER[verdictOf(a.status || a.overall_status)] - ORDER[verdictOf(b.status || b.overall_status)]
 
 export const failReason = (c: TaskCase): string =>
-  String(c.fail_reason || c.failure || c.message || '')
+  String(c.fail_reason || c.failure || c.message || c.summary || c.error || c.reason_code || '')

@@ -62,6 +62,7 @@ export interface ScoutNode {
   plugins?: NodePluginStatus[] | null
   plugins_ready?: boolean | null
   plugin_warning?: string
+  tool_tasks_version?: number
   runtime_environment?: 'development' | 'production' | ''
   im_channels?: ImChannelStatus[]
   plugin_job?: NodePluginJob
@@ -74,6 +75,7 @@ export interface NodePluginStatus {
   id: string
   installed?: boolean
   configured?: boolean
+  import_blocked?: boolean
   /** 非密钥字段，心跳带回，页面要原样显示 */
   values?: Record<string, string>
   /** 已写入保险库的密钥字段名，不含密钥本身 */
@@ -110,6 +112,7 @@ export interface PluginFieldDef {
 }
 
 export interface NodePluginJob {
+  task_id?: string
   active?: boolean
   stage?: string
   label?: string

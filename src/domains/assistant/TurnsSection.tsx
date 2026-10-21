@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { Segmented, StatusPill, DataTable, type DataColumn } from '@/ui'
 import type { AssistantTurn } from '@/api/assistant'
 import { isAssistantNotReady } from '@/api/assistant'
@@ -21,16 +22,15 @@ const columns: DataColumn<AssistantTurn>[] = [
 ]
 
 /** 会话与轨迹。只存调用轨迹，原话不在这里，点开详情再从节点现取。 */
-export function TurnsSection() {
-  const [surface, setSurface] = useUrlState<'' | 'im' | 'mcp'>('surface', '', ['', 'im', 'mcp'])
-  const [pageRaw, setPageRaw] = useUrlState<string>('turnPage', '1')
-  const [sizeRaw, setSizeRaw] = useUrlState<string>('turnSize', '20')
+export function TurnsSection({ nodeId }: { nodeId?: string }) {
+  const [surface] = useUrlState<'' | 'im' | 'mcp'>('surface', '', ['', 'im', 'mcp'])
+  const [pageRaw] = useUrlState<string>('turnPage', '1')
+  const [sizeRaw] = useUrlState<string>('turnSize', '20')
   const page = Math.min(100000, Math.max(1, Math.trunc(Number(pageRaw)) || 1))
   const size = [20, 50, 100, 200].includes(Number(sizeRaw)) ? Number(sizeRaw) : 20
-  const setPage = (value: number) => setPageRaw(String(value))
-  const setSize = (value: number) => setSizeRaw(String(value))
+  const [, setParams] = useSearchParams()
   const [openId, setOpenId] = useUrlState<string>('turn', '')
-  const q = useTurns(page, size, surface)
+  const q = useTurns(page, size, surface, nodeId)
 
   if (q.isError && isAssistantNotReady(q.error)) {
     return <div className="w-surface-card"><QueryProblem error={q.error} what="会话" onRetry={() => void q.refetch()} /></div>
@@ -53,11 +53,22 @@ export function TurnsSection() {
         toolbar={(
           <Segmented
             value={surface}
-            onChange={(v) => { setSurface(v as '' | 'im' | 'mcp'); setPage(1) }}
+            onChange={(v) => setParams(previous => {
+              const next = new URLSearchParams(previous)
+              if (v) next.set('surface', String(v))
+              else next.delete('surface')
+              next.delete('turnPage')
+              next.delete('turn')
+              return next
+            })}
             options={[{ label: '全部', value: '' }, { label: 'IM', value: 'im' }, { label: 'MCP', value: 'mcp' }]}
           />
         )}
-        pagination={{ page, pageSize: size, total: q.data?.total ?? 0, onChange: (p, s) => { setPage(p); setSize(s) } }}
+        pagination={{ page, pageSize: size, total: q.data?.total ?? 0, onChange: (p, s) => setParams(previous => {
+          const next = new URLSearchParams(previous)
+          next.set('turnPage', String(p)); next.set('turnSize', String(s))
+          return next
+        }) }}
       />
       <TurnDrawer turnId={openId} onClose={() => setOpenId('')} />
     </>

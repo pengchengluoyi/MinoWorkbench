@@ -34,7 +34,7 @@ export interface RunPayload {
   async_exec?: boolean
   use_cache?: boolean
   run_type?: string
-  execution_mode?: 'legacy' | 'v5'
+  execution_mode?: 'agent' | 'v5'
   playwright_headless?: boolean
 }
 
@@ -43,7 +43,7 @@ export const getRunRequest = (requestId: string) => request<{ request_id: string
 })
 
 export const runCaseRunner = (data: RunPayload) =>
-  request<{ run_id?: string; task_id?: string }>({
+  request<{ run_id?: string; task_id?: string; total?: number; requested_total?: number; skipped_cases?: { case_id: string; name?: string; reasons?: string[] }[] }>({
     url: '/case-runner/run',
     method: 'post',
     data,

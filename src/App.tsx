@@ -35,7 +35,7 @@ export default function App() {
   }, [clear, syncFromStorage])
 
   return (
-    <ConfigProvider locale={zhCN} theme={dark ? darkTheme : lightTheme}>
+    <ConfigProvider locale={zhCN} button={{ autoInsertSpace: false }} theme={dark ? darkTheme : lightTheme}>
       <FeedbackProvider>
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />

@@ -7,9 +7,9 @@ import { isAssistantNotReady } from '@/api/assistant'
 
 const KIND: Record<string, string> = { run_done: '运行完成通知', daily_report: '每日报告' }
 
-export function SubscriptionsSection() {
+export function SubscriptionsSection({ nodeId }: { nodeId?: string }) {
   const fb = useFeedback()
-  const q = useSubscriptions()
+  const q = useSubscriptions(nodeId)
   const { cancelSub } = useAssistantMutations()
 
   const columns: DataColumn<AssistantSubscription>[] = [

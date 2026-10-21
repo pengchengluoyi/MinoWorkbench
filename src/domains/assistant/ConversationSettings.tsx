@@ -6,7 +6,6 @@ import { QueryProblem } from './AssistantNotReady'
 import { channelLabel } from './format'
 import { MediaSettings } from './MediaSettings'
 import { GroupPolicies } from './GroupPolicies'
-import { ReportSettings } from './ReportSettings'
 
 const PREFERENCES = [
   { key: 'detail', label: '回复详略', options: [{ label: '默认', value: '' }, { label: '简洁', value: 'brief' }, { label: '完整', value: 'full' }] },
@@ -49,7 +48,6 @@ export function ConversationSettings() {
         </table></div> : <p style={{ fontSize: 13, color: 'var(--w-text-tertiary)' }}>尚未接入 IM 渠道。请在接入页绑定账号。</p>}
     </section>
     <MediaSettings />
-    <ReportSettings />
     <GroupPolicies />
   </div>
 }
