@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { request } from '@/lib/request'
@@ -14,17 +15,17 @@ export function EventMigrationReview({ projectId, caseId }: { projectId: string;
   const key = ['event-migration', owner, projectId, caseId]
   const [reviewed, setReviewed] = useState('')
   const [reason, setReason] = useState('')
-  const [identity, setIdentity] = useState(() => crypto.randomUUID())
+  const [identity, setIdentity] = useState(() => createUUID())
   const [attempt, setAttempt] = useState<{ expected_revision: number; expected_job_id: string; state_digest: string; candidate_digest: string; request_id: string; reason: string } | null>(null)
   const proposal = useQuery({ queryKey: key, queryFn: async () => unwrapOne<Candidate>(await request({ url: `${base}/event-migration-preview`, method: 'get' })) })
-  useEffect(() => { setReviewed(''); setReason(''); setIdentity(crypto.randomUUID()); setAttempt(null) }, [projectId, caseId, owner])
+  useEffect(() => { setReviewed(''); setReason(''); setIdentity(createUUID()); setAttempt(null) }, [projectId, caseId, owner])
   const apply = useMutation({ mutationFn: async () => {
     const p = proposal.data!
     const body = attempt || { expected_revision: p.expected_revision, expected_job_id: p.expected_job_id, state_digest: p.state_digest, candidate_digest: p.candidate_digest, request_id: identity, reason }
     setAttempt(body)
     return unwrapOne<CompileJob>(await request({ url: `${base}/event-migration-apply`, method: 'post', data: body }))
   }, onSuccess: async () => { setReviewed(''); await qc.invalidateQueries({ queryKey: ['case-version-chain', owner, projectId, caseId] }); await qc.invalidateQueries({ queryKey: ['case-review', owner, projectId, caseId] }); await proposal.refetch() } })
-  const discard = () => { setAttempt(null); setIdentity(crypto.randomUUID()); setReviewed(''); apply.reset(); void proposal.refetch() }
+  const discard = () => { setAttempt(null); setIdentity(createUUID()); setReviewed(''); apply.reset(); void proposal.refetch() }
   return <section aria-label="业务事件迁移审核" className="case-version-chain">
     <strong>业务事件迁移审核</strong>
     <p>核对旧事件的新逻辑块或导航目标后应用。系统创建独立编译任务，保留原文和已发布版本；编译后仍需预检，严格 Web 版本须重新审阅发布。</p>

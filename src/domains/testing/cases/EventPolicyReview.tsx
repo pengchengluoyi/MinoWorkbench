@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useSession } from '@/lib/session'
@@ -10,7 +11,7 @@ function PolicyRow({ row, base, refresh }: { row: Policy; base: string; refresh:
   const [payload, setPayload] = useState(JSON.stringify(row.candidate, null, 2))
   const [reason, setReason] = useState('')
   const [confirmed, setConfirmed] = useState(false)
-  const [identity, setIdentity] = useState(() => crypto.randomUUID())
+  const [identity, setIdentity] = useState(() => createUUID())
   const [submitted, setSubmitted] = useState<Record<string, unknown> | null>(null)
   const save = useMutation({ mutationFn: async (action: 'replace' | 'retire') => {
     const data = submitted || { kind: row.kind, entry_id: row.id, source_digest: row.source_digest, request_id: identity, reason, action, replacement: action === 'replace' ? JSON.parse(payload) : {} }
@@ -24,7 +25,7 @@ function PolicyRow({ row, base, refresh }: { row: Policy; base: string; refresh:
     <label><input type="checkbox" checked={confirmed} disabled={Boolean(submitted)} onChange={e => setConfirmed(e.target.checked)} />确认影响全局目录；原记录保留在审核历史</label>
     {!row.retired_event ? <Button disabled={save.isPending || !reason.trim() || !confirmed || Boolean(submitted && submitted.action !== 'replace')} onClick={() => save.mutate('replace')}>应用审核后的规则</Button> : null}
     <Button disabled={save.isPending || !reason.trim() || !confirmed || Boolean(submitted && submitted.action !== 'retire')} onClick={() => save.mutate('retire')}>停用并归档旧条目</Button>
-    {save.error ? <Button disabled={save.isPending} onClick={() => { setSubmitted(null); setConfirmed(false); setIdentity(crypto.randomUUID()); save.reset(); refresh() }}>重新读取并审核（不自动重试）</Button> : null}
+    {save.error ? <Button disabled={save.isPending} onClick={() => { setSubmitted(null); setConfirmed(false); setIdentity(createUUID()); save.reset(); refresh() }}>重新读取并审核（不自动重试）</Button> : null}
     {save.error ? <p role="alert">{errText(save.error)}。未确认成功；重复点击同一操作会复用请求编号。</p> : null}
   </li>
 }

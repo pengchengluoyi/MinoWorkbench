@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getNodeTools, submitNodeToolTask } from '@/api/nodeTools'
@@ -31,7 +32,7 @@ export function useNodeTools(nodeId: string, enabled = true) {
     try {
       const stored = sessionStorage.getItem(storageKey)
       const receipt = query.data?.tasks.find(task => task.operation_id === stored)
-      const operationId = originalId || (stored && (!receipt || receipt.active) ? stored : crypto.randomUUID())
+      const operationId = originalId || (stored && (!receipt || receipt.active) ? stored : createUUID())
       // Persist BEFORE dispatch. Transport failures keep this identifier across refresh.
       sessionStorage.setItem(storageKey, operationId)
       return await submitNodeToolTask(nodeId, toolId, operationId)

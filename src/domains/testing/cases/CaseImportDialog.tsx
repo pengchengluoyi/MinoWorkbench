@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import * as XLSX from 'xlsx'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -444,7 +445,7 @@ export function CaseImportDialog({ projectId, appId, open, onClose, initialSourc
       return fb.fail(`导入策略要求先处理阻断项：${blockingSelected.length} 条仍不可自动跑。请修复解析、取消勾选，或在集成配置关闭「密钥问题默认阻止提交」。`)
     }
     commitStarted.current = true
-    requestId.current = 'import-' + crypto.randomUUID()
+    requestId.current = 'import-' + createUUID()
     const submitted = rows.map(row => ({ ...row }))
     const context = receiptContext()
     persist(recoveryRecord('committing'))

@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -82,7 +83,7 @@ function ResourcesView({ projectId, owner }: { projectId: string; owner: string 
         const selected = resource.observations.find(o => `${o.session_id}:${o.seq}` === values.evidence[resource.resource_key])!
         return { resource_key: resource.resource_key, session_id: selected.session_id, seq: selected.seq, statement: values.reason.trim() }
       })
-      await request({ url: `${base}/runs/${encodeURIComponent(runId)}/recovery`, method: 'post', data: { request_id: crypto.randomUUID(), expected_digest: recovery.data.expected_digest, reason: values.reason.trim(), proofs } })
+      await request({ url: `${base}/runs/${encodeURIComponent(runId)}/recovery`, method: 'post', data: { request_id: createUUID(), expected_digest: recovery.data.expected_digest, reason: values.reason.trim(), proofs } })
       feedback.ok('资源已恢复，后续执行将领取新租约'); setRunId(''); await query.refetch()
     } catch (e) { setError(reasonText(e)) } finally { setBusy(false) }
   }

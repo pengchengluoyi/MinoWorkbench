@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button, StatusPill, errText } from '@/ui'
@@ -42,7 +43,7 @@ export function RunSafety({ runId, onStarted }: { runId: string; onStarted: (id:
   }
   const submit = async () => {
     if (inFlight.current) return
-    const request = pending || { id: `retry-${crypto.randomUUID()}`, units: selected }
+    const request = pending || { id: `retry-${createUUID()}`, units: selected }
     if (!request.units.length) return
     inFlight.current = true; setBusy(true)
     try {

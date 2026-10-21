@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import './DevelopmentPanel.css'
 import { normalizePlatforms, type PlatformInput } from '@/constants/appPlatforms'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -75,7 +76,7 @@ function DevelopmentEditor({ appId, android }: { appId: string; android: boolean
     advanceAfterCheck.current = { revision: binding.revision, step }
     setCheckingSaved(true)
     try {
-      await prepareDevelopment(appId, 'check', binding.revision, crypto.randomUUID())
+      await prepareDevelopment(appId, 'check', binding.revision, createUUID())
       void qc.invalidateQueries({ queryKey: ['development', appId] })
     } catch (error) { feedback.fail(errText(error)); advanceAfterCheck.current = null }
     finally { setCheckingSaved(false) }
@@ -132,7 +133,7 @@ function DevelopmentEditor({ appId, android }: { appId: string; android: boolean
     onSuccess: response => { const next = unwrapOne<DevelopmentBinding>(response); setRevision(next.revision); setDraft(next.config); setSaved(JSON.stringify(next.config)); qc.setQueryData(key, next); setSaveError(''); setEditingConnection(false); feedback.ok('配置已保存，正在核对 IDE'); void verifySaved(next, Math.min(activeStep + 1, 2)) },
     onError: error => { setSaveError(errText(error)); feedback.fail(errText(error)) } })
   const action = useMutation({ mutationFn: async (name: string) => {
-    const id = crypto.randomUUID()
+    const id = createUUID()
     setRequestedOperation({ id, action: name })
     return prepareDevelopment(appId, name, revision, id)
   }, onSuccess: refresh, onError: error => { setRequestedOperation(null); setCheckingRestart(false); restartAfterCheck.current = false; feedback.fail(errText(error)); refresh() } })
@@ -170,7 +171,7 @@ function DevelopmentEditor({ appId, android }: { appId: string; android: boolean
     }
   }, [items, requestedOperation, feedback, action])
   const connect = useMutation({ mutationFn: async (list: boolean) => {
-    const id = crypto.randomUUID()
+    const id = createUUID()
     if (!list) connectionSave.current = { id, config: { ...draft! }, revision, step: Math.min(activeStep + 1, 2) }
     return configureIDE(appId, { operation_id: id, node_id: draft!.node_id,
       action: list ? 'list_connections' : 'save_connection', connection_id: connectionName,

@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronRight, CircleCheck, CircleX, Info, LoaderCircle, Play, RefreshCw, Trash2, TriangleAlert, X } from 'lucide-react'
@@ -52,7 +53,7 @@ function ScopedRunBar({ appId, projectId, selected, labels, currentPageIds, onCl
      if (!chain || !Number.isInteger(chain.expected_revision)) throw new Error('未能读取用例原文版本')
      let identity = identities.current.get(id)
      if (!identity || identity.revision !== chain.expected_revision) {
-      identity = { revision: chain.expected_revision, requestId: crypto.randomUUID() }
+      identity = { revision: chain.expected_revision, requestId: createUUID() }
       identities.current.set(id, identity)
      }
      const job = unwrapOne<{ job_id: string; status: string }>(await request({ url: `${url}/compile-jobs`, method: 'post', signal: controller.signal,

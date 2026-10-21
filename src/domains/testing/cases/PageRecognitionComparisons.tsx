@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -31,7 +32,7 @@ export function PageRecognitionComparisons({ owner, projectId, appId, pages }: {
     if (!values || !selected) return
     setBusy(true); setError('')
     try {
-      await request({ url: `${base}/${encodeURIComponent(selected.session_id)}/events/${selected.seq}`, method: 'post', data: { ...values, reason: values.reason.trim(), request_id: crypto.randomUUID(), expected_revision: selected.revision } })
+      await request({ url: `${base}/${encodeURIComponent(selected.session_id)}/events/${selected.seq}`, method: 'post', data: { ...values, reason: values.reason.trim(), request_id: createUUID(), expected_revision: selected.revision } })
       feedback.ok('样本复核已记录'); setSelected(undefined); await query.refetch()
     } catch (e) { setError(errText(e)) } finally { setBusy(false) }
   }

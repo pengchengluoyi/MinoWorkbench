@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { CompileMetrics } from './CompileMetrics'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -56,7 +57,7 @@ function KnowledgeEditor({ owner, projectId, appId }: { owner: string; projectId
   const propose = () => act(async () => {
     if (!page) return
     if (!positiveSeq.trim() || !negativeSeq.trim()) throw new Error('请填写正反例事件序号')
-    await post(path + '/reviews', { request_id: crypto.randomUUID(), version: page.version, expected_revision: page.revision, platform, build, reason, aliases: terms(aliases), positive_terms: terms(positive), negative_terms: terms(negative), examples: [
+    await post(path + '/reviews', { request_id: createUUID(), version: page.version, expected_revision: page.revision, platform, build, reason, aliases: terms(aliases), positive_terms: terms(positive), negative_terms: terms(negative), examples: [
       { session_id: positiveSession.trim(), seq: Number(positiveSeq), polarity: 'positive' },
       { session_id: negativeSession.trim(), seq: Number(negativeSeq), polarity: 'negative' },
     ] })
@@ -73,7 +74,7 @@ function KnowledgeEditor({ owner, projectId, appId }: { owner: string; projectId
   })
   const revalidate = (action: 'recheck' | 'compile') => act(async () => {
     if (!page || !impact) return
-    const receipt = await post<{ items: typeof results }>(path + '/revalidate', { request_id: crypto.randomUUID(), version: page.version, impact_token: impact.impact_token, case_ids: caseIds, action, reason })
+    const receipt = await post<{ items: typeof results }>(path + '/revalidate', { request_id: createUUID(), version: page.version, impact_token: impact.impact_token, case_ids: caseIds, action, reason })
     setResults(receipt.items); setNotice('已返回逐条结果；复检或编译不代表业务验证通过。'); await trends.refetch()
   })
   const columns: DataColumn<Review>[] = [

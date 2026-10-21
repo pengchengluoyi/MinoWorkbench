@@ -1,3 +1,5 @@
+import { copyToClipboard } from '@/lib/clipboard'
+import { createUUID } from '@/lib/uuid'
 import { Bubble } from '@ant-design/x'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -93,7 +95,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
       if (!file.size) { rejected.push('不能发送空文件'); continue }
       const url = image ? URL.createObjectURL(file) : ''
       if (url) imageUrls.current.add(url)
-      accepted.push({ id: crypto.randomUUID(), scope: composerScope, file, url })
+      accepted.push({ id: createUUID(), scope: composerScope, file, url })
     }
     setAttachments(current => [...current, ...accepted])
     setError([...new Set(rejected)].join('；'))
@@ -241,7 +243,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
                 {m.reply_status && <span>{labels[m.reply_status] || (m.reply_status === 'succeeded' ? '已回复' : m.reply_status)}</span>}
                 {m.origin === 'migrated' && <span>历史归并</span>}
                 {!!m.body && <Button type="text" size="small" className="workspace-im-copy" aria-label="复制消息" title="复制消息" icon={<Copy size={12}/>} onClick={() => {
-                  void navigator.clipboard.writeText(m.body).catch(() => setError('复制失败，请手动选择消息文字复制。'))
+                  void copyToClipboard(m.body).catch(() => setError('复制失败，请手动选择消息文字复制。'))
                 }} />}
               </div>,
               content: <div className="collab-message-body"><p><MemberText text={m.body} members={data.members || []} /></p>{card(m)}{m.reply_error && <p role="alert">{labels[m.reply_status || ''] || '处理未完成'}：{m.reply_error}</p>}</div>,

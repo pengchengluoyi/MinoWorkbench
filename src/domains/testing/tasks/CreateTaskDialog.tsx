@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { appRuntimeChannels } from '../config/appRuntimeChannels'
 import { useProjects } from '../apps/queries'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
@@ -141,7 +142,7 @@ export function CreateTaskDialog({
         throw new Error(`所选 ${picked.length} 条用例当前均未通过预检，本次未创建任务：\n${lines.join('\n')}`)
       }
       const payload: RunPayload = {
-        client_request_id: crypto.randomUUID(),
+        client_request_id: createUUID(),
         app_id: appId,
         case_ids: picked,
         sn,

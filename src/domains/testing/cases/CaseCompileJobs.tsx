@@ -1,3 +1,4 @@
+import { createUUID } from '@/lib/uuid'
 import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { request } from '@/lib/request'
@@ -33,7 +34,7 @@ export function CaseCompileJobs({ projectId, caseId }: { projectId: string; case
   const identities = useRef(new Map<string, string>())
   const change = useMutation({ mutationFn: async ({ action, job }: { action: 'cancel' | 'recover' | 'queue'; job?: CompileJob }) => {
     const identity = `${action}:${job?.job_id || chain.data?.source_revision_id}`
-    if (!identities.current.has(identity)) identities.current.set(identity, crypto.randomUUID())
+    if (!identities.current.has(identity)) identities.current.set(identity, createUUID())
     const endpoint = action === 'queue' ? `${url}/compile-jobs` : `${url}/compile-jobs/${encodeURIComponent(job!.job_id)}/${action}`
     await request({ url: endpoint, method: 'post', data: { expected_revision: chain.data!.expected_revision, client_request_id: identities.current.get(identity) } })
     identities.current.delete(identity)
