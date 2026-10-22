@@ -30,7 +30,7 @@ export interface RunPayload {
   platform?: string
   env_profile?: string
   env_surface?: string
-  action_scheme?: 'visual' | 'dom_preferred'
+  action_scheme?: 'dom_preferred'
   async_exec?: boolean
   use_cache?: boolean
   run_type?: string
@@ -54,7 +54,7 @@ export interface RunDeviceContext {
   app_id?: string
   env_surface?: string
   env_profile?: string
-  action_scheme?: 'visual' | 'dom_preferred'
+  action_scheme?: 'dom_preferred'
   playwright_headless?: boolean
 }
 

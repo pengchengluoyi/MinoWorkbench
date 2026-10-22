@@ -75,7 +75,6 @@ export function CaseReview({ projectId, caseId, appId }: { projectId: string; ca
       <details><summary>复检指定执行目标 / 关联实跑证据（可选）</summary>
         {(['app_id', 'sn', 'env_profile', 'env_surface'] as const).map((field, i) => <label key={field} style={{ display: 'block' }}>{['应用编号', '设备编号', '环境配置', '目标渠道'][i]}<input value={context[field]} onChange={e => setContext({ ...context, [field]: e.target.value })} /></label>)}
         <label>执行路线 <select value={context.execution_mode} onChange={e => setContext({ ...context, execution_mode: e.target.value })}><option value="agent">普通执行</option><option value="v5">严格 Web</option></select></label>
-        <label>执行方式 <select value={context.action_scheme} onChange={e => setContext({ ...context, action_scheme: e.target.value })}><option value="dom_preferred">DOM 优先</option><option value="visual">看图</option></select></label>
         <label>模型配置编号（可选）<input value={context.provider_id} onChange={e => setContext({ ...context, provider_id: e.target.value })} /></label>
         <label>已完成且核验通过的 session 编号<input value={sessionId} onChange={e => setSessionId(e.target.value)} /></label><p>目标复检只读取当前登记信息和绑定解析，不租设备、不调用执行器。历史证据必须属于当前账号、用例、原文与编译产物。</p>
       </details>

@@ -53,7 +53,8 @@ export function CreateTaskDialog({
   const [surface, setSurface] = useState('')
   const [profile, setProfile] = useState('')
   const [sn, setSn] = useState('')
-  const [scheme, setScheme] = useState<'visual' | 'dom_preferred'>('dom_preferred')
+  // 执行方式只有 DOM 优先；看图只做兜底/证据/断言，不再作为入口选项（V8 §10.3）。
+  const scheme = 'dom_preferred'
   const [picked, setPicked] = useState<string[]>([])
   const [kw, setKw] = useState('')
   const settledSearch = useDebouncedValue(kw)
@@ -65,7 +66,6 @@ export function CreateTaskDialog({
   initialSelection.current = initialCaseIds
   useEffect(() => {
     if (!open) return
-    setScheme('dom_preferred')
     setPicked(initialSelection.current || [])
     setCaseCache({})
     setPage(1)
@@ -268,10 +268,7 @@ export function CreateTaskDialog({
         </Section>
 
         <Section n="4" title="执行方案">
-          <div className="task-choice-grid" style={grid(2)}>
-            <Choice pressed={scheme === 'dom_preferred'} onClick={() => setScheme('dom_preferred')} title="DOM 优先" hint="有有效结构用结构，无法定位时用当前截图兜底" />
-            <Choice pressed={scheme === 'visual'} onClick={() => { setScheme('visual') }} title="看图 visual" hint="纯视觉：按模型坐标、输入、滑动" />
-          </div>
+          <p style={hint}>DOM 优先（唯一执行方式）：有有效结构用结构，无法定位时用当前截图兜底。截图只用于兜底、证据与视觉断言，不作为"看图优先"入口。</p>
           {webDevice ? <div style={{ marginTop: 8 }}>
             <p style={{ ...hint, marginTop: 4 }}>仅用于 DOM 优先的 Web 测试；按已审阅发布的步骤和校验执行，运行中不临时改写计划。</p>
           </div> : null}
