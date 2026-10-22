@@ -6,7 +6,7 @@ import {
   Alert, Button, EmptyState, FormSection, Input, InputNumber, Modal, Select, Skeleton, StatusPill, Switch, errText, useFeedback,
 } from '@/ui'
 import {
-  PRESET_PROVIDER_IDS, apiTypeLabel, deleteAIProvider, listAIProviders, roundRatio, saveAIProvider, saveAIUsage,
+  PRESET_PROVIDER_IDS, apiTypeLabel, deleteAIProvider, listAIProviders, roundRatio, saveAIProvider,
   validateAIProvider, sdkProviderLabel, type AIProvider, type ProviderForm,
 } from '@/api/ai'
 
@@ -82,7 +82,6 @@ export function KeysPage() {
         providers,
         sdkProviders,
         savedIds: savedProviders.map((p) => p.id),
-        usageEnabled: Boolean(data.usage?.case_execution_enabled),
         forms: next,
       }
     },
@@ -122,18 +121,6 @@ export function KeysPage() {
       recordAudit('模型接入保存')
       feedback.ok('已保存')
       setAddOpen(false)
-    },
-    onError: (e) => feedback.fail(errText(e, '保存失败')),
-  })
-
-  const usage = useMutation({
-    mutationFn: (enabled: boolean) => {
-      const chosen = query.data?.providers.find((p) => query.data.forms[p.id]?.case_execution_use)?.id || ''
-      return saveAIUsage({ case_execution_enabled: enabled, case_execution_provider_id: chosen })
-    },
-    onSuccess: async () => {
-      feedback.ok('已生效')
-      await refresh()
     },
     onError: (e) => feedback.fail(errText(e, '保存失败')),
   })
@@ -214,8 +201,6 @@ export function KeysPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button disabled={hasDrafts} onClick={() => setTab('costs')}>模型用量与费用</Button>
           <Button onClick={() => setAddOpen(true)}>添加模型接入</Button>
-          <span style={{ fontSize: 'var(--w-font-sm)', color: 'var(--w-text-secondary)' }}>用例执行使用大模型</span>
-          <Switch disabled={hasDrafts || save.isPending} checked={query.data?.usageEnabled} loading={usage.isPending} onChange={(v) => usage.mutate(v)} />
         </div>
       </header>
 

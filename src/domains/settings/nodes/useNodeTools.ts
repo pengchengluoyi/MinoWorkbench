@@ -18,6 +18,7 @@ export function useNodeTools(nodeId: string, enabled = true) {
     queryFn: () => getNodeTools(nodeId),
     enabled: enabled && !!owner && !!nodeId,
     retry: false,
+    refetchOnMount: 'always',
     refetchInterval: q => q.state.data?.tasks.some(t => t.active) ? 2000 : 15000,
   })
   const terminalSignature = query.data?.tasks.filter(task => !task.active).map(task => `${task.task_id}:${task.state}`).join('|') || ''

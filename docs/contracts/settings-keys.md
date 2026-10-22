@@ -3,7 +3,7 @@
 **原始实现**：`MinoStudio/src/views/Settings/KeysPage.vue` 996 行（页面上实际只露出「大模型」一档）
 **目标路由**：`/settings/keys`
 **排期**：阶段 4
-**状态**：已实现（供应商与用例执行开关）
+**状态**：已实现（供应商配置与执行模型选择）
 
 ## 数据
 
@@ -11,7 +11,6 @@
 |---|---|---|
 | `GET /settings/ai/providers` | 供应商、默认项、usage | 进页、每次保存后 |
 | `PUT /settings/ai/providers/:id` | 保存 Key、模型、压缩比例、可用 / 用例开关 | 保存、开关、清除 Key |
-| `PUT /settings/ai/usage` | 用例执行是否启用大模型 | 总开关 |
 | `DELETE /settings/ai/providers/:id` | 删除自定义供应商 | 确认后 |
 
 保存开关时 `api_key` 传空且 `clear_key: false`，避免把已有 Key 清掉。
@@ -42,5 +41,7 @@
 
 ## 不做
 
+- 不保留「用例执行使用大模型」总开关及 `case_execution_enabled` 字段。用例直接使用当前执行账号已配置、已启用且允许跑用例的模型，历史总开关为 false 不再阻断执行；服务商级的「用于跑用例」继续保留。
+- 读取、保存与执行依赖判定均不依赖旧总开关；旧用途配置按剩余字段归一化，下次正常保存不再持久化该字段，不直接改真实业务库。
 - 发信配置（原 tab 已不在 `KEY_TABS` 里）。
 - 知识沉淀 / 知识机审（Studio 知识能力已砍）。

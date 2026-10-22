@@ -526,6 +526,8 @@
 .v7-composer-tools .ant-btn-primary { background:var(--w-text,#252933); border-color:var(--w-text,#252933); }
 .v7-workspaces .v7-empty { flex:1; justify-content:center; min-height:0; border:0; border-radius:0; padding:24px; overflow:auto; }
 .v7-drawer-content { overflow:visible; height:auto; }
+.v7-drawer-content .workspace-project-select { display:flex; flex-direction:column; gap:6px; margin:0; padding:12px 0; color:var(--v7-muted); font-size:12px; }
+.v7-drawer-content .workspace-project-select select { width:100%; box-sizing:border-box; padding:10px; border:1px solid var(--v7-line); border-radius:8px; background:var(--w-surface,#fff); color:var(--w-text,#303849); font:inherit; font-size:13px; }
 .v7-details-drawer .ant-drawer-body { padding:12px; }
 .v7-drawer-content .v7-results { border:0; }
 .v7-drawer-content .steward-panel { overflow:visible; }

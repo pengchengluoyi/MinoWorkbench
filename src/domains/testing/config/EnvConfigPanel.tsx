@@ -189,13 +189,6 @@ export function EnvironmentSettings({ projectId, application }: { projectId: str
           {projects.isError ? <Alert type="error" message="应用列表读取失败" /> : (projects.data?.find(p => p.id === projectId)?.apps || []).map(app => <div key={app.id} className="flex flex-wrap items-center justify-between gap-3 py-3" style={{ borderBottom: '1px solid var(--w-border)' }}><strong>{app.name}</strong><Link to={projectHref(projectId, { tab: 'config', configView: 'apps', appId: app.id, appConfig: 'runtime' })}>配置应用</Link></div>)}
           <Link to={projectHref(projectId, { tab: 'config', configView: 'apps' })}>管理项目应用</Link>
         </div> : <div className="w-env-form" role="region" aria-label="应用运行配置" tabIndex={0}>
-            {channel?.app_id && doc.channels.some(c => !c.app_id && c.platform === channel.platform) && <div className="w-surface-card p-4 mb-3">
-              <p>此平台存在尚未关联的历史配置。可选择复用，原地址、登录策略及其他环境参数会一并保留。</p>
-              <Select aria-label="复用已有运行配置" placeholder="选择已有配置（可选）" style={{ width: '100%' }} value={undefined} disabled={save.isPending} options={doc.channels.filter(c => !c.app_id && c.platform === channel.platform).map(c => ({ value: c.id, label: channelTitle(c) }))} onChange={id => {
-                patch({ ...doc, channels: doc.channels.map(c => c.id === id ? { ...c, app_id: application.id } : c.id === channel.id ? { ...c, app_id: undefined } : c) })
-                setAppId(id)
-              }} />
-            </div>}
             {channel ? (
               <AppEnvCard
                 disabled={save.isPending}

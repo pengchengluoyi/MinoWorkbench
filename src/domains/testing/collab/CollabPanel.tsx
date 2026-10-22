@@ -3,7 +3,7 @@ import { createUUID } from '@/lib/uuid'
 import { Bubble } from '@ant-design/x'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { request } from '@/lib/request'
 import { Button, Modal, Drawer, Dropdown, Tooltip, errText } from '@/ui'
 import { projectHref } from '../workbench/projectNavigation'
@@ -13,6 +13,8 @@ import { MemberAvatar, MemberEditor, MemberText, MentionInput } from './Workspac
 import type { WorkspaceMember as Member } from './WorkspacePeople'
 import './CollabPanel.css'
 import { WorkspaceTasks } from './WorkspaceTasks'
+import { useProjects } from '../apps/queries'
+import { botsHref } from '@/domains/bots/botsNavigation'
 
 const CaseImportDialog = lazy(() => import('../cases/CaseImportDialog').then(m => ({ default: m.CaseImportDialog })))
 interface Workspace { topic_id: string; title: string; app_id: string; modules: string[]; requirement_id: string;
@@ -22,6 +24,7 @@ interface Run { freshness?: string; run_id: string; app_id: string; outcome?: st
 interface Message { created_at?: string; sender_name: string; message_id: string; author_kind: string; body: string; message_kind: string; card_kind: string; ref_id: string; origin: string; role?: string; thread_id?: string; reply_status?: string; reply_error?: string }
 interface Case { case_id: string; title: string; module: string; status: string; reasons: string[] }
 interface Options { modules: string[]; requirements: { id: string; title: string }[];
+  project?: { id: string; name: string };
   apps: { id: string; name: string }[]; environments: { key: string; label: string }[];
   channels: { id: string; label: string; app_id: string }[]; devices: { sn: string; model: string; platform: string }[];
   cases: { case_id: string; name: string; module: string }[]; nodes: { node_id: string }[] }
@@ -32,11 +35,14 @@ const labels: Record<string, string> = { queued: '排队', preparing: '准备中
   failed: '失败', blocked: '阻塞', cancelled: '已取消', ready: '可执行', passed: '已通过', pass: '已通过', fail: '失败',
   skipped: '跳过', pending: '等待', interrupted: '已中断', unknown: '记录不可用' }
 const terminal = new Set(['done', 'failed', 'blocked', 'cancelled', 'passed', 'finished', 'unknown'])
+const replyLabels: Record<string, string> = { queued: '等待回复', running: '管家处理中', succeeded: '已回复', failed: '管家处理失败', interrupted: '管家处理已中断' }
 
 export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   projectId: string; appId?: string; mode?: 'bots'; deepLinkCaseId?: string; deepLinkAppId?: string
 }) {
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  const projects = useProjects()
   const attachmentInput = useRef<HTMLInputElement>(null)
   const screenshotInput = useRef<HTMLInputElement>(null)
   const composerInput = useRef<HTMLTextAreaElement>(null)
@@ -102,6 +108,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   }
   const data = detail.data
   const topic = data?.topic
+  const projectName = options.data?.project?.name || projects.data?.find(project => project.id === projectId)?.name || projectId
   const replying = data?.messages.some(m => ['queued','running'].includes(m.reply_status || ''))
   const readOnly = !!topic && (!!topic.archived || topic.workspace_kind.startsWith('legacy'))
   const mutation = useMutation({ mutationFn: async ({ path, method = 'post', body }: { path: string; method?: string; body?: unknown }) => {
@@ -168,6 +175,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   const loadError = topics.error || options.error || (isMissingWorkspace(detail.error) ? null : detail.error)
   const unavailable = (loadError as { response?: { status?: number } } | null)?.response?.status === 404
   const card = (m: Message) => {
+    if (m.card_kind === 'project') return <Link to={botsHref(m.ref_id)}>切换到该项目的工作区</Link>
     if (m.card_kind === 'run') { const run = data?.runs[m.ref_id]; return run ? runCard(run) : <p>运行记录不可用</p> }
     if (m.card_kind === 'workspace') return <Button onClick={() => {
       void request<Detail>({ url: base + '/' + encodeURIComponent(m.ref_id) }).then(r => setSelected(m.ref_id, Boolean(r.data?.topic.archived))).catch(e => setError(errText(e)))
@@ -217,14 +225,21 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
         {readOnly && <div className="workspace-im-notice" role="status">此工作区只读，历史消息与证据保留。</div>}
         {topic.paused ? <div className="workspace-im-notice" role="status">工作区已暂停，可继续查询。</div> : null}
         <Drawer title="对话详情" open={showDetails} onClose={() => setShowDetails(false)} width="min(620px, 100vw)" className="v7-details-drawer">
-          <div className="v7-workspaces v7-drawer-content"><nav className="v7-tabs" aria-label="工作区详情">
+          <div className="v7-workspaces v7-drawer-content">
+            <label className="workspace-project-select">所属项目<select aria-label="对话所属项目" value={projectId} disabled={!projects.data?.length} onChange={event => navigate(botsHref(event.target.value))}>
+            {!projects.data?.some(project => project.id === projectId) && <option value={projectId}>{projectName}</option>}
+            {projects.data?.map(project => <option key={project.id} value={project.id}>{project.name || project.id}</option>)}
+            </select></label>
+          {projects.isError && <p role="alert">项目列表读取失败：{errText(projects.error)}</p>}
+          <nav className="v7-tabs" aria-label="工作区详情">
             {[['members', '成员'], ['scope', '测试目标'], ['tasks', '任务']].map(([id, label]) => <Button key={id} type={tab === id ? 'primary' : 'default'} onClick={() => setTab(id)}>{label}</Button>)}
           </nav>
           {tab === 'members' && <MemberEditor key={selectedId} base={base + prefix} members={data.members || []} readOnly={readOnly || mutation.isPending}
             change={(member, remove) => submit(act(prefix + '/members' + (remove ? '/' + encodeURIComponent(member) : ''), remove ? undefined : { member }, remove ? 'delete' : 'post'))}
             restoreDefaults={() => submit(act(prefix + '/members/defaults'))}
             mention={member => { setDraft(current => current + (current && !/\s$/.test(current) ? ' ' : '') + '@' + member.sender_name + ' '); setShowDetails(false); setTimeout(() => { composerInput.current?.focus(); composerInput.current?.setSelectionRange(100000, 100000) }, 100) }} />}
-          {tab === 'scope' && <><ResourceEditor key={JSON.stringify([topic.topic_id, topic.requirement_id, topic.modules, topic.env_profile, topic.env_surface])} topic={topic} options={options.data} readOnly={readOnly} save={body => submit(patch(body))} /></>}
+          {tab === 'scope' && <ResourceEditor key={JSON.stringify([topic.topic_id, topic.requirement_id, topic.modules, topic.env_profile, topic.env_surface])}
+            topic={topic} options={options.data} readOnly={readOnly} save={body => submit(patch(body))} />}
           {tab === 'tasks' && <WorkspaceTasks key={selectedId} base={base + prefix} projectId={projectId} />}
           </div>
         </Drawer><section className="collab-card-chat">
@@ -240,13 +255,13 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
               header: <span className="workspace-im-author">{m.sender_name || (m.author_kind === 'user' ? '我' : '助手')}</span>,
               footer: <div className="workspace-im-message-meta">
                 {m.created_at && <time dateTime={m.created_at} title={new Date(m.created_at).toLocaleString('zh-CN')}>{new Date(m.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>}
-                {m.reply_status && <span>{labels[m.reply_status] || (m.reply_status === 'succeeded' ? '已回复' : m.reply_status)}</span>}
+                {m.reply_status && <Tooltip title={m.reply_error ? '管家处理诊断：' + m.reply_error : undefined}><span>{replyLabels[m.reply_status] || m.reply_status}</span></Tooltip>}
                 {m.origin === 'migrated' && <span>历史归并</span>}
                 {!!m.body && <Button type="text" size="small" className="workspace-im-copy" aria-label="复制消息" title="复制消息" icon={<Copy size={12}/>} onClick={() => {
                   void copyToClipboard(m.body).catch(() => setError('复制失败，请手动选择消息文字复制。'))
                 }} />}
               </div>,
-              content: <div className="collab-message-body"><p><MemberText text={m.body} members={data.members || []} /></p>{card(m)}{m.reply_error && <p role="alert">{labels[m.reply_status || ''] || '处理未完成'}：{m.reply_error}</p>}</div>,
+              content: <div className="collab-message-body"><p><MemberText text={m.body} members={data.members || []} /></p>{card(m)}</div>,
             })),
             ...(replying ? [{ key: 'replying', loading: true, header: <span role="status">正在处理…</span> }] : []),
           ]} />

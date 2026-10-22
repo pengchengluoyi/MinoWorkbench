@@ -70,6 +70,7 @@ export const useScoutRelease = (node: ScoutNode | undefined) => {
     enabled: !!node && !!target.os && !!target.arch,
     retry: 1,
     staleTime: 30_000,
+    refetchOnMount: 'always',
     refetchInterval: (query) => (query.state.data?.packaging ? 8_000 : false),
     queryFn: async (): Promise<ScoutRelease> => {
       if (!target.os || !target.arch) throw new Error('节点系统或架构尚未上报，暂不能检查安装版本')

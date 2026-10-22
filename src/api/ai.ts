@@ -30,7 +30,6 @@ export interface AIProvidersDoc {
   sdk_providers?: string[]
   default_provider?: string
   usage?: {
-    case_execution_enabled?: boolean
     case_execution_provider_id?: string
   }
 }
@@ -101,13 +100,6 @@ export const validateAIProvider = (providerId: string) =>
 
 export const deleteAIProvider = (providerId: string) =>
   request({ url: `/settings/ai/providers/${encodeURIComponent(providerId)}`, method: 'delete' })
-
-export const saveAIUsage = (data: { case_execution_enabled: boolean; case_execution_provider_id: string }) =>
-  request({
-    url: '/settings/ai/usage',
-    method: 'put',
-    data: { copilot_enabled: false, mode: 'local_first', ...data },
-  })
 
 export const roundRatio = (value: unknown, fallback: number) => {
   const num = Number(value)

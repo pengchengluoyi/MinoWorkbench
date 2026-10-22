@@ -54,10 +54,17 @@ export function hasSavedUnderstanding(row: Record<string, unknown>) {
 }
 
 export function caseCompilePhase(row: Record<string, unknown>): 'idle' | 'pending' | 'failed' {
-  const state = textOf(row.compile_state || recordOf(row.compile_job).status).toLowerCase()
+  const state = textOf(recordOf(row.compile_job).status || row.compile_state).toLowerCase()
   if (['queued', 'running', 'claimed', 'preparing'].includes(state)) return 'pending'
   if (['failed', 'interrupted', 'cancelled'].includes(state)) return 'failed'
   return 'idle'
+}
+
+export function casePreviewSnapshot(row: Record<string, unknown>) {
+  const job = recordOf(row.compile_job)
+  const artifact = recordOf(row.effective_artifact)
+  return JSON.stringify([row.source_revision_id, row.source_revision, row.compile_state,
+    job.job_id, job.status, job.artifact_digest, artifact.job_id, artifact.output_digest])
 }
 
 const labels: Record<string, string> = {

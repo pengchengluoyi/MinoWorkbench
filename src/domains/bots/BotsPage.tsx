@@ -6,7 +6,6 @@ import { CollabPanel } from '@/domains/testing/collab/CollabPanel'
 import { botsHref, readBotsProject, rememberBotsProject } from './botsNavigation'
 import './BotsPage.css'
 
-/** 项目 id 仅用于 API；不在页顶展示项目切换（与用例工作台上下文一致，记忆上次项目）。 */
 export function BotsPage() {
   const { projectId: routeProjectId } = useParams()
   const [params] = useSearchParams()
@@ -15,7 +14,7 @@ export function BotsPage() {
   const ids = useMemo(() => new Set(list.map(row => row.id)), [list])
 
   const projectId = useMemo(() => {
-    if (routeProjectId && ids.has(routeProjectId)) return routeProjectId
+    if (routeProjectId) return ids.has(routeProjectId) ? routeProjectId : ''
     const stored = readBotsProject()
     if (stored && ids.has(stored)) return stored
     return list[0]?.id || ''
@@ -45,9 +44,7 @@ export function BotsPage() {
     )
   }
   if (!routeProjectId && projectId) return <Navigate to={botsHref(projectId, params)} replace />
-  if (routeProjectId && projectId && routeProjectId !== projectId) {
-    return <Navigate to={botsHref(projectId, params)} replace />
-  }
+  if (routeProjectId && !ids.has(routeProjectId)) return <EmptyState title="项目不存在或不可访问" hint="不会自动切换到其他项目。请重新选择项目。" action={<Link to="/bots">选择可用项目</Link>} />
   if (!projectId) return <EmptyState title="无可用项目" action={<Link to="/testing">去项目</Link>} />
 
   const appId = params.get('appId') || ''

@@ -1,5 +1,5 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import { recordOf } from './caseUnderstanding'
+import { caseCompilePhase } from './caseUnderstanding'
 import { useSession } from '@/lib/session'
 import { getCaseModules, getCasePage, getProjectCase, getProjectCases, type CasePageParams, type CaseRow } from '@/api/projectCases'
 import { listRunDevices, type RunDevice, type RunDeviceContext } from '@/api/run'
@@ -29,7 +29,7 @@ export const useProjectCases = (projectId: string, enabled = true) => useQuery({
 export const casePageOptions = (projectId: string, params: CasePageParams) => queryOptions({
   queryKey: [...caseKeys.list(projectId), 'page', params.appId, params.search, params.module, params.result, params.page, params.size],
   enabled: !!projectId && !!params.appId,
-  refetchInterval: query => query.state.data?.items.some(row => ['queued', 'running'].includes(String(recordOf(row.compile_job).status || row.compile_state || ''))) ? 2000 : false,
+  refetchInterval: query => query.state.data?.items.some(row => caseCompilePhase(row) === 'pending') ? 2000 : false,
   queryFn: async () => {
     const response = await getCasePage(projectId, params)
     return { items: unwrapList<CaseRow>(response, { keys: ['cases'], label: 'GET /project/:id/cases' }), total: Number(response.data?.total || 0) }
@@ -45,7 +45,8 @@ export const useCaseModules = (projectId: string) => useQuery({
 
 export const projectCaseOptions = (projectId: string, caseId: string) => queryOptions({
   queryKey: [...caseKeys.list(projectId), 'detail', caseId], enabled: !!projectId && !!caseId,
-  staleTime: 60_000,
+  staleTime: 0,
+  refetchInterval: query => query.state.data && caseCompilePhase(query.state.data) === 'pending' ? 2000 : false,
   queryFn: async (): Promise<CaseRow> => {
     const response = await getProjectCase(projectId, caseId)
     const row = response.data?.case

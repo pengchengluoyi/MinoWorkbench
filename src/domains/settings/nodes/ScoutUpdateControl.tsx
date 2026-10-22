@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowUpCircle, RefreshCw } from 'lucide-react'
+import { ArrowUpCircle } from 'lucide-react'
 import { type ScoutNode, type ScoutUpdateTarget, nodeIsOnline } from '@/api/nodes'
 import type { NodeTool } from '@/api/nodeTools'
 import { createUUID } from '@/lib/uuid'
@@ -21,21 +21,14 @@ function remember(key: string, pending: Pending | null) {
   } catch { return false }
 }
 
-export function ScoutUpdateControl({ node, tool, refreshing, onRefresh }: { node: ScoutNode; tool: NodeTool; refreshing: boolean; onRefresh: () => void }) {
+export function ScoutUpdateControl({ node, tool, release, onManualUpdate }: { node: ScoutNode; tool: NodeTool; release: ReturnType<typeof useScoutRelease>; onManualUpdate: () => void }) {
   if (tool.runtime_environment === 'development' || node.runtime_environment === 'development') {
-    const running = tool.running_version || tool.version || node.scout_version || '未上报'
-    const source = tool.source_version
-    const restart = tool.restart_required || !!source && source !== running
-    return <div className="w-scout-update" aria-label="Scout 源码版本">
-      <div className="w-scout-update-actions"><span className="w-download-badge" data-tone="neutral">源码运行</span><Button type="text" size="small" icon={<RefreshCw size={13} />} loading={refreshing} onClick={onRefresh}>刷新版本</Button></div>
-      <p className="w-download-state-note" role="status">正在运行 {running}{source ? ` · 本地源码 ${source}` : ' · 本地源码版本尚未上报'}</p>
-      <p className="w-download-state-note">{restart ? '源码已有变更，重启此节点后生效。' : '通过同步源码并重启此节点更新。'}{!source && '重启后可读取源码版本详情。'}</p>
-    </div>
+    return <span className="w-download-readonly" title="通过同步源码并重启此节点更新">随源码更新</span>
   }
-  return <InstalledScoutUpdateControl node={node} />
+  return <InstalledScoutUpdateControl node={node} release={release} onManualUpdate={onManualUpdate} />
 }
 
-function InstalledScoutUpdateControl({ node }: { node: ScoutNode }) {
+function InstalledScoutUpdateControl({ node, release, onManualUpdate }: { node: ScoutNode; release: ReturnType<typeof useScoutRelease>; onManualUpdate: () => void }) {
   const key = `mino:scout-update:${nexusOrigin()}:${node.owner_user_id || ''}:${node.node_id}`
   const [pending, setPending] = useState<Pending | null>(() => {
     try { const value = JSON.parse(sessionStorage.getItem(key) || 'null'); return value?.operation_id && value.build_id && value.release_tag ? value : null } catch { return null }
@@ -43,7 +36,6 @@ function InstalledScoutUpdateControl({ node }: { node: ScoutNode }) {
   const [error, setError] = useState('')
   const sending = useRef(false)
   const queryClient = useQueryClient()
-  const release = useScoutRelease(node)
   const status = useScoutUpdateStatus(node.node_id, pending?.operation_id || '', !!pending)
   const command = useNodeCommand()
   const operation = status.data?.operation
@@ -51,7 +43,7 @@ function InstalledScoutUpdateControl({ node }: { node: ScoutNode }) {
   const verified = operation?.state === 'succeeded' && operation.running_version_verified === true
   const active = !!node.update_job?.active || !!operation && (!terminal.has(operation.state) || operation.state === 'succeeded' && !verified) || !!pending && !(operation?.operation_id === pending.operation_id && terminal.has(operation.state) && (operation.state !== 'succeeded' || verified))
   const supportsUpdate = Array.isArray(node.runtime_capabilities) && node.runtime_capabilities.some(capability => capability.id === 'node.update' && capability.contract_version === 1)
-  const blocked = !nodeIsOnline(node) ? '节点离线，恢复连接后即可升级' : node.runtime_environment === 'development' ? '源码 Scout 请更新源码并重启；安装包更新用于正式节点' : !supportsUpdate ? '此旧版 Scout 已关闭远程更新；先用添加节点的安装命令更新一次，之后即可在线升级' : active ? '正在处理原升级请求，请等待运行版本核验' : command.isPending ? '升级请求正在提交' : status.isPending || status.isError ? '请先读取原升级状态' : !release.data?.build_id || !release.data.release_tag ? '尚未取得完整的固定版本发布信息' : !state.canUpgrade ? state.detail : ''
+  const blocked = !nodeIsOnline(node) ? '节点离线，恢复连接后即可升级' : !supportsUpdate ? '当前节点需使用安装命令更新' : active ? '正在处理原升级请求，请等待运行版本核验' : command.isPending ? '升级请求正在提交' : status.isPending || status.isError ? '请先读取原升级状态' : !release.data?.build_id || !release.data.release_tag ? '尚未取得完整的固定版本发布信息' : !state.canUpgrade ? state.detail : ''
   useEffect(() => {
     if (!pending || operation?.operation_id !== pending.operation_id || !terminal.has(operation.state) || operation.state === 'succeeded' && !verified) return
     setPending(null)
@@ -84,13 +76,13 @@ function InstalledScoutUpdateControl({ node }: { node: ScoutNode }) {
   const operationFailed = !!operation && ['failed', 'rolled_back', 'cancelled', 'expired', 'needs_operator'].includes(operation.state)
   return <div className="w-scout-update" aria-label="Scout 在线升级">
     <div className="w-scout-update-actions">
-      <Tooltip title={blocked || state.detail}><span><Button type="primary" icon={<ArrowUpCircle size={14} />} disabled={!!blocked} loading={command.isPending} onClick={() => void submit()}>{active ? '升级处理中' : state.canUpgrade ? state.label : '升级 Scout'}</Button></span></Tooltip>
-      <Button type="text" size="small" icon={<RefreshCw size={13} />} loading={release.isFetching || status.isFetching} onClick={() => { void release.refetch(); void status.refetch() }}>检查更新</Button>
+      {(active || state.canUpgrade && supportsUpdate) && <Tooltip title={blocked || state.detail}><span><Button size="small" type="primary" icon={<ArrowUpCircle size={14} />} disabled={!!blocked} loading={command.isPending} onClick={() => void submit()}>{active ? '升级处理中' : state.label}</Button></span></Tooltip>}
+      {!active && state.canUpgrade && !supportsUpdate && <Tooltip title="发现新版本，此节点需要使用安装命令更新"><Button size="small" onClick={onManualUpdate} disabled={!nodeIsOnline(node)}>获取升级命令</Button></Tooltip>}
+      {!active && !state.canUpgrade && <span className="w-download-readonly" data-warning={state.kind === 'failed' || undefined} role="status" title={state.detail}>{state.label}</span>}
     </div>
     {active && <ol className="w-download-inline-steps" aria-label="Scout 升级步骤">{['等待空闲', '下载安装', '重启核验'].map((title, index) => <li key={title} data-state={index < phase ? 'done' : index === phase ? 'current' : 'pending'} aria-current={index === phase ? 'step' : undefined}><span>{index < phase ? '✓' : index + 1}</span>{title}</li>)}</ol>}
-    <p className="w-download-state-note" role="status">{operation ? operation.state === 'succeeded' && !verified ? '等待运行版本核验，尚未确认升级成功' : labels[operation.state] || operation.state : active ? '正在核对原升级请求，请勿重复提交' : release.isError ? '版本检查失败，请重试；不代表已是最新' : !supportsUpdate ? blocked : state.detail}</p>
-    {release.data?.version && <span className="w-download-version">当前 {node.scout_version || '未上报'} → 可安装 {release.data.version}</span>}
-    {(error || status.isError || operationFailed) && <Alert type="warning" showIcon message={error || (status.isError ? '原升级状态未确认' : labels[operation!.state])} description={operation?.result?.reason || (status.isError ? errText(status.error) : undefined)} />}
+    {(active || operationFailed) && <p className="w-download-state-note" role="status">{operation && !verified ? operation.state === 'succeeded' ? '等待运行版本核验，尚未确认升级成功' : labels[operation.state] || operation.state : '正在核对原升级请求，请勿重复提交'}</p>}
+    {(error || status.isError && (active || state.canUpgrade) || operationFailed) && <Alert type="warning" showIcon message={error || (status.isError ? '原升级状态未确认' : labels[operation!.state])} description={operation?.result?.reason || (status.isError ? errText(status.error) : undefined)} />}
     {pending && !command.isPending && (!operation || operation.operation_id !== pending.operation_id) && <Button size="small" onClick={() => void submit(pending)}>重试原升级请求</Button>}
   </div>
 }

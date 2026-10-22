@@ -175,7 +175,7 @@ export function NodesPage() {
           onSelect={selectNode}
         />}
 
-        {active ? <NodeDetail key={active.node_id} node={active} pane={active.owner_user_id ? paneOf(params.get('pane')) : 'overview'} pluginPane={pluginPaneOf(params.get('pane'))} /> : null}
+        {active ? <NodeDetail key={active.node_id} node={active} pane={active.owner_user_id ? paneOf(params.get('pane')) : 'overview'} pluginPane={pluginPaneOf(params.get('pane'))} onManualUpdate={() => setAddingNode(true)} /> : null}
       </div>
       </>}
       <AddNodeModal key={accountId} open={addingNode} onClose={() => setAddingNode(false)} />
@@ -384,7 +384,7 @@ function NodeToolbar({ node, pane, onPane }: { node: ScoutNode; pane: Pane; onPa
   </div>
 }
 
-function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; pluginPane?: PluginPane }) {
+function NodeDetail({ node, pane, pluginPane, onManualUpdate }: { node: ScoutNode; pane: Pane; pluginPane?: PluginPane; onManualUpdate: () => void }) {
   const role = useSession((state) => state.role)
   const claim = useClaimLegacyNode()
   const fb = useFeedback()
@@ -474,7 +474,7 @@ function NodeDetail({ node, pane, pluginPane }: { node: ScoutNode; pane: Pane; p
         </>
       ) : null}
       {pane === 'assistant' ? <NodeAssistant key={node.node_id} nodeId={node.node_id} /> : null}
-      {pane === 'downloads' ? <NodeDownloads key={node.node_id} node={node} /> : null}
+      {pane === 'downloads' ? <NodeDownloads key={node.node_id} node={node} onManualUpdate={onManualUpdate} /> : null}
       {pane === 'connect' ? <div className="flex min-h-0 flex-1 flex-col"><NodePlugins key={node.node_id} node={node} initialPane={pluginPane} /></div> : null}
       {pane === 'logs' ? <div style={{ padding: 'var(--w-space-3)' }}><NodeLogs nodeId={node.node_id} embedded /></div> : null}
     </section>
