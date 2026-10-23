@@ -28,10 +28,7 @@ import {
   decideCollabApproval,
   listCollabApprovals,
   listCollabActivities,
-  pauseCollabTopic,
-  resumeCollabTopic,
   closeCollabTopic,
-  deleteCollabTopic,
   type CollabActivity,
   type CollabBot,
   type CollabBotTemplate,
@@ -201,21 +198,9 @@ export const useCollabMutations = (projectId: string, topicId: string) => {
       mutationFn: (body: { title?: string; goal?: string; status?: string }) => patchCollabTopic(projectId, topicId, body),
       onSuccess: () => void qc.invalidateQueries({ queryKey: collabKeys.topics(projectId) }),
     }),
-    pauseTopic: useMutation({
-      mutationFn: () => pauseCollabTopic(projectId, topicId),
-      onSuccess: invalidateTopic,
-    }),
-    resumeTopic: useMutation({
-      mutationFn: () => resumeCollabTopic(projectId, topicId),
-      onSuccess: invalidateTopic,
-    }),
     closeTopic: useMutation({
       mutationFn: () => closeCollabTopic(projectId, topicId),
       onSuccess: invalidateTopic,
-    }),
-    deleteTopic: useMutation({
-      mutationFn: (force?: boolean) => deleteCollabTopic(projectId, topicId, force),
-      onSuccess: () => void qc.invalidateQueries({ queryKey: collabKeys.topics(projectId) }),
     }),
     createBot: useMutation({
       mutationFn: (body: { name?: string; template_id: string }) => createCollabBot(projectId, body),

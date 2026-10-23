@@ -165,6 +165,13 @@ export async function cancelWork(projectId: string, workId: string) {
   })).data
 }
 
+export async function handoffWork(projectId: string, topicId: string, workId: string, memberId: string, note = '') {
+  return (await request<{ message: unknown; work: WorkSummary }>({
+    url: `/project/${encodeURIComponent(projectId)}/collab/workspaces/${encodeURIComponent(topicId)}/handoff`,
+    method: 'post', data: { work_id: workId, member_id: memberId, note },
+  })).data!
+}
+
 export async function instructWork(projectId: string, workId: string, text: string) {
   return (await request<WorkSummary>({
     url: base(projectId) + '/' + encodeURIComponent(workId) + '/instruct',

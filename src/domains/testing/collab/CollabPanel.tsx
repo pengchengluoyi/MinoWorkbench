@@ -5,21 +5,20 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { request } from '@/lib/request'
-import { Button, Modal, Drawer, Dropdown, Tooltip, errText } from '@/ui'
+import { Button, Drawer, Dropdown, Tooltip, errText } from '@/ui'
 import { projectHref } from '../workbench/projectNavigation'
-import { ImagePlus, Paperclip, FileText, Download, MoreHorizontal, PanelRightOpen, Users, ListTodo, Workflow, MessageSquare, Copy, X } from 'lucide-react'
+import { ImagePlus, Paperclip, FileText, Download, MoreHorizontal, PanelRightOpen, Users, MessageSquare, Copy, X } from 'lucide-react'
 import { useWorkspaceNavigation, removeWorkspaceFromCache, isMissingWorkspace } from '@/domains/bots/workspaceNavigation'
 import { MemberAvatar, MemberEditor, MemberText, MentionInput } from './WorkspacePeople'
 import type { WorkspaceMember as Member } from './WorkspacePeople'
 import './CollabPanel.css'
-import { WorkspaceTasks } from './WorkspaceTasks'
-import { WorkspaceWork } from './WorkspaceWork'
+import { WorkspaceWorkCard } from './WorkspaceWorkCard'
 import { useProjects } from '../apps/queries'
 import { botsHref } from '@/domains/bots/botsNavigation'
 
 const CaseImportDialog = lazy(() => import('../cases/CaseImportDialog').then(m => ({ default: m.CaseImportDialog })))
 interface Workspace { topic_id: string; title: string; app_id: string; modules: string[]; requirement_id: string;
-  archived: number; paused: number; workspace_kind: string; env_profile: string; env_surface: string }
+  archived: number; workspace_kind: string; env_profile: string; env_surface: string }
 interface Run { freshness?: string; run_id: string; app_id: string; outcome?: string; reason?: string; status: string; total: number | null; passed: number | null; failed: number | null;
   cases: { case_id: string; status: string; session_id?: string }[] }
 interface Message { created_at?: string; sender_name: string; message_id: string; author_kind: string; body: string; message_kind: string; card_kind: string; ref_id: string; origin: string; role?: string; thread_id?: string; reply_status?: string; reply_error?: string }
@@ -62,7 +61,6 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   const [missingNotice, setMissingNotice] = useState('')
   const [importOpen, setImportOpen] = useState(false)
   const [importUrl, setImportUrl] = useState('')
-  const [deleteOpen, setDeleteOpen] = useState(false)
   const [pinTarget, setPinTarget] = useState('')
   const linkedCase = deepLinkCaseId || params.get('collabCase') || ''
   const key = useMemo(() => ['workspaces-v7', projectId], [projectId])
@@ -114,11 +112,10 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   const readOnly = !!topic && (!!topic.archived || topic.workspace_kind.startsWith('legacy'))
   const mutation = useMutation({ mutationFn: async ({ path, method = 'post', body }: { path: string; method?: string; body?: unknown }) => {
     return await request<Record<string, unknown>>({ url: base + path, method, data: body })
-  }, onSuccess: async (_result, variables) => {
+  }, onSuccess: async (_result) => {
     setError('')
-    if (variables.method === 'delete' && variables.path === '/' + selectedId) removeWorkspaceFromCache(qc, projectId, variables.path.slice(1).split('?')[0])
     await qc.invalidateQueries({ queryKey: [...key, 'list'] })
-    if ((variables.method !== 'delete' || variables.path !== '/' + selectedId) && selectedId) await qc.invalidateQueries({ queryKey: [...key, selectedId], exact: true })
+    if (selectedId) await qc.invalidateQueries({ queryKey: [...key, selectedId], exact: true })
   }, onError: e => setError(errText(e)) })
   const act = (path: string, body?: unknown, method = 'post') => mutation.mutateAsync({ path, body, method })
   const prefix = '/' + selectedId
@@ -127,7 +124,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
     return r
   })
   const submit = (promise: Promise<unknown>) => { void promise.catch(() => undefined) }
-  useEffect(() => { setDraft(''); setError(''); setPinTarget(''); setShowDetails(false) }, [projectId, selectedId])
+  useEffect(() => { setDraft(''); setError(''); setPinTarget(''); setShowDetails(false); setTab('members') }, [projectId, selectedId])
   const create = (override?: { modules?: string[]; requirement_id?: string }) => {
     submit(act('', { ...override })
       .then(r => { setSelected(String(r.data?.topic_id || ''), Boolean(r.data?.archived)); setShowDetails(false) }))
@@ -178,10 +175,9 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   const card = (m: Message) => {
     if (m.card_kind === 'project') return <Link to={botsHref(m.ref_id)}>切换到该项目的工作区</Link>
     if (m.card_kind === 'run') { const run = data?.runs[m.ref_id]; return run ? runCard(run) : <p>运行记录不可用</p> }
-    if (m.card_kind === 'work') return <article className="steward-run-card">
-      <strong>工作</strong><p>{m.body}</p>
-      <Button onClick={() => { setTab('work'); setShowDetails(true) }}>打开工作</Button>
-    </article>
+    if (m.card_kind === 'work') return <WorkspaceWorkCard projectId={projectId} topicId={selectedId || ''} workId={m.ref_id}
+      members={data?.members || []} readOnly={readOnly} onError={setError} />
+    if (m.card_kind === 'handoff') return <div className="workspace-handoff-card"><span>群成员交接</span><p>{m.body}</p></div>
     if (m.card_kind === 'workspace') return <Button onClick={() => {
       void request<Detail>({ url: base + '/' + encodeURIComponent(m.ref_id) }).then(r => setSelected(m.ref_id, Boolean(r.data?.topic.archived))).catch(e => setError(errText(e)))
     }}>打开已有工作区</Button>
@@ -213,23 +209,18 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
       {!loadError && topic && data && <>
         <header className="v7-chat-header workspace-im-header">
           <div className="workspace-im-heading"><div className="workspace-im-icon"><MessageSquare size={20} /></div>
-            <div className="workspace-im-title"><h2>{topic.title}</h2><span>{data.members?.length || 0} 位成员{readOnly ? ' · 只读' : topic.paused ? ' · 已暂停' : ''}</span></div>
+            <div className="workspace-im-title"><h2>{topic.title}</h2><span>{data.members?.length || 0} 位成员{readOnly ? ' · 只读' : ''}</span></div>
           </div>
           <div className="workspace-im-header-actions">
             <Tooltip title="成员"><Button type="text" aria-label="成员" icon={<Users size={18}/>} onClick={() => { setTab('members'); setShowDetails(true) }} /></Tooltip>
-            <Tooltip title="任务"><Button type="text" aria-label="任务" icon={<ListTodo size={18}/>} onClick={() => { setTab('tasks'); setShowDetails(true) }} /></Tooltip>
-            <Tooltip title="工作"><Button type="text" aria-label="工作" icon={<Workflow size={18}/>} onClick={() => { setTab('work'); setShowDetails(true) }} /></Tooltip>
             <Tooltip title="工作区详情"><Button type="text" aria-label="对话详情" icon={<PanelRightOpen size={18}/>} onClick={() => setShowDetails(true)} /></Tooltip>
           <Dropdown trigger={['click']} menu={{ items: [
             { key: 'import', label: '导入用例…', disabled: readOnly || !topic.app_id || sending, onClick: () => { setImportUrl(''); setImportOpen(true) } },
             { key: 'archive', label: topic.archived ? '恢复工作区' : '归档工作区', disabled: topic.workspace_kind.startsWith('legacy'), onClick: () => submit(patch({ archived: !topic.archived })) },
-            { key: 'pause', label: topic.paused ? '恢复工作区' : '暂停工作区', disabled: readOnly, onClick: () => submit(patch({ paused: !topic.paused })) },
-            { key: 'history', label: archived ? '返回当前对话' : '查看归档', onClick: () => setArchived(!archived) },
-            { key: 'delete', label: '删除工作区', danger: true, onClick: () => { setDeleteOpen(true) } }
+            { key: 'history', label: archived ? '返回当前对话' : '查看归档', onClick: () => setArchived(!archived) }
           ] }}><Button type="text" aria-label="对话菜单" icon={<MoreHorizontal size={18}/>} /></Dropdown>
         </div></header>
         {readOnly && <div className="workspace-im-notice" role="status">此工作区只读，历史消息与证据保留。</div>}
-        {topic.paused ? <div className="workspace-im-notice" role="status">工作区已暂停，可继续查询。</div> : null}
         <Drawer title="对话详情" open={showDetails} onClose={() => setShowDetails(false)} width="min(620px, 100vw)" className="v7-details-drawer">
           <div className="v7-workspaces v7-drawer-content">
             <label className="workspace-project-select">所属项目<select aria-label="对话所属项目" value={projectId} disabled={!projects.data?.length} onChange={event => navigate(botsHref(event.target.value))}>
@@ -238,7 +229,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
             </select></label>
           {projects.isError && <p role="alert">项目列表读取失败：{errText(projects.error)}</p>}
           <nav className="v7-tabs" aria-label="工作区详情">
-            {[['members', '成员'], ['scope', '测试目标'], ['tasks', '任务'], ['work', '工作']].map(([id, label]) => <Button key={id} type={tab === id ? 'primary' : 'default'} onClick={() => setTab(id)}>{label}</Button>)}
+            {[['members', '成员'], ['scope', '测试目标']].map(([id, label]) => <Button key={id} type={tab === id ? 'primary' : 'default'} onClick={() => setTab(id)}>{label}</Button>)}
           </nav>
           {tab === 'members' && <MemberEditor key={selectedId} base={base + prefix} members={data.members || []} readOnly={readOnly || mutation.isPending}
             change={(member, remove) => submit(act(prefix + '/members' + (remove ? '/' + encodeURIComponent(member) : ''), remove ? undefined : { member }, remove ? 'delete' : 'post'))}
@@ -246,15 +237,13 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
             mention={member => { setDraft(current => current + (current && !/\s$/.test(current) ? ' ' : '') + '@' + member.sender_name + ' '); setShowDetails(false); setTimeout(() => { composerInput.current?.focus(); composerInput.current?.setSelectionRange(100000, 100000) }, 100) }} />}
           {tab === 'scope' && <ResourceEditor key={JSON.stringify([topic.topic_id, topic.requirement_id, topic.modules, topic.env_profile, topic.env_surface])}
             topic={topic} options={options.data} readOnly={readOnly} save={body => submit(patch(body))} />}
-          {tab === 'tasks' && <WorkspaceTasks key={selectedId} base={base + prefix} projectId={projectId} />}
-          {tab === 'work' && selectedId && <WorkspaceWork key={selectedId} projectId={projectId} topicId={selectedId} />}
           </div>
         </Drawer><section className="collab-card-chat">
           {!data.messages.length && <div className="workspace-im-empty"><MessageSquare size={32} strokeWidth={1.4}/><strong>开始聊天</strong><span>发送消息或附件，输入 @ 提及成员</span></div>}
           <Bubble.List key={selectedId} className="workspace-x-messages" autoScroll items={[
             ...data.messages.map(m => ({
               key: m.message_id,
-              className: m.author_kind === 'user' ? 'workspace-im-message workspace-im-message--self' : 'workspace-im-message',
+              className: (m.author_kind === 'user' ? 'workspace-im-message workspace-im-message--self' : 'workspace-im-message') + (m.card_kind === 'work' ? ' workspace-im-message--work' : ''),
               shape: 'corner' as const,
               variant: 'filled' as const,
               placement: m.author_kind === 'user' ? 'end' as const : 'start' as const,
@@ -268,7 +257,9 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
                   void copyToClipboard(m.body).catch(() => setError('复制失败，请手动选择消息文字复制。'))
                 }} />}
               </div>,
-              content: <div className="collab-message-body"><p><MemberText text={m.body} members={data.members || []} /></p>{card(m)}</div>,
+              content: m.card_kind === 'work'
+                ? <div className="collab-message-body">{card(m)}</div>
+                : <div className="collab-message-body"><p><MemberText text={m.body} members={data.members || []} /></p>{card(m)}</div>,
             })),
             ...(replying ? [{ key: 'replying', loading: true, header: <span role="status">正在处理…</span> }] : []),
           ]} />
@@ -297,10 +288,6 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
         </section>
       </>}
     </section></div>
-    <Modal className="v7-form-modal" title="删除工作区" open={deleteOpen} onCancel={() => setDeleteOpen(false)} footer={null}>
-      <p>删除此工作区的聊天与范围；项目用例、运行记录和 Session 证据保留，已提交的运行继续。</p>
-      <Button danger disabled={mutation.isPending} onClick={() => submit(act(prefix, undefined, 'delete').then(() => { setDeleteOpen(false); setSelected('') }))}>确认删除</Button>
-    </Modal>
     {importOpen && topic?.app_id && <Suspense fallback={<p role="status">正在打开用例导入…</p>}><CaseImportDialog initialSourceUrl={importUrl} projectId={projectId} appId={topic.app_id} open onClose={() => { setImportOpen(false); void qc.invalidateQueries({ queryKey: key }) }} /></Suspense>}
   </div>
 }

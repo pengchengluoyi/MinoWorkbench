@@ -106,7 +106,6 @@ export interface CollabTopic {
   status: string
   lead_user_id: string
   input_version: string
-  paused?: boolean
   requirement_id?: string
   modules?: string[]
   scope_case_ids?: string[]
@@ -246,21 +245,8 @@ export const patchCollabTopic = (
   data: { title?: string; goal?: string; status?: string },
 ) => request<CollabTopic>({ url: `${base(projectId)}/topics/${topicId}`, method: 'patch', data })
 
-export const pauseCollabTopic = (projectId: string, topicId: string) =>
-  request<CollabTopic>({ url: `${base(projectId)}/topics/${topicId}/pause`, method: 'post' })
-
-export const resumeCollabTopic = (projectId: string, topicId: string) =>
-  request<CollabTopic>({ url: `${base(projectId)}/topics/${topicId}/resume`, method: 'post' })
-
 export const closeCollabTopic = (projectId: string, topicId: string) =>
   request<CollabTopic>({ url: `${base(projectId)}/topics/${topicId}/close`, method: 'post' })
-
-export const deleteCollabTopic = (projectId: string, topicId: string, force = false) =>
-  request({
-    url: `${base(projectId)}/topics/${topicId}/delete`,
-    method: 'post',
-    data: { force },
-  })
 
 export const startCollabSteward = (projectId: string, topicId: string) =>
   request({ url: `${base(projectId)}/topics/${topicId}/steward/start`, method: 'post' })

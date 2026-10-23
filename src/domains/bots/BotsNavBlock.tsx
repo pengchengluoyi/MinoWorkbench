@@ -7,7 +7,7 @@ import { useProjects } from '@/domains/testing/apps/queries'
 import { request } from '@/lib/request'
 import { Button, Dropdown, Input, Modal, Tooltip, errText } from '@/ui'
 import { botsHref, readBotsProject } from './botsNavigation'
-import { workspaceBase, workspaceKey, removeWorkspaceFromCache, type WorkspaceSummary } from './workspaceNavigation'
+import { workspaceBase, workspaceKey, type WorkspaceSummary } from './workspaceNavigation'
 
 type WorkspaceTarget = { projectId: string; topic: WorkspaceSummary }
 
@@ -50,15 +50,14 @@ export function BotsNavBlock({ collapsed, onExpand, onNavigate }: { collapsed: b
       document.removeEventListener('contextmenu', closeOutside, true)
     }
   }, [workspaceMenu])
-  const [dialog, setDialog] = useState<{ action: 'rename' | 'delete'; target: WorkspaceTarget } | null>(null)
+  const [dialog, setDialog] = useState<{ action: 'rename'; target: WorkspaceTarget } | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const changeWorkspace = useMutation({
-    mutationFn: async ({ target, action, title }: { target: WorkspaceTarget; action: 'rename' | 'archive' | 'delete'; title?: string }) =>
+    mutationFn: async ({ target, action, title }: { target: WorkspaceTarget; action: 'rename' | 'archive'; title?: string }) =>
       request({ url: workspaceBase(target.projectId) + '/' + encodeURIComponent(target.topic.topic_id),
-        method: action === 'delete' ? 'delete' : 'patch',
-        data: action === 'delete' ? undefined : action === 'rename' ? { title } : { archived: !target.topic.archived } }),
+        method: 'patch',
+        data: action === 'rename' ? { title } : { archived: !target.topic.archived } }),
     onSuccess: async (_, { target, action }) => {
-      if (action === 'delete') removeWorkspaceFromCache(qc, target.projectId, target.topic.topic_id)
       if (action !== 'rename' && active && projectId === target.projectId && selectedId === target.topic.topic_id) {
         const next = new URLSearchParams()
         if (archived) next.set('archived', '1')
@@ -73,9 +72,6 @@ export function BotsNavBlock({ collapsed, onExpand, onNavigate }: { collapsed: b
     items: [
       { key: 'rename', label: '重命名', disabled: changeWorkspace.isPending || !!target.topic.archived || target.topic.workspace_kind.startsWith('legacy'), onClick: () => {
         changeWorkspace.reset(); setNewTitle(target.topic.title); setDialog({ action: 'rename', target })
-      } },
-      { key: 'delete', label: '删除', danger: true, disabled: changeWorkspace.isPending, onClick: () => {
-        changeWorkspace.reset(); setDialog({ action: 'delete', target })
       } },
     ],
   })
@@ -168,14 +164,13 @@ export function BotsNavBlock({ collapsed, onExpand, onNavigate }: { collapsed: b
         <span aria-hidden="true" style={{ position: 'fixed', left: workspaceMenu?.x ?? 0, top: workspaceMenu?.y ?? 0, width: 1, height: 1, pointerEvents: 'none' }} />
       </Dropdown>
     </div>}
-    <Modal title={dialog?.action === 'rename' ? '重命名工作区' : '删除工作区'} open={!!dialog}
+    <Modal title="重命名工作区" open={!!dialog}
       onCancel={() => { if (!changeWorkspace.isPending) setDialog(null) }}
       onOk={confirmDialog} confirmLoading={changeWorkspace.isPending}
-      okText={dialog?.action === 'rename' ? '保存' : '删除'} cancelText="取消"
-      okButtonProps={{ danger: dialog?.action === 'delete', disabled: dialog?.action === 'rename' && !newTitle.trim() }}>
-      {dialog?.action === 'rename' ? <Input autoFocus aria-label="工作区名称" maxLength={200} value={newTitle}
+      okText="保存" cancelText="取消"
+      okButtonProps={{ disabled: !newTitle.trim() }}>
+      <Input autoFocus aria-label="工作区名称" maxLength={200} value={newTitle}
         disabled={changeWorkspace.isPending} onChange={event => setNewTitle(event.target.value)} onPressEnter={confirmDialog} />
-        : <p>删除“{dialog?.target.topic.title}”的聊天与范围；项目用例、运行记录和证据保留，已提交的运行继续。</p>}
       {changeWorkspace.isError && <p role="alert">{errText(changeWorkspace.error)}</p>}
     </Modal>
   </div>
