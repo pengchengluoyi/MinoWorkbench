@@ -14,6 +14,7 @@ const AppIssuesPanel = lazy(() => import('../cases/AppIssuesPanel').then(m => ({
 const AssetsPanel = lazy(() => import('../assets/AssetsPanel').then(m => ({ default: m.AssetsPanel })))
 const EnvConfigPanel = lazy(() => import('../config/EnvConfigPanel').then(m => ({ default: m.EnvConfigPanel })))
 const SessionLogPanel = lazy(() => import('../sessions/SessionLogPanel').then(m => ({ default: m.SessionLogPanel })))
+const WorkspaceWork = lazy(() => import('../collab/WorkspaceWork').then(m => ({ default: m.WorkspaceWork })))
 export function ProjectWorkbench() {
   const { projectId = '' } = useParams()
   const [params, setParams] = useSearchParams()
@@ -45,6 +46,7 @@ export function ProjectWorkbench() {
   let panel: React.ReactNode
   if (tab === 'config') panel = <EnvConfigPanel projectId={projectId} appId={appId} />
   else if (tab === 'assets') panel = <AssetsPanel projectId={projectId} />
+  else if (tab === 'work') panel = <WorkspaceWork projectId={projectId} topicId="" />
   else if (scoped && !app) panel = <EmptyState
     title={requested ? '目标应用不属于当前项目或已不存在' : apps.length ? '选择要查看的应用' : '项目尚未配置应用'}
     hint={apps.length ? '选择应用后查看对应的用例、任务和执行结果。' : '在项目配置中添加应用后，即可执行测试。'}

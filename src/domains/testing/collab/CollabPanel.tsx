@@ -7,12 +7,13 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { request } from '@/lib/request'
 import { Button, Modal, Drawer, Dropdown, Tooltip, errText } from '@/ui'
 import { projectHref } from '../workbench/projectNavigation'
-import { ImagePlus, Paperclip, FileText, Download, MoreHorizontal, PanelRightOpen, Users, ListTodo, MessageSquare, Copy, X } from 'lucide-react'
+import { ImagePlus, Paperclip, FileText, Download, MoreHorizontal, PanelRightOpen, Users, ListTodo, Workflow, MessageSquare, Copy, X } from 'lucide-react'
 import { useWorkspaceNavigation, removeWorkspaceFromCache, isMissingWorkspace } from '@/domains/bots/workspaceNavigation'
 import { MemberAvatar, MemberEditor, MemberText, MentionInput } from './WorkspacePeople'
 import type { WorkspaceMember as Member } from './WorkspacePeople'
 import './CollabPanel.css'
 import { WorkspaceTasks } from './WorkspaceTasks'
+import { WorkspaceWork } from './WorkspaceWork'
 import { useProjects } from '../apps/queries'
 import { botsHref } from '@/domains/bots/botsNavigation'
 
@@ -177,6 +178,10 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
   const card = (m: Message) => {
     if (m.card_kind === 'project') return <Link to={botsHref(m.ref_id)}>切换到该项目的工作区</Link>
     if (m.card_kind === 'run') { const run = data?.runs[m.ref_id]; return run ? runCard(run) : <p>运行记录不可用</p> }
+    if (m.card_kind === 'work') return <article className="steward-run-card">
+      <strong>工作</strong><p>{m.body}</p>
+      <Button onClick={() => { setTab('work'); setShowDetails(true) }}>打开工作</Button>
+    </article>
     if (m.card_kind === 'workspace') return <Button onClick={() => {
       void request<Detail>({ url: base + '/' + encodeURIComponent(m.ref_id) }).then(r => setSelected(m.ref_id, Boolean(r.data?.topic.archived))).catch(e => setError(errText(e)))
     }}>打开已有工作区</Button>
@@ -213,6 +218,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
           <div className="workspace-im-header-actions">
             <Tooltip title="成员"><Button type="text" aria-label="成员" icon={<Users size={18}/>} onClick={() => { setTab('members'); setShowDetails(true) }} /></Tooltip>
             <Tooltip title="任务"><Button type="text" aria-label="任务" icon={<ListTodo size={18}/>} onClick={() => { setTab('tasks'); setShowDetails(true) }} /></Tooltip>
+            <Tooltip title="工作"><Button type="text" aria-label="工作" icon={<Workflow size={18}/>} onClick={() => { setTab('work'); setShowDetails(true) }} /></Tooltip>
             <Tooltip title="工作区详情"><Button type="text" aria-label="对话详情" icon={<PanelRightOpen size={18}/>} onClick={() => setShowDetails(true)} /></Tooltip>
           <Dropdown trigger={['click']} menu={{ items: [
             { key: 'import', label: '导入用例…', disabled: readOnly || !topic.app_id || sending, onClick: () => { setImportUrl(''); setImportOpen(true) } },
@@ -232,7 +238,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
             </select></label>
           {projects.isError && <p role="alert">项目列表读取失败：{errText(projects.error)}</p>}
           <nav className="v7-tabs" aria-label="工作区详情">
-            {[['members', '成员'], ['scope', '测试目标'], ['tasks', '任务']].map(([id, label]) => <Button key={id} type={tab === id ? 'primary' : 'default'} onClick={() => setTab(id)}>{label}</Button>)}
+            {[['members', '成员'], ['scope', '测试目标'], ['tasks', '任务'], ['work', '工作']].map(([id, label]) => <Button key={id} type={tab === id ? 'primary' : 'default'} onClick={() => setTab(id)}>{label}</Button>)}
           </nav>
           {tab === 'members' && <MemberEditor key={selectedId} base={base + prefix} members={data.members || []} readOnly={readOnly || mutation.isPending}
             change={(member, remove) => submit(act(prefix + '/members' + (remove ? '/' + encodeURIComponent(member) : ''), remove ? undefined : { member }, remove ? 'delete' : 'post'))}
@@ -241,6 +247,7 @@ export function CollabPanel({ projectId, deepLinkCaseId = '' }: {
           {tab === 'scope' && <ResourceEditor key={JSON.stringify([topic.topic_id, topic.requirement_id, topic.modules, topic.env_profile, topic.env_surface])}
             topic={topic} options={options.data} readOnly={readOnly} save={body => submit(patch(body))} />}
           {tab === 'tasks' && <WorkspaceTasks key={selectedId} base={base + prefix} projectId={projectId} />}
+          {tab === 'work' && selectedId && <WorkspaceWork key={selectedId} projectId={projectId} topicId={selectedId} />}
           </div>
         </Drawer><section className="collab-card-chat">
           {!data.messages.length && <div className="workspace-im-empty"><MessageSquare size={32} strokeWidth={1.4}/><strong>开始聊天</strong><span>发送消息或附件，输入 @ 提及成员</span></div>}
