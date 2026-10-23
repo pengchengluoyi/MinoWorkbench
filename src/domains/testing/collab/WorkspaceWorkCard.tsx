@@ -5,7 +5,7 @@ import { onRealtimeMessage } from '@/lib/realtime'
 import { Button, errText } from '@/ui'
 import { projectHref } from '../workbench/projectNavigation'
 import {
-  decideWorkApproval, getWork, handoffWork, patchWorkPlan, resolveWorkStep, retryWorkStep, takeoverWorkStep,
+  decideWorkApproval, extendWorkBudget, getWork, handoffWork, patchWorkPlan, resolveWorkStep, retryWorkStep, takeoverWorkStep,
 } from '@/api/work'
 import type { WorkApproval, WorkDetail, WorkStep } from '@/api/work'
 import type { WorkspaceMember } from './WorkspacePeople'
@@ -144,6 +144,25 @@ function reviewOf(work: WorkDetail) {
   return (work.review || {}) as { verdict?: string; criteria?: Criterion[]; summary?: string }
 }
 
+function blockedText(work: WorkDetail) {
+  if (work.blocked_reason_text) return work.blocked_reason_text
+  const reason = work.blocked_reason || ''
+  if (!reason.startsWith('budget_exhausted:')) return reason
+  const key = reason.split(':')[1] || ''
+  const labels: Record<string, string> = {
+    steps: '步骤预算', turns: '角色回合预算', tool_calls: '工具调用预算',
+    tokens: '模型 token 预算', wall_clock_sec: '执行时长预算',
+  }
+  const limitKey = key === 'wall_clock_sec' ? 'max_wall_clock_sec' : 'max_' + key
+  const used = Number(work.spent[key] || 0)
+  const limit = Number(work.budget[limitKey] || 0)
+  return `${labels[key] || key + '预算'}已用完（已用 ${used.toLocaleString()} / 上限 ${limit.toLocaleString()}）`
+}
+
+function isBudgetBlocked(work: WorkDetail) {
+  return (work.blocked_reason || '').startsWith('budget_exhausted:')
+}
+
 function StepLine({ step, index, planStep }: { step?: WorkStep; index: number; planStep: { title: string; agent_id: string; intent: string } }) {
   const tone = step ? stepTone(step.status) : 'idle'
   const text = step ? labels[step.status] || step.status : '未开始'
@@ -213,14 +232,20 @@ export function WorkspaceWorkCard({ projectId, topicId, workId, members, readOnl
   return <section className="work-chat-card" aria-label={'工作：' + (work.title || work.goal)}>
     <header className="work-chat-head">
       <div className="work-chat-title">
-        <span className={'work-status work-status--' + work.status}>{labels[work.status] || work.status}</span>
+        <span className={'work-status work-status--' + work.status}>
+          {isBudgetBlocked(work) ? '预算用尽' : labels[work.status] || work.status}
+        </span>
         <strong>{work.title || work.goal}</strong>
       </div>
       <span className="work-chat-count">{work.progress.done}/{work.progress.total} 步</span>
     </header>
     <progress className="work-progress" aria-label="工作进度" max={Math.max(1, work.progress.total)} value={work.progress.done} />
     <p className="work-chat-goal">{work.goal}</p>
-    {work.blocked_reason && <p className="work-chat-blocked">卡住：{work.blocked_reason}</p>}
+    {work.blocked_reason && <div className="work-chat-blocked-box">
+      <p className="work-chat-blocked">卡住：{blockedText(work)}</p>
+      {isBudgetBlocked(work) && !readOnly && <Button size="small" type="primary" disabled={mutation.isPending}
+        onClick={() => run(() => extendWorkBudget(projectId, work.work_id))}>追加预算并继续</Button>}
+    </div>}
     {!!doneSteps.length && <div className="work-chat-done">
       <span>已完成</span>
       <ul>{doneSteps.map(step => <li key={step.id}>✓ {step.title}</li>)}</ul>

@@ -91,6 +91,7 @@ export interface WorkSummary {
   plan_revision: number
   plan_index: number
   blocked_reason: string
+  blocked_reason_text?: string
   stop_requested: number
   created_at: string
   updated_at: string
@@ -157,6 +158,20 @@ export async function resumeWork(projectId: string, workId: string) {
   return (await request<WorkSummary>({
     url: base(projectId) + '/' + encodeURIComponent(workId) + '/resume', method: 'post',
   })).data
+}
+
+export async function extendWorkBudget(projectId: string, workId: string, extra: {
+  extra_tokens?: number; extra_steps?: number; extra_turns?: number; extra_tool_calls?: number
+} = {}) {
+  return (await request<WorkSummary>({
+    url: base(projectId) + '/' + encodeURIComponent(workId) + '/budget', method: 'post',
+    data: {
+      extra_tokens: extra.extra_tokens ?? 60000,
+      extra_steps: extra.extra_steps ?? 8,
+      extra_turns: extra.extra_turns ?? 4,
+      extra_tool_calls: extra.extra_tool_calls ?? 4,
+    },
+  })).data!
 }
 
 export async function cancelWork(projectId: string, workId: string) {

@@ -51,3 +51,5 @@
   .workspace-im .workspace-im-message--work .ant-bubble-content-wrapper { max-width: 100%; }
   .work-chat-card { gap: 8px; }
 }
+.work-chat-blocked-box { display:flex; flex-direction:column; align-items:flex-start; gap:7px; padding:9px 10px; border-radius:7px; background:#fef2f2; }
+.work-chat-blocked-box .work-chat-blocked { padding:0; background:none; }
