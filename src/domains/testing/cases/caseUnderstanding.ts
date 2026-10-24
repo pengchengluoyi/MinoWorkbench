@@ -245,7 +245,7 @@ export function rowBlockingAttention(row: Record<string, unknown>) {
   if (['incomplete', 'error', 'cancelled'].includes(textOf(row.parse_status))) return true
   if (row.conflict) return true
   if (row.parse_status === 'pending') return false
-  if (recordOf(row.ui_automation).coverable === false) return true
+  // UI 可跑性缺口（partial / not coverable）允许导入，执行阶段再标风险。
   return ['pre', 'op', 'ex'].some((kind) => fieldPresentation(row, kind as ScriptKind).tasks.some((task) => task.blocked))
 }
 

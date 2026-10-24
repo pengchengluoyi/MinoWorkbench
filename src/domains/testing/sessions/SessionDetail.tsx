@@ -31,10 +31,16 @@ type CheckpointScope = {
   error_kind?: string; text_match?: string; observed_text?: string; observed_language?: string; evidence?: string
 }
 type Attribution = {
-  first_blocker?: { reason_code?: string; capability_id?: string; turn?: number }
-  latest_error?: { error_kind?: string; capability_id?: string; turn?: number }
-  stop_reason?: { status?: string; kind?: string }
+  first_blocker?: { reason_code?: string; capability_id?: string; turn?: number; attribution_class?: string; attribution_label?: string; layer?: string }
+  latest_error?: { error_kind?: string; capability_id?: string; turn?: number; reason_code?: string; attribution_class?: string; layer?: string }
+  stop_reason?: { status?: string; kind?: string; reason_code?: string; attribution_class?: string; attribution_label?: string; layer?: string }
 }
+const attributionLabel = (row?: { attribution_class?: string; attribution_label?: string }) => {
+  if (!row?.attribution_class) return ''
+  const label = row.attribution_label || { A: '平台缺口', B: '程序缺口', C: '守卫误拦' }[row.attribution_class] || row.attribution_class
+  return `${row.attribution_class} ${label}`
+}
+const attributionStatus = (row?: { attribution_class?: string }): 'warn' | 'fail' | 'muted' => row?.attribution_class === 'B' ? 'fail' : row?.attribution_class ? 'warn' : 'muted'
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {}
 const payloadText = redactedText
@@ -243,8 +249,11 @@ export function SessionDetail({ sessionId, live = false, entry, onReturn }: { se
             {data.meta?.summary && <p>{data.meta.summary}</p>}
             {attribution && <p>
               终止类别：{attribution.stop_reason?.kind || '未分类'}
+              {attribution.stop_reason?.attribution_class && <> <StatusPill status={attributionStatus(attribution.stop_reason)}>{attributionLabel(attribution.stop_reason)}</StatusPill></>}
               {attribution.first_blocker && ` · 首个阻塞：${attribution.first_blocker.reason_code || 'blocked'}（回合 ${attribution.first_blocker.turn ?? '?'}）`}
+              {attribution.first_blocker?.attribution_class && <> <StatusPill status={attributionStatus(attribution.first_blocker)}>{attributionLabel(attribution.first_blocker)}</StatusPill></>}
               {attribution.latest_error && ` · 最近错误：${attribution.latest_error.error_kind || '未知'}（回合 ${attribution.latest_error.turn ?? '?'}）`}
+              {attribution.latest_error?.attribution_class && <> <StatusPill status={attributionStatus(attribution.latest_error)}>{attributionLabel(attribution.latest_error)}</StatusPill></>}
             </p>}
           </details>
         )}

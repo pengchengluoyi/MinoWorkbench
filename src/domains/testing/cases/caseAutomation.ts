@@ -26,7 +26,7 @@ export function advisoryIssueCount(row: Record<string, unknown>) {
 }
 
 export function importIssueTier(row: Record<string, unknown>): ImportIssueTier {
-  if (recordOf(row.ui_automation).coverable === false || blockingIssueCount(row) > 0) return 'blocking'
-  if (advisoryIssueCount(row) > 0) return 'advisory'
+  if (blockingIssueCount(row) > 0) return 'blocking'
+  if (recordOf(row.ui_automation).coverable === false || advisoryIssueCount(row) > 0) return 'advisory'
   return 'none'
 }

@@ -1,5 +1,6 @@
 import { createUUID } from '@/lib/uuid'
 import { CompileMetrics } from './CompileMetrics'
+import { CoveragePanel } from './CoveragePanel'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { request } from '@/lib/request'
@@ -100,7 +101,7 @@ function KnowledgeEditor({ owner, projectId, appId }: { owner: string; projectId
     </div>
     <Drawer title={diagnostics === 'recognition' ? '页面识别效果' : '诊断详情'} width="min(1000px, 100vw)" open={!!diagnostics} onClose={() => setDiagnostics('')} destroyOnHidden>
       {diagnostics === 'recognition' && <PageRecognitionComparisons owner={owner} projectId={projectId} appId={appId} pages={validPages} />}
-      {diagnostics === 'compile' && <><h3 className="config-subsection-title">修复与复发</h3>{trends.isPending ? <p>正在读取趋势…</p> : trends.error ? <Alert type="error" message={errText(trends.error)} /> : trends.data?.owner_user_id === owner && <p>复核 {trends.data.reviewed_cases} 个用例 · 曾验证解决 {trends.data.ever_verified_resolved_cases} 个 · 复发 {trends.data.reopened_cases} 个</p>}<CompileMetrics owner={owner} projectId={projectId} appId={appId} /></>}
+      {diagnostics === 'compile' && <><h3 className="config-subsection-title">修复与复发</h3>{trends.isPending ? <p>正在读取趋势…</p> : trends.error ? <Alert type="error" message={errText(trends.error)} /> : trends.data?.owner_user_id === owner && <p>复核 {trends.data.reviewed_cases} 个用例 · 曾验证解决 {trends.data.ever_verified_resolved_cases} 个 · 复发 {trends.data.reopened_cases} 个</p>}<CompileMetrics owner={owner} projectId={projectId} appId={appId} /><CoveragePanel owner={owner} projectId={projectId} appId={appId} /></>}
     </Drawer>
     <Modal cancelText="取消" title="添加页面识别资料" width={620} open={proposing} confirmLoading={busy} okText="提交候选" onCancel={() => !busy && setProposing(false)} onOk={() => void propose()} okButtonProps={{ disabled: !reason.trim() || !build.trim() || !positive.trim() || !negative.trim() || !positiveSession.trim() || !negativeSession.trim() }} destroyOnHidden>
       {error && <Alert type="error" message={error} />}<p className="config-secondary">审批后用于匹配平台和构建的新执行。正反例应来自当前账号、本应用的已结束会话。</p>
